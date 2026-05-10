@@ -265,6 +265,8 @@ if(WINUAE_UNIX_WITH_QT_UI)
         add_executable(winuae_unix_qt
             od-unix/qt/config.cpp
             od-unix/qt/launcher.cpp
+            od-unix/qt/launcher_backend.cpp
+            od-unix/qt/launcher_main.cpp
         )
         target_compile_definitions(winuae_unix_qt PRIVATE
             WINUAE_UNIX_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
