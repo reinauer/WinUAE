@@ -7,6 +7,7 @@ EXE=${WINUAE_EXE:-"$BUILD_DIR/winuae_unix"}
 LOG=${WINUAE_SMOKE_LOG:-/tmp/winuae_unix_smoke.log}
 RUN_SECONDS=${WINUAE_SMOKE_SECONDS:-5}
 A2065=${WINUAE_SMOKE_A2065:-0}
+RTG_Z3=${WINUAE_SMOKE_RTG_Z3:-0}
 
 ROM=${WINUAE_KICKSTART_ROM:-}
 ADF=${WINUAE_FLOPPY0:-}
@@ -37,10 +38,15 @@ SDL_AUDIODRIVER=${SDL_AUDIODRIVER:-dummy}
 SDL_VIDEODRIVER=${SDL_VIDEODRIVER:-dummy}
 export SDL_AUDIODRIVER SDL_VIDEODRIVER
 
+set --
 if [ "$A2065" = "1" ]; then
-    set -- -s a2065=slirp
-else
-    set --
+    set -- "$@" -s a2065=slirp
+fi
+if [ "$RTG_Z3" = "1" ]; then
+    set -- "$@" \
+        -s cpu_24bit_addressing=false \
+        -s gfxcard_size=16 \
+        -s gfxcard_type=ZorroIII
 fi
 
 "$EXE" \
@@ -70,6 +76,10 @@ grep -q "SDL2: audio initialized" "$LOG"
 grep -q "hardreset, memory cleared" "$LOG"
 if [ "$A2065" = "1" ]; then
     grep -q "A2065" "$LOG"
+fi
+if [ "$RTG_Z3" = "1" ]; then
+    grep -q "UAE RTG" "$LOG"
+    grep -q "RTG RAM" "$LOG"
 fi
 if grep -q "failed to load config" "$LOG" || grep -q "cfgfile_load_2 failed" "$LOG"; then
     echo "Unexpected config load failure in smoke log: $LOG" >&2
