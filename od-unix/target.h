@@ -3,7 +3,6 @@
 
 #define TARGET_NAME _T("unix")
 #define OPTIONSFILENAME _T("default.uae")
-#define OPTIONS_IN_HOME 1
 
 #define TARGET_ROM_PATH _T("~/")
 #define TARGET_FLOPPY_PATH _T("~/")
