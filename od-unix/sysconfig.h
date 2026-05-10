@@ -70,6 +70,7 @@
 #define HAVE_SELECT 1
 #define HAVE_STRDUP 1
 #define HAVE_STRERROR 1
+#define HAVE_STDINT_H 1
 #define HAVE_STRING_H 1
 #define HAVE_STRINGS_H 1
 #define HAVE_SYS_MMAN_H 1
@@ -122,6 +123,8 @@
 
 #include <stdint.h>
 #include <limits.h>
+#include <arpa/inet.h>
+#include <sys/ioctl.h>
 #include <sys/types.h>
 #include <sys/timeb.h>
 #include <time.h>
@@ -144,6 +147,7 @@ typedef long uae_atomic;
 #define WPARAM uintptr_t
 #define LPARAM intptr_t
 #define LRESULT intptr_t
+#define INT_PTR intptr_t
 #define CALLBACK
 #define WINAPI
 #define PASCAL
@@ -152,6 +156,8 @@ typedef long uae_atomic;
 #define TRUE 1
 #define FALSE 0
 #define INVALID_HANDLE_VALUE ((HANDLE)-1)
+#define INVALID_SOCKET (-1)
+#define SOCKET_ERROR (-1)
 
 #define Sleep sleep_millis
 #define stricmp strcasecmp

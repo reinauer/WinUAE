@@ -4,6 +4,7 @@ project(winuae_unix_port LANGUAGES C CXX)
 
 option(WINUAE_UNIX_BUILD_EXECUTABLE "Link the initial Unix command-line executable" ON)
 option(WINUAE_UNIX_WITH_SDL2 "Build the initial Unix SDL2 video presenter" ON)
+option(WINUAE_UNIX_WITH_SLIRP "Build built-in SLIRP user-mode networking and A2065 Ethernet support" ON)
 
 find_package(ZLIB REQUIRED)
 find_package(PkgConfig QUIET)
@@ -40,12 +41,43 @@ target_compile_options(winuae_core PRIVATE
     $<$<COMPILE_LANGUAGE:CXX>:-Wno-deprecated-register>
     $<$<COMPILE_LANGUAGE:CXX>:-Wno-format-security>
     $<$<COMPILE_LANGUAGE:CXX>:-Wno-multichar>
+    $<$<COMPILE_LANGUAGE:CXX>:-Wno-register>
     $<$<COMPILE_LANGUAGE:CXX>:-Wno-unused-value>
 )
 
 set(WINUAE_UNIX_EXTRA_SOURCES)
 set(WINUAE_UNIX_EXTRA_LIBRARIES)
 set(WINUAE_UNIX_EXTRA_LIBRARY_DIRS)
+
+if(WINUAE_UNIX_WITH_SLIRP)
+    target_compile_definitions(winuae_core PRIVATE
+        A2065=1
+        WITH_SLIRP=1
+        WITH_BUILTIN_SLIRP=1
+    )
+    list(APPEND WINUAE_UNIX_EXTRA_SOURCES
+        a2065.cpp
+        slirp_uae.cpp
+        slirp/bootp.cpp
+        slirp/cksum.cpp
+        slirp/if.cpp
+        slirp/ip_icmp.cpp
+        slirp/ip_input.cpp
+        slirp/ip_output.cpp
+        slirp/mbuf.cpp
+        slirp/misc.cpp
+        slirp/sbuf.cpp
+        slirp/slirp.cpp
+        slirp/slirpdebug.cpp
+        slirp/socket.cpp
+        slirp/tcp_input.cpp
+        slirp/tcp_output.cpp
+        slirp/tcp_subr.cpp
+        slirp/tcp_timer.cpp
+        slirp/tftp.cpp
+        slirp/udp.cpp
+    )
+endif()
 
 if(WINUAE_UNIX_WITH_SDL2 AND PkgConfig_FOUND)
     pkg_check_modules(SDL2 QUIET sdl2)
