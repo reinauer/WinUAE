@@ -116,7 +116,7 @@ int isfullscreen(void) { return 0; }
 void toggle_fullscreen(int, int) {}
 bool toggle_rtg(int, int) { return false; }
 void close_rtg(int, bool) {}
-void toggle_mousegrab(void) {}
+void toggle_mousegrab(void) { unix_video_toggle_mouse_grab(); }
 void setmouseactivexy(int, int, int, int) {}
 
 void desktop_coords(int, int *dw, int *dh, int *x, int *y, int *w, int *h)

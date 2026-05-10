@@ -19,5 +19,8 @@ int unix_video_poll(bool *quit_requested);
 void unix_video_present(const struct unix_video_frame *frame);
 void unix_video_set_title(const TCHAR *title);
 void unix_video_get_desktop(int *dw, int *dh, int *x, int *y, int *w, int *h);
+void unix_video_set_mouse_grab(bool grab);
+bool unix_video_get_mouse_grab(void);
+void unix_video_toggle_mouse_grab(void);
 
 #endif /* WINUAE_OD_UNIX_VIDEO_H */
