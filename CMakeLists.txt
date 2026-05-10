@@ -5,6 +5,7 @@ project(winuae_unix_port LANGUAGES C CXX)
 option(WINUAE_UNIX_BUILD_EXECUTABLE "Link the initial Unix command-line executable" ON)
 option(WINUAE_UNIX_WITH_SDL2 "Build the initial Unix SDL2 video presenter" ON)
 option(WINUAE_UNIX_WITH_SLIRP "Build built-in SLIRP user-mode networking and A2065 Ethernet support" ON)
+option(WINUAE_UNIX_WITH_QT_UI "Build the optional Unix Qt launcher/config UI" ON)
 
 find_package(ZLIB REQUIRED)
 find_package(PkgConfig QUIET)
@@ -233,4 +234,32 @@ if(WINUAE_UNIX_BUILD_EXECUTABLE)
         target_link_directories(winuae_unix PRIVATE ${WINUAE_UNIX_EXTRA_LIBRARY_DIRS})
     endif()
     target_link_libraries(winuae_unix PRIVATE pthread ${CMAKE_DL_LIBS} ZLIB::ZLIB ${WINUAE_UNIX_EXTRA_LIBRARIES})
+endif()
+
+if(WINUAE_UNIX_WITH_QT_UI)
+    find_package(Qt6 COMPONENTS Widgets QUIET)
+    if(Qt6_FOUND)
+        set(WINUAE_UNIX_QT_WIDGETS_TARGET Qt6::Widgets)
+    else()
+        find_package(Qt5 COMPONENTS Widgets QUIET)
+        if(Qt5_FOUND)
+            set(WINUAE_UNIX_QT_WIDGETS_TARGET Qt5::Widgets)
+        endif()
+    endif()
+
+    if(WINUAE_UNIX_QT_WIDGETS_TARGET)
+        add_executable(winuae_unix_qt
+            od-unix/qt/launcher.cpp
+        )
+        target_compile_definitions(winuae_unix_qt PRIVATE
+            WINUAE_UNIX_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+            WINUAE_UNIX_BUILD_DIR="${CMAKE_BINARY_DIR}"
+        )
+        target_link_libraries(winuae_unix_qt PRIVATE ${WINUAE_UNIX_QT_WIDGETS_TARGET})
+        if(TARGET winuae_unix)
+            add_dependencies(winuae_unix_qt winuae_unix)
+        endif()
+    else()
+        message(STATUS "Qt Widgets not found; skipping winuae_unix_qt")
+    endif()
 endif()
