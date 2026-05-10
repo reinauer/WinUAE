@@ -1348,14 +1348,7 @@ void real_main (int argc, TCHAR **argv)
 int main (int argc, TCHAR **argv)
 {
 #ifdef UAE_TARGET_UNIX
-	int exit_code = 0;
-	int early_action = unix_gui_handle_early_options(argc, argv, &exit_code);
-	if (early_action == UNIX_GUI_EARLY_EXIT)
-		return exit_code;
-	if (early_action == UNIX_GUI_EARLY_START) {
-		real_main (argc, argv);
-		return 0;
-	}
+	unix_gui_set_main_args(argc, argv);
 #endif
 	real_main (argc, argv);
 	return 0;
