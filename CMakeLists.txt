@@ -262,20 +262,24 @@ if(WINUAE_UNIX_WITH_QT_UI)
     endif()
 
     if(WINUAE_UNIX_QT_WIDGETS_TARGET)
-        add_executable(winuae_unix_qt
+        add_library(winuae_unix_qt_frontend STATIC
             od-unix/qt/config.cpp
             od-unix/qt/launcher.cpp
             od-unix/qt/launcher_backend.cpp
-            od-unix/qt/launcher_main.cpp
         )
-        target_compile_definitions(winuae_unix_qt PRIVATE
+        target_compile_definitions(winuae_unix_qt_frontend PRIVATE
             WINUAE_UNIX_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
             WINUAE_UNIX_BUILD_DIR="${CMAKE_BINARY_DIR}"
             WINUAE_UNIX_VERSION_MAJOR=${WINUAE_UNIX_VERSION_MAJOR}
             WINUAE_UNIX_VERSION_MINOR=${WINUAE_UNIX_VERSION_MINOR}
             WINUAE_UNIX_VERSION_REVISION=${WINUAE_UNIX_VERSION_REVISION}
         )
-        target_link_libraries(winuae_unix_qt PRIVATE ${WINUAE_UNIX_QT_WIDGETS_TARGET})
+        target_link_libraries(winuae_unix_qt_frontend PUBLIC ${WINUAE_UNIX_QT_WIDGETS_TARGET})
+
+        add_executable(winuae_unix_qt
+            od-unix/qt/launcher_main.cpp
+        )
+        target_link_libraries(winuae_unix_qt PRIVATE winuae_unix_qt_frontend)
         if(TARGET winuae_unix)
             add_dependencies(winuae_unix_qt winuae_unix)
         endif()
