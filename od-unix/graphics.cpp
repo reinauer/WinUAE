@@ -5,6 +5,7 @@
 #include "xwin.h"
 #include "drawing.h"
 #include "options.h"
+#include "memory.h"
 #include "picasso96.h"
 #include "uae.h"
 #include "video.h"
@@ -22,6 +23,41 @@ struct picasso_vidbuf_description picasso_vidinfo[MAX_AMIGAMONITORS];
 
 static bool unix_graphics_initialized;
 static bool unix_video_debug;
+
+enum {
+    UNIX_PICASSO_STATE_SETDISPLAY = 1,
+    UNIX_PICASSO_STATE_SETPANNING = 2,
+    UNIX_PICASSO_STATE_SETGC = 4,
+    UNIX_PICASSO_STATE_SETDAC = 8,
+    UNIX_PICASSO_STATE_SETSWITCH = 16
+};
+
+static int unix_picasso_bytes_per_pixel(RGBFTYPE rgbfmt)
+{
+    switch (rgbfmt) {
+    case RGBFB_CLUT:
+    case RGBFB_Y4U1V1:
+        return 1;
+    case RGBFB_R5G6B5:
+    case RGBFB_R5G5B5:
+    case RGBFB_R5G6B5PC:
+    case RGBFB_R5G5B5PC:
+    case RGBFB_B5G6R5PC:
+    case RGBFB_B5G5R5PC:
+    case RGBFB_Y4U2V2:
+        return 2;
+    case RGBFB_R8G8B8:
+    case RGBFB_B8G8R8:
+        return 3;
+    case RGBFB_A8R8G8B8:
+    case RGBFB_A8B8G8R8:
+    case RGBFB_R8G8B8A8:
+    case RGBFB_B8G8R8A8:
+        return 4;
+    default:
+        return 0;
+    }
+}
 
 static void unix_init_colors(void)
 {
@@ -114,7 +150,10 @@ int handle_msgpump(bool)
 
 int isfullscreen(void) { return 0; }
 void toggle_fullscreen(int, int) {}
-bool toggle_rtg(int, int) { return false; }
+bool toggle_rtg(int monid, int)
+{
+    return monid >= 0 && monid < MAX_AMIGAMONITORS && currprefs.rtgboards[0].rtgmem_size > 0;
+}
 void close_rtg(int, bool) {}
 void toggle_mousegrab(void) { unix_video_toggle_mouse_grab(); }
 void setmouseactivexy(int, int, int, int) {}
@@ -257,9 +296,141 @@ void refreshtitle(void)
     unix_video_set_title(_T("WinUAE Unix"));
 }
 
-void InitPicasso96(int) {}
-void picasso_enablescreen(int, int) {}
-void picasso_refresh(int) {}
+void InitPicasso96(int monid)
+{
+    if (monid < 0 || monid >= MAX_AMIGAMONITORS) {
+        return;
+    }
+
+    memset(&picasso96_state[monid], 0, sizeof picasso96_state[monid]);
+    memset(&picasso_vidinfo[monid], 0, sizeof picasso_vidinfo[monid]);
+    picasso_vidinfo[monid].rgbformat = RGBFB_B8G8R8A8;
+    picasso_vidinfo[monid].selected_rgbformat = RGBFB_B8G8R8A8;
+    picasso_vidinfo[monid].host_mode = RGBFB_B8G8R8A8;
+    picasso_vidinfo[monid].pixbytes = 4;
+    for (int i = 0; i < 256; i++) {
+        picasso96_state[monid].CLUT[i].Red = i;
+        picasso96_state[monid].CLUT[i].Green = i;
+        picasso96_state[monid].CLUT[i].Blue = i;
+        picasso_vidinfo[monid].clut[i] = 0xff000000 | (i << 16) | (i << 8) | i;
+    }
+}
+
+static bool unix_picasso_ensure_buffer(int monid)
+{
+    struct picasso96_state_struct *state = &picasso96_state[monid];
+    struct picasso_vidbuf_description *pvidinfo = &picasso_vidinfo[monid];
+    struct vidbuf_description *vidinfo = &adisplays[monid].gfxvidinfo;
+    int width = state->Width > 0 ? state->Width : 640;
+    int height = state->Height > 0 ? state->Height : 480;
+
+    unix_alloc_buffer(monid, &vidinfo->drawbuffer, width, height);
+    vidinfo->drawbuffer.outwidth = width;
+    vidinfo->drawbuffer.outheight = height;
+    vidinfo->drawbuffer.pixbytes = 4;
+    vidinfo->drawbuffer.monitor_id = monid;
+    vidinfo->inbuffer = &vidinfo->drawbuffer;
+    vidinfo->outbuffer = &vidinfo->drawbuffer;
+
+    pvidinfo->width = width;
+    pvidinfo->height = height;
+    pvidinfo->depth = state->GC_Depth ? (state->GC_Depth + 7) / 8 : 0;
+    pvidinfo->pixbytes = 4;
+    pvidinfo->rowbytes = vidinfo->drawbuffer.rowbytes;
+    pvidinfo->rgbformat = state->RGBFormat;
+    pvidinfo->selected_rgbformat = state->RGBFormat;
+    pvidinfo->host_mode = RGBFB_B8G8R8A8;
+
+    return vidinfo->drawbuffer.bufmem != NULL;
+}
+
+static uae_u32 unix_picasso_convert_pixel(const uae_u8 *src, RGBFTYPE fmt, const uae_u32 *clut)
+{
+    switch (fmt) {
+    case RGBFB_CLUT:
+        return clut[src[0]];
+    case RGBFB_R8G8B8:
+        return 0xff000000 | ((uae_u32)src[0] << 16) | ((uae_u32)src[1] << 8) | src[2];
+    case RGBFB_B8G8R8:
+        return 0xff000000 | ((uae_u32)src[2] << 16) | ((uae_u32)src[1] << 8) | src[0];
+    case RGBFB_R8G8B8A8:
+        return ((uae_u32)src[3] << 24) | ((uae_u32)src[0] << 16) | ((uae_u32)src[1] << 8) | src[2];
+    case RGBFB_B8G8R8A8:
+        return ((uae_u32)src[3] << 24) | ((uae_u32)src[2] << 16) | ((uae_u32)src[1] << 8) | src[0];
+    case RGBFB_A8R8G8B8:
+        return ((uae_u32)src[0] << 24) | ((uae_u32)src[1] << 16) | ((uae_u32)src[2] << 8) | src[3];
+    case RGBFB_A8B8G8R8:
+        return ((uae_u32)src[0] << 24) | ((uae_u32)src[3] << 16) | ((uae_u32)src[2] << 8) | src[1];
+    case RGBFB_R5G6B5:
+    case RGBFB_R5G5B5:
+    case RGBFB_R5G6B5PC:
+    case RGBFB_R5G5B5PC:
+    case RGBFB_B5G6R5PC:
+    case RGBFB_B5G5R5PC:
+        return p96_rgbx16[do_get_mem_word((uae_u16 *)src)];
+    default:
+        return 0xff000000;
+    }
+}
+
+static void unix_picasso_render(int monid)
+{
+    if (monid < 0 || monid >= MAX_AMIGAMONITORS || !unix_picasso_ensure_buffer(monid)) {
+        return;
+    }
+
+    struct picasso96_state_struct *state = &picasso96_state[monid];
+    struct picasso_vidbuf_description *pvidinfo = &picasso_vidinfo[monid];
+    struct vidbuffer *vb = &adisplays[monid].gfxvidinfo.drawbuffer;
+    addrbank *bank = gfxmem_banks[0];
+    int srcpixbytes = unix_picasso_bytes_per_pixel((RGBFTYPE)state->RGBFormat);
+
+    if (!bank || !bank->baseaddr || !srcpixbytes || !state->Address || !state->BytesPerRow ||
+        !state->Width || !state->Height) {
+        return;
+    }
+    if ((uae_u32)state->XYOffset < bank->start) {
+        return;
+    }
+
+    uae_u32 offset = (uae_u32)state->XYOffset - bank->start;
+    uae_u32 needed = offset + (state->Height - 1) * state->BytesPerRow + state->Width * srcpixbytes;
+    if (needed > bank->allocated_size) {
+        return;
+    }
+
+    alloc_colors_picasso(8, 8, 8, 16, 8, 0, (RGBFTYPE)state->RGBFormat, p96_rgbx16);
+    const uae_u8 *srcbase = bank->baseaddr + offset;
+    for (int y = 0; y < state->Height; y++) {
+        const uae_u8 *src = srcbase + y * state->BytesPerRow;
+        uae_u32 *dst = (uae_u32 *)(vb->bufmem + y * vb->rowbytes);
+        for (int x = 0; x < state->Width; x++) {
+            dst[x] = unix_picasso_convert_pixel(src + x * srcpixbytes, (RGBFTYPE)state->RGBFormat, pvidinfo->clut);
+        }
+    }
+}
+
+void picasso_enablescreen(int monid, int on)
+{
+    if (monid < 0 || monid >= MAX_AMIGAMONITORS) {
+        return;
+    }
+    picasso_vidinfo[monid].picasso_active = on != 0;
+    if (on) {
+        picasso_refresh(monid);
+    }
+}
+
+void picasso_refresh(int monid)
+{
+    if (monid < 0 || monid >= MAX_AMIGAMONITORS) {
+        return;
+    }
+    unix_picasso_render(monid);
+    if (adisplays[monid].picasso_on || picasso_vidinfo[monid].picasso_active) {
+        show_screen(monid, 0);
+    }
+}
 void init_hz_p96(int) {}
 
 void gfx_set_picasso_modeinfo(int monid, RGBFTYPE rgbfmt)
@@ -267,14 +438,49 @@ void gfx_set_picasso_modeinfo(int monid, RGBFTYPE rgbfmt)
     if (monid < 0 || monid >= MAX_AMIGAMONITORS) {
         return;
     }
+    struct picasso96_state_struct *state = &picasso96_state[monid];
     picasso_vidinfo[monid].rgbformat = rgbfmt;
     picasso_vidinfo[monid].selected_rgbformat = rgbfmt;
+    picasso_vidinfo[monid].depth = state->GC_Depth ? (state->GC_Depth + 7) / 8 : 0;
+    picasso_vidinfo[monid].picasso_changed = true;
+    unix_picasso_ensure_buffer(monid);
 }
 
-void gfx_set_picasso_colors(int, RGBFTYPE) {}
-void gfx_set_picasso_state(int, int) {}
-uae_u8 *gfx_lock_picasso(int, bool) { return NULL; }
-void gfx_unlock_picasso(int, bool) {}
+void gfx_set_picasso_colors(int monid, RGBFTYPE rgbfmt)
+{
+    if (monid >= 0 && monid < MAX_AMIGAMONITORS) {
+        picasso_vidinfo[monid].rgbformat = rgbfmt;
+    }
+}
+
+void gfx_set_picasso_state(int monid, int on)
+{
+    if (monid >= 0 && monid < MAX_AMIGAMONITORS) {
+        picasso_vidinfo[monid].picasso_active = on != 0;
+    }
+}
+
+uae_u8 *gfx_lock_picasso(int monid, bool)
+{
+    if (monid < 0 || monid >= MAX_AMIGAMONITORS || !unix_picasso_ensure_buffer(monid)) {
+        return NULL;
+    }
+    struct vidbuffer *vb = &adisplays[monid].gfxvidinfo.drawbuffer;
+    vb->locked = true;
+    return vb->bufmem;
+}
+
+void gfx_unlock_picasso(int monid, bool dorender)
+{
+    if (monid < 0 || monid >= MAX_AMIGAMONITORS) {
+        return;
+    }
+    struct vidbuffer *vb = &adisplays[monid].gfxvidinfo.drawbuffer;
+    vb->locked = false;
+    if (dorender) {
+        show_screen(monid, 0);
+    }
+}
 void picasso_allocatewritewatch(int, int) {}
 
 int picasso_getwritewatch(int, int, uae_u8 ***gwwbufp, uae_u8 **startp)
@@ -290,6 +496,32 @@ int picasso_getwritewatch(int, int, uae_u8 ***gwwbufp, uae_u8 **startp)
 
 bool picasso_is_vram_dirty(int, uaecptr, int) { return true; }
 void picasso_invalidate(int, int, int, int, int) {}
+
+void picasso_handle_vsync(void)
+{
+    for (int monid = 0; monid < MAX_AMIGAMONITORS; monid++) {
+        struct amigadisplay *ad = &adisplays[monid];
+        struct picasso_vidbuf_description *vidinfo = &picasso_vidinfo[monid];
+        int state = vidinfo->picasso_state_change;
+
+        if (state) {
+            atomic_and(&vidinfo->picasso_state_change, ~state);
+            if (state & UNIX_PICASSO_STATE_SETGC) {
+                gfx_set_picasso_modeinfo(monid, (RGBFTYPE)picasso96_state[monid].RGBFormat);
+            }
+            if (state & UNIX_PICASSO_STATE_SETSWITCH) {
+                vidinfo->picasso_active = ad->picasso_requested_on;
+            }
+            if (state & (UNIX_PICASSO_STATE_SETGC | UNIX_PICASSO_STATE_SETPANNING |
+                UNIX_PICASSO_STATE_SETDAC | UNIX_PICASSO_STATE_SETDISPLAY)) {
+                vidinfo->full_refresh = 1;
+            }
+        }
+        if (ad->picasso_on || vidinfo->picasso_active) {
+            picasso_refresh(monid);
+        }
+    }
+}
 
 void fb_copyrow(int monid, uae_u8 *src, uae_u8 *dst, int x, int, int width, int srcpixbytes, int dy)
 {
