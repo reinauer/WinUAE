@@ -216,6 +216,7 @@ set(WINUAE_CORE_SOURCES
     od-unix/logging.cpp
     od-unix/mman.cpp
     od-unix/parallel.cpp
+    od-unix/rtg.cpp
     od-unix/sound.cpp
     od-unix/stubs.cpp
     od-unix/support.cpp

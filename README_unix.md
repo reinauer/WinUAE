@@ -8,6 +8,7 @@ This is an early macOS/Linux port of the WinUAE source tree. The current Unix bu
 - Uses `od-unix/` host abstractions.
 - SDL2 provides the current window, framebuffer presentation, mouse input, keyboard input, and audio output.
 - A2065 Ethernet can use the built-in SLIRP user-mode NAT backend.
+- UAE Zorro II/Zorro III RTG RAM can now be configured and autoconfigured for bring-up testing; guest Picasso96 display output is still incomplete.
 - Full UI/configuration dialogs, native file pickers, and platform packaging are still incomplete.
 - If SDL2 is not found, CMake currently builds a headless/null-video target.
 
@@ -96,6 +97,12 @@ For A2065 SLIRP networking, use:
 configs/unix-a1200-install32-a2065.uae.example
 ```
 
+For Zorro III RTG RAM autoconfig bring-up testing, use:
+
+```sh
+configs/unix-a1200-install32-rtg-z3.uae.example
+```
+
 Copy an example to a writable location and replace the ROM and ADF paths before using it with `-config` or `-f`.
 
 ## Smoke Test
@@ -112,6 +119,12 @@ To include A2065 SLIRP autoconfig in the same smoke path:
 
 ```sh
 tools/unix-smoke-a2065.sh
+```
+
+To include Zorro III RTG RAM autoconfig in the same smoke path:
+
+```sh
+tools/unix-smoke-rtg-z3.sh
 ```
 
 Optional overrides:
