@@ -3,8 +3,35 @@
 
 #include <stdarg.h>
 #include "gui.h"
+#include "gui_unix.h"
+
+#ifdef WINUAE_UNIX_WITH_INTEGRATED_QT_UI
+#include "qt/launcher.h"
+#endif
 
 unsigned int gui_ledstate;
+
+bool unix_gui_handle_early_options(int argc, TCHAR **argv, int *exit_code)
+{
+    for (int i = 1; i < argc; i++) {
+        if (_tcscmp(argv[i], _T("--qt-ui")) != 0 && _tcscmp(argv[i], _T("-qt-ui")) != 0) {
+            continue;
+        }
+
+#ifdef WINUAE_UNIX_WITH_INTEGRATED_QT_UI
+        if (exit_code) {
+            *exit_code = runWinUaeQtLauncher(argc, argv);
+        }
+#else
+        write_log("Unix Qt UI was not enabled in this build.\n");
+        if (exit_code) {
+            *exit_code = 1;
+        }
+#endif
+        return true;
+    }
+    return false;
+}
 
 int gui_init(void) { return 0; }
 int gui_update(void) { return 0; }

@@ -6,6 +6,7 @@ option(WINUAE_UNIX_BUILD_EXECUTABLE "Link the initial Unix command-line executab
 option(WINUAE_UNIX_WITH_SDL2 "Build the initial Unix SDL2 video presenter" ON)
 option(WINUAE_UNIX_WITH_SLIRP "Build built-in SLIRP user-mode networking and A2065 Ethernet support" ON)
 option(WINUAE_UNIX_WITH_QT_UI "Build the optional Unix Qt launcher/config UI" ON)
+option(WINUAE_UNIX_WITH_INTEGRATED_QT_UI "Allow winuae_unix to host the Unix Qt frontend when requested" OFF)
 
 find_package(ZLIB REQUIRED)
 find_package(PkgConfig QUIET)
@@ -236,7 +237,7 @@ if(WINUAE_UNIX_BUILD_EXECUTABLE)
     target_link_libraries(winuae_unix PRIVATE pthread ${CMAKE_DL_LIBS} ZLIB::ZLIB ${WINUAE_UNIX_EXTRA_LIBRARIES})
 endif()
 
-if(WINUAE_UNIX_WITH_QT_UI)
+if(WINUAE_UNIX_WITH_QT_UI OR WINUAE_UNIX_WITH_INTEGRATED_QT_UI)
     set(WINUAE_UNIX_VERSION_MAJOR 0)
     set(WINUAE_UNIX_VERSION_MINOR 0)
     set(WINUAE_UNIX_VERSION_REVISION 0)
@@ -276,12 +277,14 @@ if(WINUAE_UNIX_WITH_QT_UI)
         )
         target_link_libraries(winuae_unix_qt_frontend PUBLIC ${WINUAE_UNIX_QT_WIDGETS_TARGET})
 
-        add_executable(winuae_unix_qt
-            od-unix/qt/launcher_main.cpp
-        )
-        target_link_libraries(winuae_unix_qt PRIVATE winuae_unix_qt_frontend)
-        if(TARGET winuae_unix)
-            add_dependencies(winuae_unix_qt winuae_unix)
+        if(WINUAE_UNIX_WITH_QT_UI)
+            add_executable(winuae_unix_qt
+                od-unix/qt/launcher_main.cpp
+            )
+            target_link_libraries(winuae_unix_qt PRIVATE winuae_unix_qt_frontend)
+            if(TARGET winuae_unix)
+                add_dependencies(winuae_unix_qt winuae_unix)
+            endif()
         endif()
 
         add_executable(winuae_unix_qt_config_test EXCLUDE_FROM_ALL
@@ -289,7 +292,14 @@ if(WINUAE_UNIX_WITH_QT_UI)
             od-unix/qt/config_roundtrip_test.cpp
         )
         target_link_libraries(winuae_unix_qt_config_test PRIVATE ${WINUAE_UNIX_QT_WIDGETS_TARGET})
+
+        if(WINUAE_UNIX_WITH_INTEGRATED_QT_UI)
+            target_compile_definitions(winuae_core PRIVATE WINUAE_UNIX_WITH_INTEGRATED_QT_UI=1)
+            if(TARGET winuae_unix)
+                target_link_libraries(winuae_unix PRIVATE winuae_unix_qt_frontend)
+            endif()
+        endif()
     else()
-        message(STATUS "Qt Widgets not found; skipping winuae_unix_qt")
+        message(STATUS "Qt Widgets not found; skipping Unix Qt targets")
     endif()
 endif()
