@@ -249,6 +249,7 @@ if(WINUAE_UNIX_WITH_QT_UI)
 
     if(WINUAE_UNIX_QT_WIDGETS_TARGET)
         add_executable(winuae_unix_qt
+            od-unix/qt/config.cpp
             od-unix/qt/launcher.cpp
         )
         target_compile_definitions(winuae_unix_qt PRIVATE
