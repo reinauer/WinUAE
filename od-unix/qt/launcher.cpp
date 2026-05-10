@@ -1,5 +1,7 @@
 #include <QtWidgets>
 
+#include "config.h"
+
 #ifndef WINUAE_UNIX_SOURCE_DIR
 #define WINUAE_UNIX_SOURCE_DIR "."
 #endif
@@ -1060,9 +1062,9 @@ private:
         return 0;
     }
 
-    QMap<QString, QString> currentSettings() const
+    WinUaeQtConfig::Settings currentSettings() const
     {
-        QMap<QString, QString> settings;
+        WinUaeQtConfig::Settings settings;
         const int cpu = cpuButtons->checkedId();
         settings.insert(QStringLiteral("kickstart_rom_file"), romFile->currentText());
         if (!extendedRomFile->currentText().isEmpty()) {
@@ -1135,21 +1137,15 @@ private:
 
     void loadConfig(const QString &path)
     {
-        QFile file(path);
-        if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-            QMessageBox::warning(this, windowTitle(), file.errorString());
+        WinUaeQtConfig config;
+        QString error;
+        if (!config.load(path, &error)) {
+            QMessageBox::warning(this, windowTitle(), error);
             return;
         }
-        while (!file.atEnd()) {
-            const QString line = QString::fromUtf8(file.readLine()).trimmed();
-            if (line.isEmpty() || line.startsWith(QLatin1Char(';')) || line.startsWith(QLatin1Char('#'))) {
-                continue;
-            }
-            const int sep = line.indexOf(QLatin1Char('='));
-            if (sep <= 0) {
-                continue;
-            }
-            applySetting(line.left(sep).trimmed(), line.mid(sep + 1).trimmed());
+        const WinUaeQtConfig::Settings settings = config.settings();
+        for (auto it = settings.constBegin(); it != settings.constEnd(); ++it) {
+            applySetting(it.key(), it.value());
         }
         configPath->setText(path);
         configName->setCurrentText(QFileInfo(path).completeBaseName());
@@ -1200,18 +1196,11 @@ private:
 
     void saveConfig(const QString &path)
     {
-        QFile file(path);
-        if (!file.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate)) {
-            QMessageBox::warning(this, windowTitle(), file.errorString());
+        const WinUaeQtConfig config(currentSettings());
+        QString error;
+        if (!config.save(path, &error)) {
+            QMessageBox::warning(this, windowTitle(), error);
             return;
-        }
-        QTextStream out(&file);
-        out << "; WinUAE Unix Qt configuration\n";
-        const QMap<QString, QString> settings = currentSettings();
-        for (auto it = settings.constBegin(); it != settings.constEnd(); ++it) {
-            if (!it.value().isEmpty()) {
-                out << it.key() << "=" << it.value() << "\n";
-            }
         }
         configPath->setText(path);
         configName->setCurrentText(QFileInfo(path).completeBaseName());
@@ -1225,19 +1214,15 @@ private:
             QMessageBox::warning(this, windowTitle(), QStringLiteral("Emulator executable not found."));
             return;
         }
-        if (romFile->currentText().isEmpty()) {
-            QMessageBox::warning(this, windowTitle(), QStringLiteral("Main ROM file is required."));
+        const WinUaeQtConfig config(currentSettings());
+        const QStringList validationErrors = config.validateForLaunch();
+        if (!validationErrors.isEmpty()) {
+            QMessageBox::warning(this, windowTitle(), validationErrors.join(QLatin1Char('\n')));
             navigation->setCurrentItem(navigation->topLevelItem(4));
             return;
         }
 
-        QStringList args;
-        const QMap<QString, QString> settings = currentSettings();
-        for (auto it = settings.constBegin(); it != settings.constEnd(); ++it) {
-            if (!it.value().isEmpty()) {
-                args << QStringLiteral("-s") << QStringLiteral("%1=%2").arg(it.key(), it.value());
-            }
-        }
+        const QStringList args = config.commandArguments();
         if (!QProcess::startDetached(program, args)) {
             QMessageBox::warning(this, windowTitle(), QStringLiteral("Failed to start emulator."));
             return;
