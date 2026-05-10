@@ -1,6 +1,8 @@
 #include <QtWidgets>
 
 #include "config.h"
+#include "launcher.h"
+#include "launcher_backend.h"
 
 #ifndef WINUAE_UNIX_SOURCE_DIR
 #define WINUAE_UNIX_SOURCE_DIR "."
@@ -292,6 +294,7 @@ private:
     QLineEdit *emulatorPath = nullptr;
     QLineEdit *romsPath = nullptr;
     QLineEdit *configsPath = nullptr;
+    WinUaeQtLauncherBackend launcherBackend;
     WinUaeQtConfig loadedConfig;
 
     void addPage(const QString &title, const QString &icon, QWidget *page)
@@ -1348,9 +1351,9 @@ private:
             return;
         }
 
-        const QStringList args = config.commandArguments();
-        if (!QProcess::startDetached(program, args)) {
-            QMessageBox::warning(this, windowTitle(), QStringLiteral("Failed to start emulator."));
+        QString error;
+        if (!launcherBackend.start(program, config, &error)) {
+            QMessageBox::warning(this, windowTitle(), error);
             return;
         }
         status->setText(QStringLiteral("Started %1").arg(program));
@@ -1397,11 +1400,16 @@ static void setupApplicationStyle(QApplication &app)
     ));
 }
 
-int main(int argc, char **argv)
+int runWinUaeQtLauncher(QApplication &app)
 {
-    QApplication app(argc, argv);
     setupApplicationStyle(app);
     WinUaeQtDialog dialog;
     dialog.show();
     return app.exec();
+}
+
+int runWinUaeQtLauncher(int argc, char **argv)
+{
+    QApplication app(argc, argv);
+    return runWinUaeQtLauncher(app);
 }
