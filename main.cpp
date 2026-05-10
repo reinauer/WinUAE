@@ -1345,8 +1345,16 @@ int main (int argc, TCHAR **argv)
 {
 #ifdef UAE_TARGET_UNIX
 	int exit_code = 0;
-	if (unix_gui_handle_early_options(argc, argv, &exit_code))
+	int emulator_argc = 0;
+	TCHAR **emulator_argv = NULL;
+	int early_action = unix_gui_handle_early_options(argc, argv, &exit_code, &emulator_argc, &emulator_argv);
+	if (early_action == UNIX_GUI_EARLY_EXIT)
 		return exit_code;
+	if (early_action == UNIX_GUI_EARLY_START) {
+		real_main (emulator_argc, emulator_argv);
+		unix_gui_free_early_args(emulator_argc, emulator_argv);
+		return 0;
+	}
 #endif
 	real_main (argc, argv);
 	return 0;
