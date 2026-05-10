@@ -138,8 +138,14 @@ static QString envString(const char *name)
 
 class WinUaeQtDialog final : public QDialog {
 public:
-    explicit WinUaeQtDialog(QWidget *parent = nullptr)
-        : QDialog(parent)
+    enum class StartMode {
+        DetachedProcess,
+        ReturnConfig
+    };
+
+    explicit WinUaeQtDialog(StartMode mode = StartMode::DetachedProcess, QWidget *parent = nullptr)
+        : QDialog(parent),
+          startMode(mode)
     {
         setWindowTitle(QStringLiteral("WinUAE Properties"));
         setWindowIcon(resourceIcon(QStringLiteral("winuae.ico")));
@@ -237,7 +243,13 @@ public:
         navigation->setCurrentItem(navigation->topLevelItem(1));
     }
 
+    const WinUaeQtLauncherResult &launcherResult() const
+    {
+        return result;
+    }
+
 private:
+    StartMode startMode = StartMode::DetachedProcess;
     QTreeWidget *navigation = nullptr;
     QStackedWidget *pageStack = nullptr;
     QLabel *status = nullptr;
@@ -296,6 +308,7 @@ private:
     QLineEdit *configsPath = nullptr;
     WinUaeQtLauncherBackend launcherBackend;
     WinUaeQtConfig loadedConfig;
+    WinUaeQtLauncherResult result;
 
     void addPage(const QString &title, const QString &icon, QWidget *page)
     {
@@ -1338,16 +1351,24 @@ private:
 
     void startEmulator()
     {
-        const QString program = emulatorPath->text();
-        if (program.isEmpty() || !QFileInfo::exists(program)) {
-            QMessageBox::warning(this, windowTitle(), QStringLiteral("Emulator executable not found."));
-            return;
-        }
         const WinUaeQtConfig config = mergedConfig();
         const QStringList validationErrors = config.validateForLaunch();
         if (!validationErrors.isEmpty()) {
             QMessageBox::warning(this, windowTitle(), validationErrors.join(QLatin1Char('\n')));
             navigation->setCurrentItem(navigation->topLevelItem(4));
+            return;
+        }
+
+        if (startMode == StartMode::ReturnConfig) {
+            result.status = WinUaeQtLauncherStatus::StartRequested;
+            result.config = config;
+            accept();
+            return;
+        }
+
+        const QString program = emulatorPath->text();
+        if (program.isEmpty() || !QFileInfo::exists(program)) {
+            QMessageBox::warning(this, windowTitle(), QStringLiteral("Emulator executable not found."));
             return;
         }
 
@@ -1412,4 +1433,23 @@ int runWinUaeQtLauncher(int argc, char **argv)
 {
     QApplication app(argc, argv);
     return runWinUaeQtLauncher(app);
+}
+
+WinUaeQtLauncherResult runWinUaeQtLauncherForConfig(QApplication &app)
+{
+    setupApplicationStyle(app);
+    WinUaeQtDialog dialog(WinUaeQtDialog::StartMode::ReturnConfig);
+    if (dialog.exec() == QDialog::Accepted) {
+        return dialog.launcherResult();
+    }
+
+    WinUaeQtLauncherResult result;
+    result.status = WinUaeQtLauncherStatus::Canceled;
+    return result;
+}
+
+WinUaeQtLauncherResult runWinUaeQtLauncherForConfig(int argc, char **argv)
+{
+    QApplication app(argc, argv);
+    return runWinUaeQtLauncherForConfig(app);
 }

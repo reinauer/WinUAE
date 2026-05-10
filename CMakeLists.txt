@@ -266,6 +266,7 @@ if(WINUAE_UNIX_WITH_QT_UI OR WINUAE_UNIX_WITH_INTEGRATED_QT_UI)
         add_library(winuae_unix_qt_frontend STATIC
             od-unix/qt/config.cpp
             od-unix/qt/launcher.cpp
+            od-unix/qt/launcher_bridge.cpp
             od-unix/qt/launcher_backend.cpp
         )
         target_compile_definitions(winuae_unix_qt_frontend PRIVATE
