@@ -384,6 +384,9 @@ static int load_legacy_config(struct uae_prefs *p, const TCHAR *filename)
 
 int target_cfgfile_load(struct uae_prefs *p, const TCHAR *filename, int type, int isdefault)
 {
+    if (isdefault && type == CONFIG_TYPE_DEFAULT && !file_exists(filename)) {
+        return 1;
+    }
     if (type == CONFIG_TYPE_ALL && load_legacy_config(p, filename)) {
         return 1;
     }
