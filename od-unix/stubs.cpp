@@ -18,6 +18,7 @@
 #include "rommgr.h"
 #include "savestate.h"
 #include "sampler.h"
+#include "sana2.h"
 #include "scsidev.h"
 #include "statusline.h"
 #include "ethernet.h"
@@ -158,8 +159,15 @@ uae_u8 *restore_kbmcu3(uae_u8 *src) { return src; }
 
 struct netdriverdata **target_ethernet_enumerate(void)
 {
+#ifdef WITH_SLIRP
+    static netdriverdata *drivers[MAX_TOTAL_NET_DEVICES];
+    memset(drivers, 0, sizeof drivers);
+    ethernet_enumerate(drivers, 0);
+    return drivers;
+#else
     static netdriverdata *none[1] = { NULL };
     return none;
+#endif
 }
 
 void ethernet_pause(int) {}
