@@ -63,7 +63,7 @@ int sampler_init(void) { return 0; }
 void sampler_free(void) {}
 void sampler_vsync(void) {}
 uae_u8 sampler_getsample(int) { return 0; }
-void update_sound(float) {}
+float sampler_evtime;
 int audio_is_pull(void) { return 0; }
 bool audio_is_pull_event(void) { return false; }
 int audio_pull_buffer(void) { return 0; }
