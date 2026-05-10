@@ -8,6 +8,7 @@
 #include "picasso96.h"
 #include "uae.h"
 #include "video.h"
+#include "host.h"
 
 extern int pause_emulation;
 
@@ -93,15 +94,16 @@ bool handle_events(void)
 
 int handle_msgpump(bool)
 {
+    unix_host_check_quit();
     bool quit_requested = false;
     int got = unix_video_poll(&quit_requested);
     if (quit_requested) {
         uae_quit();
     }
+    unix_host_check_quit();
     return got;
 }
 
-void setup_brkhandler(void) {}
 int isfullscreen(void) { return 0; }
 void toggle_fullscreen(int, int) {}
 bool toggle_rtg(int, int) { return false; }
@@ -146,12 +148,10 @@ void show_screen(int monid, int)
     unix_video_present(&frame);
 }
 
-bool show_screen_maybe(int monid, bool show)
+bool show_screen_maybe(int monid, bool)
 {
-    if (show) {
-        show_screen(monid, 0);
-    }
-    return false;
+    show_screen(monid, 0);
+    return true;
 }
 
 int lockscr(struct vidbuffer *vb, bool, bool)
@@ -173,7 +173,13 @@ void unlockscr(struct vidbuffer *vb, int, int)
 bool target_graphics_buffer_update(int, bool) { return true; }
 float target_adjust_vblank_hz(int, float hz) { return hz; }
 int target_get_display_scanline(int) { return 0; }
-void target_spin(int) {}
+void target_spin(int)
+{
+    static int spin_counter;
+    if ((spin_counter++ & 31) == 0 || unix_host_quit_requested()) {
+        handle_msgpump(false);
+    }
+}
 
 void getgfxoffset(int, float *dxp, float *dyp, float *mxp, float *myp)
 {
