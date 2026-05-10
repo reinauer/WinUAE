@@ -2,35 +2,57 @@
 #include "sysdeps.h"
 
 #include <stdarg.h>
+#include <stdlib.h>
 #include "gui.h"
 #include "gui_unix.h"
 
 #ifdef WINUAE_UNIX_WITH_INTEGRATED_QT_UI
-#include "qt/launcher.h"
+#include "qt/launcher_bridge.h"
 #endif
 
 unsigned int gui_ledstate;
 
-bool unix_gui_handle_early_options(int argc, TCHAR **argv, int *exit_code)
+static bool is_qt_ui_option(const TCHAR *arg)
+{
+    return _tcscmp(arg, _T("--qt-ui")) == 0 || _tcscmp(arg, _T("-qt-ui")) == 0;
+}
+
+int unix_gui_handle_early_options(int argc, TCHAR **argv, int *exit_code, int *emulator_argc, TCHAR ***emulator_argv)
 {
     for (int i = 1; i < argc; i++) {
-        if (_tcscmp(argv[i], _T("--qt-ui")) != 0 && _tcscmp(argv[i], _T("-qt-ui")) != 0) {
+        if (!is_qt_ui_option(argv[i])) {
             continue;
         }
 
 #ifdef WINUAE_UNIX_WITH_INTEGRATED_QT_UI
-        if (exit_code) {
-            *exit_code = runWinUaeQtLauncher(argc, argv);
+        const int action = runWinUaeQtLauncherForEmulatorArgs(argc, argv, exit_code, emulator_argc, (char***)emulator_argv);
+        if (action == WINUAE_QT_LAUNCHER_START) {
+            return UNIX_GUI_EARLY_START;
         }
+        if (action == WINUAE_QT_LAUNCHER_EXIT) {
+            return UNIX_GUI_EARLY_EXIT;
+        }
+        return UNIX_GUI_EARLY_EXIT;
 #else
         write_log("Unix Qt UI was not enabled in this build.\n");
         if (exit_code) {
             *exit_code = 1;
         }
+        return UNIX_GUI_EARLY_EXIT;
 #endif
-        return true;
     }
-    return false;
+    return UNIX_GUI_EARLY_NONE;
+}
+
+void unix_gui_free_early_args(int argc, TCHAR **argv)
+{
+    if (!argv) {
+        return;
+    }
+    for (int i = 0; i < argc; i++) {
+        free(argv[i]);
+    }
+    free(argv);
 }
 
 int gui_init(void) { return 0; }
