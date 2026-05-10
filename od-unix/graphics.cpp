@@ -10,6 +10,8 @@
 #include "video.h"
 #include "host.h"
 
+#include <stdlib.h>
+
 extern int pause_emulation;
 
 uae_u32 p96_rgbx16[65536];
@@ -19,6 +21,7 @@ struct picasso96_state_struct picasso96_state[MAX_AMIGAMONITORS];
 struct picasso_vidbuf_description picasso_vidinfo[MAX_AMIGAMONITORS];
 
 static bool unix_graphics_initialized;
+static bool unix_video_debug;
 
 static void unix_init_colors(void)
 {
@@ -59,7 +62,12 @@ static void unix_init_display_buffers(void)
 
 int graphics_setup(void)
 {
+    unix_video_debug = getenv("WINUAE_UNIX_VIDEO_DEBUG") != NULL;
     unix_init_colors();
+    if (unix_video_debug) {
+        write_log(_T("Unix video colors: direct_rgb=%d black=%08x white=%08x r255=%08x g255=%08x b255=%08x\n"),
+            direct_rgb ? 1 : 0, xcolors[0], xcolors[0xfff], xredcolors[255], xgreencolors[255], xbluecolors[255]);
+    }
     InitPicasso96(0);
     return 1;
 }
@@ -125,7 +133,57 @@ void flush_line(struct vidbuffer*, int) {}
 void flush_block(struct vidbuffer*, int, int) {}
 void flush_screen(struct vidbuffer*, int, int) {}
 void flush_clear_screen(struct vidbuffer*) {}
-bool render_screen(int, int, bool) { return true; }
+bool render_screen(int, int, bool)
+{
+    set_custom_limits(-1, -1, -1, -1, false);
+    return true;
+}
+
+static void unix_log_video_frame(const struct vidbuffer *vb)
+{
+    static int frames;
+
+    if (!unix_video_debug || !vb || !vb->bufmem || vb->pixbytes != 4) {
+        return;
+    }
+
+    frames++;
+    if (frames > 1 && (frames % 50) != 0) {
+        return;
+    }
+
+    int nonblack = 0;
+    int firstx = -1;
+    int firsty = -1;
+    int lastx = -1;
+    int lasty = -1;
+    uae_u32 first = 0;
+    uae_u32 last = 0;
+
+    int scan_width = vb->width_allocated > 0 ? vb->width_allocated : vb->outwidth;
+    int scan_height = vb->height_allocated > 0 ? vb->height_allocated : vb->outheight;
+    for (int y = 0; y < scan_height; y++) {
+        const uae_u32 *row = (const uae_u32 *)(vb->bufmem + y * vb->rowbytes);
+        for (int x = 0; x < scan_width; x++) {
+            uae_u32 pixel = row[x];
+            if ((pixel & 0x00ffffff) != 0) {
+                if (!nonblack) {
+                    firstx = x;
+                    firsty = y;
+                    first = pixel;
+                }
+                lastx = x;
+                lasty = y;
+                last = pixel;
+                nonblack++;
+            }
+        }
+    }
+
+    write_log(_T("Unix video frame %d: out=%dx%d alloc=%dx%d pitch=%d xoff=%d yoff=%d nonblack=%d first=%d,%d:%08x last=%d,%d:%08x\n"),
+        frames, vb->outwidth, vb->outheight, vb->width_allocated, vb->height_allocated, vb->rowbytes, vb->xoffset, vb->yoffset,
+        nonblack, firstx, firsty, first, lastx, lasty, last);
+}
 
 void show_screen(int monid, int)
 {
@@ -134,7 +192,7 @@ void show_screen(int monid, int)
     }
 
     struct vidbuf_description *vidinfo = &adisplays[monid].gfxvidinfo;
-    struct vidbuffer *vb = vidinfo->outbuffer ? vidinfo->outbuffer : &vidinfo->drawbuffer;
+    struct vidbuffer *vb = vidinfo->inbuffer ? vidinfo->inbuffer : &vidinfo->drawbuffer;
     if (!vb->bufmem || vb->outwidth <= 0 || vb->outheight <= 0) {
         return;
     }
@@ -145,6 +203,7 @@ void show_screen(int monid, int)
     frame.height = vb->outheight;
     frame.rowbytes = vb->rowbytes;
     frame.pixbytes = vb->pixbytes;
+    unix_log_video_frame(vb);
     unix_video_present(&frame);
 }
 
