@@ -6,5 +6,7 @@ void unix_input_mouse_button(int button, bool pressed);
 void unix_input_mouse_wheel(int x, int y);
 void unix_input_set_mouse_active(bool active);
 bool unix_input_get_mouse_active(void);
+void unix_input_keyboard_key(int scancode, bool pressed);
+void unix_input_release_keys(void);
 
 #endif /* WINUAE_OD_UNIX_INPUT_H */
