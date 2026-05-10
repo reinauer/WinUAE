@@ -33,6 +33,19 @@ void unix_video_set_title(const TCHAR *)
 {
 }
 
+void unix_video_set_mouse_grab(bool)
+{
+}
+
+bool unix_video_get_mouse_grab(void)
+{
+    return false;
+}
+
+void unix_video_toggle_mouse_grab(void)
+{
+}
+
 void unix_video_get_desktop(int *dw, int *dh, int *x, int *y, int *w, int *h)
 {
     if (dw) {
