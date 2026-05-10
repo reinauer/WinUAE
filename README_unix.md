@@ -6,8 +6,8 @@ This is an early macOS/Linux port of the WinUAE source tree. The current Unix bu
 
 - Builds with CMake as `winuae_unix`.
 - Uses `od-unix/` host abstractions.
-- SDL2 provides the current window, framebuffer presentation, mouse input, and keyboard input.
-- Sound, full UI/configuration dialogs, native file pickers, and platform packaging are still incomplete.
+- SDL2 provides the current window, framebuffer presentation, mouse input, keyboard input, and audio output.
+- Full UI/configuration dialogs, native file pickers, and platform packaging are still incomplete.
 - If SDL2 is not found, CMake currently builds a headless/null-video target.
 
 ## Requirements
@@ -81,7 +81,34 @@ The port accepts normal WinUAE command-line `-s` configuration overrides. A mini
   -s cachesize=0
 ```
 
-The executable also tries to load `~/default.uae` by default. It is harmless if that file does not exist when command-line `-s` options provide the needed settings.
+The executable also tries to load `~/default.uae` by default. A missing default config is ignored silently; explicit `-config` / `-f` load failures are still reported.
+
+There is also a minimal example config at:
+
+```sh
+configs/unix-a1200-install32.uae.example
+```
+
+Copy it to a writable location and replace the ROM and ADF paths before using it with `-config` or `-f`.
+
+## Smoke Test
+
+The repository includes a headless A1200 smoke test. It uses SDL dummy video/audio by default and checks that ROM loading, audio initialization, and hard reset reached the expected log points:
+
+```sh
+export WINUAE_KICKSTART_ROM=/path/to/A1200.47.115.rom
+export WINUAE_FLOPPY0=/path/to/Install3.2.adf
+tools/unix-smoke-a1200.sh
+```
+
+Optional overrides:
+
+```sh
+export WINUAE_BUILD_DIR=/tmp/winuae_cmake_build
+export WINUAE_EXE=/tmp/winuae_cmake_build/winuae_unix
+export WINUAE_SMOKE_SECONDS=5
+export WINUAE_SMOKE_LOG=/tmp/winuae_unix_smoke.log
+```
 
 ## SDL Input
 
