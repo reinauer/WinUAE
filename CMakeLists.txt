@@ -220,6 +220,7 @@ set(WINUAE_CORE_SOURCES
     od-unix/parallel.cpp
     od-unix/rtg.cpp
     od-unix/sound.cpp
+    od-unix/startup_config.cpp
     od-unix/stubs.cpp
     od-unix/support.cpp
     od-unix/threading.cpp
