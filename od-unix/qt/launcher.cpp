@@ -10,9 +10,62 @@
 #define WINUAE_UNIX_BUILD_DIR "."
 #endif
 
+#ifndef WINUAE_UNIX_VERSION_MAJOR
+#define WINUAE_UNIX_VERSION_MAJOR 0
+#endif
+
+#ifndef WINUAE_UNIX_VERSION_MINOR
+#define WINUAE_UNIX_VERSION_MINOR 0
+#endif
+
+#ifndef WINUAE_UNIX_VERSION_REVISION
+#define WINUAE_UNIX_VERSION_REVISION 0
+#endif
+
 static QString sourceFile(const QString &relative)
 {
     return QDir(QString::fromUtf8(WINUAE_UNIX_SOURCE_DIR)).filePath(relative);
+}
+
+static QString versionString()
+{
+    return QStringLiteral("WinUAE %1.%2.%3")
+        .arg(WINUAE_UNIX_VERSION_MAJOR)
+        .arg(WINUAE_UNIX_VERSION_MINOR)
+        .arg(WINUAE_UNIX_VERSION_REVISION);
+}
+
+static QStringList contributorLines()
+{
+    return {
+        QStringLiteral("Bernd Schmidt - The Grand-Master"),
+        QStringLiteral("Sam Jordan - Custom-chip, floppy-DMA, etc."),
+        QStringLiteral("Mathias Ortmann - Original WinUAE Main Guy, BSD Socket support"),
+        QStringLiteral("Brian King - Picasso96 Support, Integrated GUI for WinUAE, previous WinUAE Main Guy"),
+        QStringLiteral("Toni Wilen - Core updates, WinUAE Main Guy"),
+        QStringLiteral("Gustavo Goedert / Peter Remmers / Michael Sontheimer / Tomi Hakala / Tim Gunn / Nemo Pohle - DOS Port Stuff"),
+        QStringLiteral("Samuel Devulder / Olaf Barthel / Sam Jordan - Amiga Ports"),
+        QStringLiteral("Krister Bergman - XFree86 and OS/2 Port"),
+        QStringLiteral("A. Blanchard / Ernesto Corvi - MacOS Port"),
+        QStringLiteral("Christian Bauer - BeOS Port"),
+        QStringLiteral("Ian Stephenson - NextStep Port"),
+        QStringLiteral("Peter Teichmann - Acorn/RiscOS Port"),
+        QStringLiteral("Stefan Reinauer - ZorroII/III AutoConfig, Serial Support"),
+        QStringLiteral("Christian Schmitt / Chris Hames - Serial Support"),
+        QStringLiteral("Herman ten Brugge - 68020/68881 Emulation Code"),
+        QStringLiteral("Tauno Taipaleenmaki - Various UAE-Control/UAE-Library Support"),
+        QStringLiteral("Brett Eden / Tim Gunn / Paolo Besser / Nemo Pohle - Various Docs and Web-Sites"),
+        QStringLiteral("Georg Veichtlbauer - Help File coordinator, German GUI"),
+        QStringLiteral("Fulvio Leonardi - Italian translator for WinUAE"),
+        QStringLiteral("Arnljot Arntsen, Bill Panagouleas, Cloanto, Zak Jennings - Hardware support"),
+        QStringLiteral("Special thanks to Alexander Kneer and Tobias Abt (The Picasso96 Team)"),
+        QStringLiteral("Steven Weiser - Postscript printing emulation idea and testing"),
+        QStringLiteral("Peter Toth / Balazs Ratkai / Ivan Herczeg / Andras Arato - Hungarian translation"),
+        QStringLiteral("Karsten Bock, Gavin Fance, Dirk Trowe and Christian Schindler - Freezer cartridge hardware support"),
+        QStringLiteral("Mikko Nieminen - Demo compatibility testing"),
+        QStringLiteral("Arabuusimiehet - [This information is on a need-to-know basis]"),
+        QStringLiteral("Ross - Chipset torture test programs")
+    };
 }
 
 static QIcon resourceIcon(const QString &name)
@@ -61,6 +114,9 @@ static QPushButton *smallButton(const QString &text)
 static QGroupBox *groupBox(const QString &title, QLayout *layout)
 {
     QGroupBox *box = new QGroupBox(title);
+    QFont titleFont = box->font();
+    titleFont.setPixelSize(13);
+    box->setFont(titleFont);
     box->setLayout(layout);
     return box;
 }
@@ -485,7 +541,7 @@ private:
         QVBoxLayout *root = new QVBoxLayout(page);
         root->setContentsMargins(4, 4, 4, 4);
 
-        chipset = combo({ QStringLiteral("ocs"), QStringLiteral("ecs"), QStringLiteral("aga") }, QStringLiteral("aga"));
+        chipset = combo({ QStringLiteral("OCS"), QStringLiteral("ECS"), QStringLiteral("AGA") }, QStringLiteral("AGA"));
         chipsetCompatible = combo({
             QStringLiteral("A500"),
             QStringLiteral("A500+"),
@@ -519,8 +575,8 @@ private:
         system->setColumnStretch(1, 1);
         addPathRow(system, 0, QStringLiteral("Main ROM file:"), romFile, QStringLiteral("Select main ROM file"), QStringLiteral("ROM files (*.rom *.bin);;All files (*)"));
         addPathRow(system, 1, QStringLiteral("Extended ROM file:"), extendedRomFile, QStringLiteral("Select extended ROM file"), QStringLiteral("ROM files (*.rom *.bin);;All files (*)"));
-        system->addWidget(new QCheckBox(QStringLiteral("MapROM emulation")), 2, 1);
-        system->addWidget(new QCheckBox(QStringLiteral("ShapeShifter support")), 2, 2);
+        system->addWidget(new QCheckBox(QStringLiteral("MapROM emulation")), 4, 0);
+        system->addWidget(new QCheckBox(QStringLiteral("ShapeShifter support")), 4, 1);
         root->addWidget(groupBox(QStringLiteral("System ROM Settings"), system));
 
         QGridLayout *advanced = new QGridLayout;
@@ -539,8 +595,8 @@ private:
         QGridLayout *misc = new QGridLayout;
         misc->setColumnStretch(1, 1);
         addPathRow(misc, 0, QStringLiteral("Cartridge ROM file:"), cartFile, QStringLiteral("Select cartridge ROM file"), QStringLiteral("ROM files (*.rom *.bin);;All files (*)"));
-        addLineBrowseRow(misc, 1, QStringLiteral("Flash RAM or A2286/A2386SX BIOS CMOS RAM file:"), flashFile);
-        addLineBrowseRow(misc, 2, QStringLiteral("Real Time Clock file"), rtcFile);
+        addLineBrowseRow(misc, 2, QStringLiteral("Flash RAM or A2286/A2386SX BIOS CMOS RAM file:"), flashFile);
+        addLineBrowseRow(misc, 3, QStringLiteral("Real Time Clock file"), rtcFile);
         root->addWidget(groupBox(QStringLiteral("Miscellaneous"), misc), 1);
         return page;
     }
@@ -864,11 +920,18 @@ private:
         title->setFont(font);
         title->setAlignment(Qt::AlignCenter);
         root->addWidget(title);
+        QLabel *version = new QLabel(versionString());
+        QFont versionFont = version->font();
+        versionFont.setPointSize(13);
+        version->setFont(versionFont);
+        version->setAlignment(Qt::AlignCenter);
+        root->addWidget(version);
         QLabel *subtitle = new QLabel(QStringLiteral("Unix Qt configuration frontend"));
         subtitle->setAlignment(Qt::AlignCenter);
         root->addWidget(subtitle);
         QPushButton *contributors = new QPushButton(QStringLiteral("Contributors"));
         contributors->setFixedWidth(120);
+        connect(contributors, &QPushButton::clicked, this, [this]() { showContributors(); });
         QHBoxLayout *buttonRow = new QHBoxLayout;
         buttonRow->addStretch();
         buttonRow->addWidget(contributors);
@@ -876,6 +939,30 @@ private:
         root->addLayout(buttonRow);
         root->addStretch();
         return page;
+    }
+
+    void showContributors()
+    {
+        QDialog dialog(this);
+        dialog.setWindowTitle(QStringLiteral("UAE Authors and Contributors..."));
+        dialog.resize(620, 420);
+
+        QVBoxLayout *root = new QVBoxLayout(&dialog);
+        QListWidget *list = new QListWidget;
+        list->addItems(contributorLines());
+        root->addWidget(list, 1);
+
+        QPushButton *ok = new QPushButton(QStringLiteral("Ok"));
+        ok->setDefault(true);
+        connect(ok, &QPushButton::clicked, &dialog, &QDialog::accept);
+
+        QHBoxLayout *buttons = new QHBoxLayout;
+        buttons->addStretch();
+        buttons->addWidget(ok);
+        buttons->addStretch();
+        root->addLayout(buttons);
+
+        dialog.exec();
     }
 
     void addPathRow(QGridLayout *layout, int row, const QString &caption, QComboBox *field, const QString &dialogTitle, const QString &filter)
@@ -977,31 +1064,31 @@ private:
     void applyModelPreset(const QString &model)
     {
         if (model == QStringLiteral("A1200")) {
-            chipset->setCurrentText(QStringLiteral("aga"));
+            chipset->setCurrentText(QStringLiteral("AGA"));
             chipsetCompatible->setCurrentText(QStringLiteral("A1200"));
             setCpuButton(68020);
             cpu24Bit->setChecked(false);
             chipMem->setCurrentText(QStringLiteral("2 MB"));
         } else if (model == QStringLiteral("A4000")) {
-            chipset->setCurrentText(QStringLiteral("aga"));
+            chipset->setCurrentText(QStringLiteral("AGA"));
             chipsetCompatible->setCurrentText(QStringLiteral("A4000"));
             setCpuButton(68040);
             cpu24Bit->setChecked(false);
             chipMem->setCurrentText(QStringLiteral("2 MB"));
         } else if (model == QStringLiteral("A600")) {
-            chipset->setCurrentText(QStringLiteral("ecs"));
+            chipset->setCurrentText(QStringLiteral("ECS"));
             chipsetCompatible->setCurrentText(QStringLiteral("A600"));
             setCpuButton(68000);
             cpu24Bit->setChecked(true);
             chipMem->setCurrentText(QStringLiteral("2 MB"));
         } else if (model == QStringLiteral("A500+")) {
-            chipset->setCurrentText(QStringLiteral("ecs"));
+            chipset->setCurrentText(QStringLiteral("ECS"));
             chipsetCompatible->setCurrentText(QStringLiteral("A500+"));
             setCpuButton(68000);
             cpu24Bit->setChecked(true);
             chipMem->setCurrentText(QStringLiteral("1 MB"));
         } else {
-            chipset->setCurrentText(QStringLiteral("ocs"));
+            chipset->setCurrentText(QStringLiteral("OCS"));
             chipsetCompatible->setCurrentText(QStringLiteral("A500"));
             setCpuButton(68000);
             cpu24Bit->setChecked(true);
@@ -1076,7 +1163,7 @@ private:
             }
         }
         settings.insert(QStringLiteral("nr_floppies"), QString::number(enabledFloppyCount()));
-        settings.insert(QStringLiteral("chipset"), chipset->currentText());
+        settings.insert(QStringLiteral("chipset"), chipset->currentText().toLower());
         settings.insert(QStringLiteral("chipset_compatible"), chipsetCompatible->currentText());
         settings.insert(QStringLiteral("cpu_model"), QString::number(cpu > 0 ? cpu : 68020));
         if (cpu >= 68020) {
@@ -1166,7 +1253,7 @@ private:
                 dfPath[drive]->setCurrentText(value);
             }
         } else if (key == QStringLiteral("chipset")) {
-            chipset->setCurrentText(value);
+            chipset->setCurrentText(value.toUpper());
         } else if (key == QStringLiteral("chipset_compatible")) {
             chipsetCompatible->setCurrentText(value);
             quickModel->setCurrentText(value);
@@ -1241,18 +1328,32 @@ static void setupApplicationStyle(QApplication &app)
     QString family = QStringLiteral("MS Sans Serif");
     const QStringList families = QFontDatabase::families();
     if (!families.contains(family)) {
-        family = families.contains(QStringLiteral("Arial")) ? QStringLiteral("Arial") : app.font().family();
+        const QStringList fallbacks = {
+            QStringLiteral("Microsoft Sans Serif"),
+            QStringLiteral("Tahoma"),
+            QStringLiteral("Arial")
+        };
+        for (const QString &candidate : fallbacks) {
+            if (families.contains(candidate)) {
+                family = candidate;
+                break;
+            }
+        }
+        if (!families.contains(family)) {
+            family = app.font().family();
+        }
     }
-    QFont font(family, 8);
+    QFont font(family);
+    font.setPixelSize(12);
     app.setFont(font);
     app.setStyleSheet(QStringLiteral(
         "QDialog, QWidget#page, QStackedWidget#pageStack { background: #f0f0f0; }"
         "QFrame#outerFrame { border: 1px solid #808080; background: #f0f0f0; }"
         "QTreeWidget { background: white; border: 1px solid #7f9db9; }"
-        "QGroupBox { margin-top: 12px; padding: 8px 6px 6px 6px; }"
-        "QGroupBox::title { subcontrol-origin: margin; left: 8px; padding: 0 3px; }"
+        "QGroupBox { margin-top: 14px; padding: 9px 6px 6px 6px; }"
+        "QGroupBox::title { subcontrol-origin: margin; left: 8px; padding: 0 3px; font-size: 13px; }"
         "QPushButton { min-height: 20px; padding: 1px 10px; }"
-        "QLineEdit, QComboBox { min-height: 20px; }"
+        "QLineEdit, QComboBox { min-height: 22px; }"
         "QLabel#statusLine { padding-left: 6px; background: #f0f0f0; }"
     ));
 }
