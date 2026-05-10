@@ -1,0 +1,17 @@
+; Minimal Unix A1200 boot example with A2065 SLIRP networking.
+; Copy this file and replace the two paths below with local files.
+
+kickstart_rom_file=/path/to/A1200.47.115.rom
+floppy0=/path/to/Install3.2.adf
+nr_floppies=1
+
+chipset=aga
+chipset_compatible=A1200
+cpu_model=68020
+chipmem_size=4
+cachesize=0
+
+sound_output=normal
+
+; Built-in user-mode NAT backend. No tap/tun or pcap permissions required.
+a2065=slirp

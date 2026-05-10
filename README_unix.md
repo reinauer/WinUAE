@@ -7,6 +7,7 @@ This is an early macOS/Linux port of the WinUAE source tree. The current Unix bu
 - Builds with CMake as `winuae_unix`.
 - Uses `od-unix/` host abstractions.
 - SDL2 provides the current window, framebuffer presentation, mouse input, keyboard input, and audio output.
+- A2065 Ethernet can use the built-in SLIRP user-mode NAT backend.
 - Full UI/configuration dialogs, native file pickers, and platform packaging are still incomplete.
 - If SDL2 is not found, CMake currently builds a headless/null-video target.
 
@@ -89,7 +90,13 @@ There is also a minimal example config at:
 configs/unix-a1200-install32.uae.example
 ```
 
-Copy it to a writable location and replace the ROM and ADF paths before using it with `-config` or `-f`.
+For A2065 SLIRP networking, use:
+
+```sh
+configs/unix-a1200-install32-a2065.uae.example
+```
+
+Copy an example to a writable location and replace the ROM and ADF paths before using it with `-config` or `-f`.
 
 ## Smoke Test
 
@@ -99,6 +106,12 @@ The repository includes a headless A1200 smoke test. It uses SDL dummy video/aud
 export WINUAE_KICKSTART_ROM=/path/to/A1200.47.115.rom
 export WINUAE_FLOPPY0=/path/to/Install3.2.adf
 tools/unix-smoke-a1200.sh
+```
+
+To include A2065 SLIRP autoconfig in the same smoke path:
+
+```sh
+tools/unix-smoke-a2065.sh
 ```
 
 Optional overrides:
@@ -122,6 +135,8 @@ export WINUAE_SMOKE_LOG=/tmp/winuae_unix_smoke.log
 ```sh
 -DWINUAE_UNIX_BUILD_EXECUTABLE=ON
 -DWINUAE_UNIX_WITH_SDL2=ON
+-DWINUAE_UNIX_WITH_SLIRP=ON
 ```
 
 `WINUAE_UNIX_WITH_SDL2` is enabled by default. If SDL2 is not found through pkg-config, the build currently falls back to the null video presenter.
+`WINUAE_UNIX_WITH_SLIRP` is enabled by default and builds the bundled SLIRP backend plus A2065 emulation.
