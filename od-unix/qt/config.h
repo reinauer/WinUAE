@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QMap>
+#include <QList>
 #include <QString>
 #include <QStringList>
 
@@ -13,6 +14,7 @@ public:
 
     const Settings &settings() const;
     void setSettings(Settings settings);
+    void applySettings(const Settings &settings, const QStringList &ownedKeys);
 
     QString value(const QString &key, const QString &defaultValue = QString()) const;
     void setValue(const QString &key, const QString &value);
@@ -25,5 +27,16 @@ public:
     QStringList validateForLaunch() const;
 
 private:
+    struct DocumentLine {
+        QString text;
+        QString key;
+        QString value;
+        bool setting = false;
+    };
+
+    static DocumentLine makeSettingLine(const QString &key, const QString &value);
+
     Settings configSettings;
+    QList<DocumentLine> documentLines;
+    bool documentLoaded = false;
 };
