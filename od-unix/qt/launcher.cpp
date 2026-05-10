@@ -292,6 +292,7 @@ private:
     QLineEdit *emulatorPath = nullptr;
     QLineEdit *romsPath = nullptr;
     QLineEdit *configsPath = nullptr;
+    WinUaeQtConfig loadedConfig;
 
     void addPage(const QString &title, const QString &icon, QWidget *page)
     {
@@ -997,6 +998,8 @@ private:
 
     void resetDefaults()
     {
+        loadedConfig = WinUaeQtConfig();
+
         const QString appDirExe = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("winuae_unix"));
         const QString buildDirExe = QDir(QString::fromUtf8(WINUAE_UNIX_BUILD_DIR)).filePath(QStringLiteral("winuae_unix"));
         if (QFileInfo::exists(appDirExe)) {
@@ -1195,6 +1198,40 @@ private:
         return settings;
     }
 
+    QStringList uiOwnedKeys() const
+    {
+        return {
+            QStringLiteral("kickstart_rom_file"),
+            QStringLiteral("kickstart_ext_rom_file"),
+            QStringLiteral("floppy0"),
+            QStringLiteral("floppy1"),
+            QStringLiteral("floppy2"),
+            QStringLiteral("floppy3"),
+            QStringLiteral("nr_floppies"),
+            QStringLiteral("chipset"),
+            QStringLiteral("chipset_compatible"),
+            QStringLiteral("cpu_model"),
+            QStringLiteral("cpu_24bit_addressing"),
+            QStringLiteral("chipmem_size"),
+            QStringLiteral("fastmem_size"),
+            QStringLiteral("bogomem_size"),
+            QStringLiteral("z3mem_size"),
+            QStringLiteral("cachesize"),
+            QStringLiteral("sound_output"),
+            QStringLiteral("gfxcard_size"),
+            QStringLiteral("gfxcard_type"),
+            QStringLiteral("gfx_width_windowed"),
+            QStringLiteral("gfx_height_windowed")
+        };
+    }
+
+    WinUaeQtConfig mergedConfig() const
+    {
+        WinUaeQtConfig config = loadedConfig;
+        config.applySettings(currentSettings(), uiOwnedKeys());
+        return config;
+    }
+
     int enabledFloppyCount() const
     {
         int count = 0;
@@ -1234,6 +1271,7 @@ private:
         for (auto it = settings.constBegin(); it != settings.constEnd(); ++it) {
             applySetting(it.key(), it.value());
         }
+        loadedConfig = config;
         configPath->setText(path);
         configName->setCurrentText(QFileInfo(path).completeBaseName());
         status->setText(QStringLiteral("Loaded %1").arg(path));
@@ -1283,12 +1321,13 @@ private:
 
     void saveConfig(const QString &path)
     {
-        const WinUaeQtConfig config(currentSettings());
+        WinUaeQtConfig config = mergedConfig();
         QString error;
         if (!config.save(path, &error)) {
             QMessageBox::warning(this, windowTitle(), error);
             return;
         }
+        loadedConfig = config;
         configPath->setText(path);
         configName->setCurrentText(QFileInfo(path).completeBaseName());
         status->setText(QStringLiteral("Saved %1").arg(path));
@@ -1301,7 +1340,7 @@ private:
             QMessageBox::warning(this, windowTitle(), QStringLiteral("Emulator executable not found."));
             return;
         }
-        const WinUaeQtConfig config(currentSettings());
+        const WinUaeQtConfig config = mergedConfig();
         const QStringList validationErrors = config.validateForLaunch();
         if (!validationErrors.isEmpty()) {
             QMessageBox::warning(this, windowTitle(), validationErrors.join(QLatin1Char('\n')));

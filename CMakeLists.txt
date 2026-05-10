@@ -277,6 +277,12 @@ if(WINUAE_UNIX_WITH_QT_UI)
         if(TARGET winuae_unix)
             add_dependencies(winuae_unix_qt winuae_unix)
         endif()
+
+        add_executable(winuae_unix_qt_config_test EXCLUDE_FROM_ALL
+            od-unix/qt/config.cpp
+            od-unix/qt/config_roundtrip_test.cpp
+        )
+        target_link_libraries(winuae_unix_qt_config_test PRIVATE ${WINUAE_UNIX_QT_WIDGETS_TARGET})
     else()
         message(STATUS "Qt Widgets not found; skipping winuae_unix_qt")
     endif()
