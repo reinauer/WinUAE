@@ -44,14 +44,6 @@ int max_uae_height = 8192;
 int pissoff_nojit_value = 160 * CYCLE_UNIT;
 volatile int bsd_int_requested;
 
-static addrbank unix_gfxmem_banks[MAX_RTG_BOARDS];
-addrbank *gfxmem_banks[MAX_RTG_BOARDS] = {
-    &unix_gfxmem_banks[0],
-    &unix_gfxmem_banks[1],
-    &unix_gfxmem_banks[2],
-    &unix_gfxmem_banks[3]
-};
-
 void machdep_free(void) {}
 void protect_roms(bool) {}
 void debugger_change(int) {}
@@ -100,19 +92,6 @@ uae_u8 *save_p96(size_t *len, uae_u8 *)
 
 uae_u8 *restore_p96(uae_u8 *src) { return src; }
 void restore_p96_finish(void) {}
-void picasso96_alloc(TrapContext *) {}
-uae_u32 picasso_demux(uae_u32, TrapContext *) { return 0; }
-void picasso_handle_vsync(void) {}
-void uaegfx_install_code(uaecptr) {}
-bool gfxboard_set(int, bool) { return false; }
-void gfxboard_refresh(int) {}
-void gfxboard_reset_init(void) {}
-int gfxboard_get_configtype(struct rtgboardconfig *) { return 0; }
-int gfxboard_get_vram_min(struct rtgboardconfig *) { return 0; }
-int gfxboard_get_vram_max(struct rtgboardconfig *) { return 0; }
-uae_u32 gfxboard_get_romtype(struct rtgboardconfig *) { return 0; }
-const TCHAR *gfxboard_get_configname(int) { return _T("none"); }
-int gfxboard_get_devnum(struct uae_prefs *, int index) { return index; }
 
 void ldp_render(const char *, int, uae_u8 *, struct vidbuffer *, int, int, int, int)
 {
