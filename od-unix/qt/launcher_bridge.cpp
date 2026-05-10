@@ -30,11 +30,13 @@ int runWinUaeQtLauncherForStartupConfig(int argc, char **argv, int *exitCode)
     if (result.status == WinUaeQtLauncherStatus::Error) {
         QByteArray error = result.error.toLocal8Bit();
         fprintf(stderr, "Unix Qt UI failed: %s\n", error.constData());
+        if (exitCode) {
+            *exitCode = result.exitCode ? result.exitCode : 1;
+        }
+        return WINUAE_QT_LAUNCHER_ERROR;
     }
     if (exitCode) {
-        *exitCode = result.status == WinUaeQtLauncherStatus::Error
-            ? (result.exitCode ? result.exitCode : 1)
-            : 0;
+        *exitCode = 0;
     }
     return WINUAE_QT_LAUNCHER_EXIT;
 }
