@@ -28,6 +28,9 @@
 #include "inputdevice.h"
 #include "keybuf.h"
 #include "gui.h"
+#ifdef UAE_TARGET_UNIX
+#include "gui_unix.h"
+#endif
 #include "zfile.h"
 #include "autoconf.h"
 #include "native2amiga.h"
@@ -1340,6 +1343,11 @@ void real_main (int argc, TCHAR **argv)
 #ifndef NO_MAIN_IN_MAIN_C
 int main (int argc, TCHAR **argv)
 {
+#ifdef UAE_TARGET_UNIX
+	int exit_code = 0;
+	if (unix_gui_handle_early_options(argc, argv, &exit_code))
+		return exit_code;
+#endif
 	real_main (argc, argv);
 	return 0;
 }
