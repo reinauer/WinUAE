@@ -8,6 +8,7 @@ LOG=${WINUAE_SMOKE_LOG:-/tmp/winuae_unix_smoke.log}
 RUN_SECONDS=${WINUAE_SMOKE_SECONDS:-5}
 A2065=${WINUAE_SMOKE_A2065:-0}
 RTG_Z3=${WINUAE_SMOKE_RTG_Z3:-0}
+UAEGFX=${WINUAE_SMOKE_UAEGFX:-0}
 
 ROM=${WINUAE_KICKSTART_ROM:-}
 ADF=${WINUAE_FLOPPY0:-}
@@ -80,6 +81,10 @@ fi
 if [ "$RTG_Z3" = "1" ]; then
     grep -q "UAE RTG" "$LOG"
     grep -q "RTG RAM" "$LOG"
+fi
+if [ "$UAEGFX" = "1" ]; then
+    grep -q "Unix uaegfx.card" "$LOG"
+    grep -q "Unix RTG P96 RESINFO" "$LOG"
 fi
 if grep -q "failed to load config" "$LOG" || grep -q "cfgfile_load_2 failed" "$LOG"; then
     echo "Unexpected config load failure in smoke log: $LOG" >&2
