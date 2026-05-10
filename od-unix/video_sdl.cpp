@@ -138,6 +138,7 @@ bool unix_video_init(int width, int height, int pixbytes)
 
 void unix_video_shutdown(void)
 {
+    unix_input_release_keys();
     unix_video_set_mouse_grab(false);
 
     if (s_texture) {
@@ -188,19 +189,30 @@ int unix_video_poll(bool *quit_requested)
                 *quit_requested = true;
             }
             if (event.window.event == SDL_WINDOWEVENT_FOCUS_LOST) {
+                unix_input_release_keys();
                 unix_video_set_mouse_grab(false);
             }
             break;
         case SDL_KEYDOWN:
+        case SDL_KEYUP:
+            if (event.key.repeat) {
+                break;
+            }
             if (event.key.keysym.sym == SDLK_q && (event.key.keysym.mod & (KMOD_CTRL | KMOD_GUI))) {
                 if (quit_requested) {
                     *quit_requested = true;
                 }
+                break;
             }
-            if (event.key.keysym.sym == SDLK_ESCAPE ||
-                (event.key.keysym.sym == SDLK_g && (event.key.keysym.mod & (KMOD_CTRL | KMOD_GUI)))) {
+            if (event.key.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_g &&
+                (event.key.keysym.mod & (KMOD_CTRL | KMOD_GUI))) {
+                unix_video_set_mouse_grab(false);
+                break;
+            }
+            if (event.key.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_ESCAPE && s_mouse_grabbed) {
                 unix_video_set_mouse_grab(false);
             }
+            unix_input_keyboard_key((int)event.key.keysym.scancode, event.key.type == SDL_KEYDOWN);
             break;
         case SDL_MOUSEMOTION:
             if (s_mouse_grabbed) {
