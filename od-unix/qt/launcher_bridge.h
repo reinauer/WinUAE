@@ -5,4 +5,4 @@ enum {
     WINUAE_QT_LAUNCHER_START = 2
 };
 
-int runWinUaeQtLauncherForEmulatorArgs(int argc, char **argv, int *exit_code, int *emulator_argc, char ***emulator_argv);
+int runWinUaeQtLauncherForStartupConfig(int argc, char **argv, int *exit_code);

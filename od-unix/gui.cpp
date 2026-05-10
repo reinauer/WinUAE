@@ -2,7 +2,6 @@
 #include "sysdeps.h"
 
 #include <stdarg.h>
-#include <stdlib.h>
 #include "gui.h"
 #include "gui_unix.h"
 
@@ -17,7 +16,7 @@ static bool is_qt_ui_option(const TCHAR *arg)
     return _tcscmp(arg, _T("--qt-ui")) == 0 || _tcscmp(arg, _T("-qt-ui")) == 0;
 }
 
-int unix_gui_handle_early_options(int argc, TCHAR **argv, int *exit_code, int *emulator_argc, TCHAR ***emulator_argv)
+int unix_gui_handle_early_options(int argc, TCHAR **argv, int *exit_code)
 {
     for (int i = 1; i < argc; i++) {
         if (!is_qt_ui_option(argv[i])) {
@@ -25,7 +24,7 @@ int unix_gui_handle_early_options(int argc, TCHAR **argv, int *exit_code, int *e
         }
 
 #ifdef WINUAE_UNIX_WITH_INTEGRATED_QT_UI
-        const int action = runWinUaeQtLauncherForEmulatorArgs(argc, argv, exit_code, emulator_argc, (char***)emulator_argv);
+        const int action = runWinUaeQtLauncherForStartupConfig(argc, argv, exit_code);
         if (action == WINUAE_QT_LAUNCHER_START) {
             return UNIX_GUI_EARLY_START;
         }
@@ -42,17 +41,6 @@ int unix_gui_handle_early_options(int argc, TCHAR **argv, int *exit_code, int *e
 #endif
     }
     return UNIX_GUI_EARLY_NONE;
-}
-
-void unix_gui_free_early_args(int argc, TCHAR **argv)
-{
-    if (!argv) {
-        return;
-    }
-    for (int i = 0; i < argc; i++) {
-        free(argv[i]);
-    }
-    free(argv);
 }
 
 int gui_init(void) { return 0; }
