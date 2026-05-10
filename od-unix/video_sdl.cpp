@@ -4,6 +4,7 @@
 #define SDL_MAIN_HANDLED
 #include <SDL.h>
 
+#include "input.h"
 #include "video.h"
 
 static SDL_Window *s_window;
@@ -11,6 +12,7 @@ static SDL_Renderer *s_renderer;
 static SDL_Texture *s_texture;
 static bool s_setup_done;
 static bool s_available;
+static bool s_mouse_grabbed;
 static int s_texture_width;
 static int s_texture_height;
 static int s_texture_pixbytes;
@@ -59,6 +61,20 @@ static bool ensure_texture(int width, int height, int pixbytes)
     s_texture_height = height;
     s_texture_pixbytes = pixbytes;
     return true;
+}
+
+static int unix_mouse_button_from_sdl(Uint8 button)
+{
+    switch (button) {
+    case SDL_BUTTON_LEFT:
+        return 0;
+    case SDL_BUTTON_RIGHT:
+        return 1;
+    case SDL_BUTTON_MIDDLE:
+        return 2;
+    default:
+        return -1;
+    }
 }
 
 bool unix_video_setup(void)
@@ -122,6 +138,8 @@ bool unix_video_init(int width, int height, int pixbytes)
 
 void unix_video_shutdown(void)
 {
+    unix_video_set_mouse_grab(false);
+
     if (s_texture) {
         SDL_DestroyTexture(s_texture);
         s_texture = NULL;
@@ -169,12 +187,41 @@ int unix_video_poll(bool *quit_requested)
             if (event.window.event == SDL_WINDOWEVENT_CLOSE && quit_requested) {
                 *quit_requested = true;
             }
+            if (event.window.event == SDL_WINDOWEVENT_FOCUS_LOST) {
+                unix_video_set_mouse_grab(false);
+            }
             break;
         case SDL_KEYDOWN:
             if (event.key.keysym.sym == SDLK_q && (event.key.keysym.mod & (KMOD_CTRL | KMOD_GUI))) {
                 if (quit_requested) {
                     *quit_requested = true;
                 }
+            }
+            if (event.key.keysym.sym == SDLK_ESCAPE ||
+                (event.key.keysym.sym == SDLK_g && (event.key.keysym.mod & (KMOD_CTRL | KMOD_GUI)))) {
+                unix_video_set_mouse_grab(false);
+            }
+            break;
+        case SDL_MOUSEMOTION:
+            if (s_mouse_grabbed) {
+                unix_input_mouse_motion(event.motion.xrel, event.motion.yrel);
+            }
+            break;
+        case SDL_MOUSEBUTTONDOWN:
+        case SDL_MOUSEBUTTONUP:
+        {
+            int button = unix_mouse_button_from_sdl(event.button.button);
+            if (button >= 0) {
+                if (event.type == SDL_MOUSEBUTTONDOWN && !s_mouse_grabbed) {
+                    unix_video_set_mouse_grab(true);
+                }
+                unix_input_mouse_button(button, event.type == SDL_MOUSEBUTTONDOWN);
+            }
+            break;
+        }
+        case SDL_MOUSEWHEEL:
+            if (s_mouse_grabbed) {
+                unix_input_mouse_wheel(event.wheel.x, event.wheel.y);
             }
             break;
         default:
@@ -208,6 +255,32 @@ void unix_video_set_title(const TCHAR *title)
     if (s_window && title) {
         SDL_SetWindowTitle(s_window, title);
     }
+}
+
+void unix_video_set_mouse_grab(bool grab)
+{
+    s_mouse_grabbed = grab;
+    unix_input_set_mouse_active(grab);
+
+    if (!s_setup_done || !s_available) {
+        return;
+    }
+
+    SDL_SetRelativeMouseMode(grab ? SDL_TRUE : SDL_FALSE);
+    if (s_window) {
+        SDL_SetWindowGrab(s_window, grab ? SDL_TRUE : SDL_FALSE);
+        SDL_CaptureMouse(grab ? SDL_TRUE : SDL_FALSE);
+    }
+}
+
+bool unix_video_get_mouse_grab(void)
+{
+    return s_mouse_grabbed;
+}
+
+void unix_video_toggle_mouse_grab(void)
+{
+    unix_video_set_mouse_grab(!unix_video_get_mouse_grab());
 }
 
 void unix_video_get_desktop(int *dw, int *dh, int *x, int *y, int *w, int *h)
