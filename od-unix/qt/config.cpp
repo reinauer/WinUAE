@@ -10,6 +10,16 @@ WinUaeQtConfig::WinUaeQtConfig(Settings settings)
 {
 }
 
+WinUaeQtConfig::DocumentLine WinUaeQtConfig::makeSettingLine(const QString &key, const QString &value)
+{
+    DocumentLine line;
+    line.text = QStringLiteral("%1=%2").arg(key, value);
+    line.key = key;
+    line.value = value;
+    line.setting = true;
+    return line;
+}
+
 const WinUaeQtConfig::Settings &WinUaeQtConfig::settings() const
 {
     return configSettings;
@@ -18,6 +28,49 @@ const WinUaeQtConfig::Settings &WinUaeQtConfig::settings() const
 void WinUaeQtConfig::setSettings(Settings settings)
 {
     configSettings = std::move(settings);
+    documentLines.clear();
+    documentLoaded = false;
+}
+
+void WinUaeQtConfig::applySettings(const Settings &settings, const QStringList &ownedKeys)
+{
+    for (const QString &key : ownedKeys) {
+        const QString value = settings.value(key);
+        if (settings.contains(key) && !value.isEmpty()) {
+            configSettings.insert(key, value);
+        } else {
+            configSettings.remove(key);
+        }
+    }
+
+    if (!documentLoaded) {
+        return;
+    }
+
+    QList<DocumentLine> updated;
+    QStringList emitted;
+    for (const DocumentLine &line : std::as_const(documentLines)) {
+        if (!line.setting || !ownedKeys.contains(line.key)) {
+            updated.append(line);
+            continue;
+        }
+
+        const QString value = settings.value(line.key);
+        if (settings.contains(line.key) && !value.isEmpty() && !emitted.contains(line.key)) {
+            updated.append(makeSettingLine(line.key, value));
+            emitted.append(line.key);
+        }
+    }
+
+    for (const QString &key : ownedKeys) {
+        const QString value = settings.value(key);
+        if (settings.contains(key) && !value.isEmpty() && !emitted.contains(key)) {
+            updated.append(makeSettingLine(key, value));
+            emitted.append(key);
+        }
+    }
+
+    documentLines = updated;
 }
 
 QString WinUaeQtConfig::value(const QString &key, const QString &defaultValue) const
@@ -27,16 +80,16 @@ QString WinUaeQtConfig::value(const QString &key, const QString &defaultValue) c
 
 void WinUaeQtConfig::setValue(const QString &key, const QString &value)
 {
-    if (value.isEmpty()) {
-        configSettings.remove(key);
-    } else {
-        configSettings.insert(key, value);
+    Settings singleSetting;
+    if (!value.isEmpty()) {
+        singleSetting.insert(key, value);
     }
+    applySettings(singleSetting, QStringList { key });
 }
 
 void WinUaeQtConfig::removeValue(const QString &key)
 {
-    configSettings.remove(key);
+    applySettings(Settings(), QStringList { key });
 }
 
 bool WinUaeQtConfig::load(const QString &path, QString *error)
@@ -50,25 +103,42 @@ bool WinUaeQtConfig::load(const QString &path, QString *error)
     }
 
     Settings loaded;
+    QList<DocumentLine> lines;
     while (!file.atEnd()) {
-        const QString line = QString::fromUtf8(file.readLine()).trimmed();
-        if (line.isEmpty() || line.startsWith(QLatin1Char(';')) || line.startsWith(QLatin1Char('#'))) {
+        QString text = QString::fromUtf8(file.readLine());
+        while (text.endsWith(QLatin1Char('\n')) || text.endsWith(QLatin1Char('\r'))) {
+            text.chop(1);
+        }
+
+        DocumentLine line;
+        line.text = text;
+
+        const QString trimmed = text.trimmed();
+        if (trimmed.isEmpty() || trimmed.startsWith(QLatin1Char(';')) || trimmed.startsWith(QLatin1Char('#'))) {
+            lines.append(line);
             continue;
         }
 
-        const int separator = line.indexOf(QLatin1Char('='));
+        const int separator = text.indexOf(QLatin1Char('='));
         if (separator <= 0) {
+            lines.append(line);
             continue;
         }
 
-        const QString key = line.left(separator).trimmed();
-        const QString value = line.mid(separator + 1).trimmed();
+        const QString key = text.left(separator).trimmed();
+        const QString value = text.mid(separator + 1).trimmed();
         if (!key.isEmpty()) {
+            line.key = key;
+            line.value = value;
+            line.setting = true;
             loaded.insert(key, value);
         }
+        lines.append(line);
     }
 
     configSettings = loaded;
+    documentLines = lines;
+    documentLoaded = true;
     return true;
 }
 
@@ -83,6 +153,13 @@ bool WinUaeQtConfig::save(const QString &path, QString *error) const
     }
 
     QTextStream out(&file);
+    if (documentLoaded) {
+        for (const DocumentLine &line : documentLines) {
+            out << line.text << "\n";
+        }
+        return true;
+    }
+
     out << "; WinUAE Unix Qt configuration\n";
     for (auto it = configSettings.constBegin(); it != configSettings.constEnd(); ++it) {
         if (!it.value().isEmpty()) {
