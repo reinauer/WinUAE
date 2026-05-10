@@ -7,9 +7,10 @@ This is an early macOS/Linux port of the WinUAE source tree. The current Unix bu
 - Builds with CMake as `winuae_unix`.
 - Uses `od-unix/` host abstractions.
 - SDL2 provides the current window, framebuffer presentation, mouse input, keyboard input, and audio output.
+- Optional Qt frontend provides an initial Windows-style configuration launcher.
 - A2065 Ethernet can use the built-in SLIRP user-mode NAT backend.
 - UAE Zorro II/Zorro III RTG RAM can be configured and autoconfigured, with an initial Unix `uaegfx.card` install path; guest Picasso96 monitor-driver testing and accelerated RTG operations are still incomplete.
-- Full UI/configuration dialogs, native file pickers, and platform packaging are still incomplete.
+- Full UI parity with the Windows configuration dialogs and platform packaging are still incomplete.
 - If SDL2 is not found, CMake currently builds a headless/null-video target.
 
 ## Requirements
@@ -19,6 +20,7 @@ This is an early macOS/Linux port of the WinUAE source tree. The current Unix bu
 - zlib development headers
 - pkg-config or pkgconf
 - SDL2 development headers and libraries, recommended for a usable windowed emulator
+- Qt 6 or Qt 5 Widgets, optional, for the native Unix configuration frontend
 
 ### macOS
 
@@ -27,6 +29,12 @@ Install Xcode Command Line Tools and Homebrew dependencies:
 ```sh
 xcode-select --install
 brew install cmake pkg-config sdl2
+```
+
+For the optional Qt frontend:
+
+```sh
+brew install qt
 ```
 
 The system zlib is normally enough on macOS.
@@ -38,10 +46,22 @@ sudo apt update
 sudo apt install build-essential cmake pkg-config zlib1g-dev libsdl2-dev
 ```
 
+For the optional Qt frontend:
+
+```sh
+sudo apt install qt6-base-dev
+```
+
 ### Fedora
 
 ```sh
 sudo dnf install gcc gcc-c++ cmake pkgconf-pkg-config zlib-devel SDL2-devel
+```
+
+For the optional Qt frontend:
+
+```sh
+sudo dnf install qt6-qtbase-devel
 ```
 
 ## Build
@@ -57,6 +77,13 @@ The executable will be:
 
 ```sh
 /tmp/winuae_cmake_build/winuae_unix
+```
+
+If Qt Widgets is available, CMake also builds a Windows-style configuration frontend:
+
+```sh
+cmake --build /tmp/winuae_cmake_build --target winuae_unix_qt -j
+/tmp/winuae_cmake_build/winuae_unix_qt
 ```
 
 To force a configure from scratch:
@@ -155,7 +182,9 @@ export WINUAE_SMOKE_LOG=/tmp/winuae_unix_smoke.log
 -DWINUAE_UNIX_BUILD_EXECUTABLE=ON
 -DWINUAE_UNIX_WITH_SDL2=ON
 -DWINUAE_UNIX_WITH_SLIRP=ON
+-DWINUAE_UNIX_WITH_QT_UI=ON
 ```
 
 `WINUAE_UNIX_WITH_SDL2` is enabled by default. If SDL2 is not found through pkg-config, the build currently falls back to the null video presenter.
 `WINUAE_UNIX_WITH_SLIRP` is enabled by default and builds the bundled SLIRP backend plus A2065 emulation.
+`WINUAE_UNIX_WITH_QT_UI` is enabled by default, but the `winuae_unix_qt` target is skipped when Qt Widgets is not installed.
