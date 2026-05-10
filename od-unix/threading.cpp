@@ -4,8 +4,20 @@
 #include "threaddep/thread.h"
 #include "uae.h"
 
+#include <errno.h>
 #include <stdlib.h>
 #include <string.h>
+
+static void unix_sem_timeout_from_now(struct timespec *ts, int ms)
+{
+    clock_gettime(CLOCK_REALTIME, ts);
+    ts->tv_sec += ms / 1000;
+    ts->tv_nsec += (long)(ms % 1000) * 1000000L;
+    if (ts->tv_nsec >= 1000000000L) {
+        ts->tv_sec++;
+        ts->tv_nsec -= 1000000000L;
+    }
+}
 
 void uae_sem_init(uae_sem_t *sem, int, int initial_state)
 {
@@ -67,11 +79,24 @@ int uae_sem_trywait(uae_sem_t *sem)
 
 int uae_sem_trywait_delay(uae_sem_t *sem, int ms)
 {
-    if (uae_sem_trywait(sem)) {
-        return 1;
+    int ok = 0;
+    pthread_mutex_lock(&(*sem)->mutex);
+    if ((*sem)->count <= 0 && ms > 0) {
+        struct timespec ts;
+        unix_sem_timeout_from_now(&ts, ms);
+        while ((*sem)->count <= 0) {
+            int err = pthread_cond_timedwait(&(*sem)->cond, &(*sem)->mutex, &ts);
+            if (err == ETIMEDOUT) {
+                break;
+            }
+        }
     }
-    sleep_millis(ms);
-    return uae_sem_trywait(sem);
+    if ((*sem)->count > 0) {
+        (*sem)->count--;
+        ok = 1;
+    }
+    pthread_mutex_unlock(&(*sem)->mutex);
+    return ok;
 }
 
 struct thread_start_data {

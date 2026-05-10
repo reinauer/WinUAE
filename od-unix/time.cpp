@@ -20,10 +20,12 @@ static uint64_t monotonic_ns(void)
 void uae_time_init(void)
 {
     epoch_ns = monotonic_ns();
+    syncbase = 1000000;
 }
 
 void uae_time_calibrate(void)
 {
+    syncbase = 1000000;
 }
 
 uae_time_t uae_time(void)

@@ -7,6 +7,7 @@
 
 #include "options.h"
 #include "uae.h"
+#include "uae/time.h"
 #include "memory.h"
 #include "newcpu.h"
 #include "host.h"
@@ -75,6 +76,7 @@ void setup_brkhandler(void)
 int machdep_init(void)
 {
     setup_brkhandler();
+    uae_time_init();
     return 1;
 }
 
