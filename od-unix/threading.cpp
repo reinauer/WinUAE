@@ -1,0 +1,129 @@
+#include "sysconfig.h"
+#include "sysdeps.h"
+
+#include "threaddep/thread.h"
+#include "uae.h"
+
+#include <stdlib.h>
+#include <string.h>
+
+void uae_sem_init(uae_sem_t *sem, int, int initial_state)
+{
+    *sem = (uae_sem_t)calloc(1, sizeof(**sem));
+    pthread_mutex_init(&(*sem)->mutex, NULL);
+    pthread_cond_init(&(*sem)->cond, NULL);
+    (*sem)->count = initial_state ? 1 : 0;
+}
+
+void uae_sem_destroy(uae_sem_t *sem)
+{
+    if (!sem || !*sem) {
+        return;
+    }
+    pthread_cond_destroy(&(*sem)->cond);
+    pthread_mutex_destroy(&(*sem)->mutex);
+    free(*sem);
+    *sem = NULL;
+}
+
+void uae_sem_post(uae_sem_t *sem)
+{
+    pthread_mutex_lock(&(*sem)->mutex);
+    (*sem)->count++;
+    pthread_cond_signal(&(*sem)->cond);
+    pthread_mutex_unlock(&(*sem)->mutex);
+}
+
+void uae_sem_unpost(uae_sem_t *sem)
+{
+    pthread_mutex_lock(&(*sem)->mutex);
+    if ((*sem)->count > 0) {
+        (*sem)->count--;
+    }
+    pthread_mutex_unlock(&(*sem)->mutex);
+}
+
+void uae_sem_wait(uae_sem_t *sem)
+{
+    pthread_mutex_lock(&(*sem)->mutex);
+    while ((*sem)->count <= 0) {
+        pthread_cond_wait(&(*sem)->cond, &(*sem)->mutex);
+    }
+    (*sem)->count--;
+    pthread_mutex_unlock(&(*sem)->mutex);
+}
+
+int uae_sem_trywait(uae_sem_t *sem)
+{
+    int ok = 0;
+    pthread_mutex_lock(&(*sem)->mutex);
+    if ((*sem)->count > 0) {
+        (*sem)->count--;
+        ok = 1;
+    }
+    pthread_mutex_unlock(&(*sem)->mutex);
+    return ok;
+}
+
+int uae_sem_trywait_delay(uae_sem_t *sem, int ms)
+{
+    if (uae_sem_trywait(sem)) {
+        return 1;
+    }
+    sleep_millis(ms);
+    return uae_sem_trywait(sem);
+}
+
+struct thread_start_data {
+    uae_thread_function fn;
+    void *arg;
+};
+
+static void *thread_entry(void *data)
+{
+    thread_start_data *tsd = (thread_start_data*)data;
+    uae_thread_function fn = tsd->fn;
+    void *arg = tsd->arg;
+    free(tsd);
+    fn(arg);
+    return NULL;
+}
+
+int uae_start_thread(const TCHAR *, uae_thread_function f, void *arg, uae_thread_id *thread)
+{
+    thread_start_data *tsd = (thread_start_data*)calloc(1, sizeof(*tsd));
+    tsd->fn = f;
+    tsd->arg = arg;
+    pthread_t tid;
+    if (pthread_create(&tid, NULL, thread_entry, tsd) != 0) {
+        free(tsd);
+        return 0;
+    }
+    if (thread) {
+        *thread = tid;
+    } else {
+        pthread_detach(tid);
+    }
+    return 1;
+}
+
+int uae_start_thread_fast(uae_thread_function f, void *arg, uae_thread_id *thread)
+{
+    return uae_start_thread(NULL, f, arg, thread);
+}
+
+void uae_end_thread(uae_thread_id *thread)
+{
+    if (thread) {
+        *thread = 0;
+    }
+}
+
+void uae_set_thread_priority(uae_thread_id *, int)
+{
+}
+
+uae_thread_id uae_thread_get_id(void)
+{
+    return pthread_self();
+}
