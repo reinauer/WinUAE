@@ -3,8 +3,10 @@ cmake_minimum_required(VERSION 3.20)
 project(winuae_unix_port LANGUAGES C CXX)
 
 option(WINUAE_UNIX_BUILD_EXECUTABLE "Link the initial Unix command-line executable" ON)
+option(WINUAE_UNIX_WITH_SDL2 "Build the initial Unix SDL2 video presenter" ON)
 
 find_package(ZLIB REQUIRED)
+find_package(PkgConfig QUIET)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -40,6 +42,25 @@ target_compile_options(winuae_core PRIVATE
     $<$<COMPILE_LANGUAGE:CXX>:-Wno-multichar>
     $<$<COMPILE_LANGUAGE:CXX>:-Wno-unused-value>
 )
+
+set(WINUAE_UNIX_EXTRA_SOURCES)
+set(WINUAE_UNIX_EXTRA_LIBRARIES)
+set(WINUAE_UNIX_EXTRA_LIBRARY_DIRS)
+
+if(WINUAE_UNIX_WITH_SDL2 AND PkgConfig_FOUND)
+    pkg_check_modules(SDL2 QUIET sdl2)
+endif()
+
+if(SDL2_FOUND)
+    target_compile_definitions(winuae_core PRIVATE UAE_UNIX_WITH_SDL2=1)
+    target_include_directories(winuae_core PRIVATE ${SDL2_INCLUDE_DIRS})
+    target_compile_options(winuae_core PRIVATE ${SDL2_CFLAGS_OTHER})
+    list(APPEND WINUAE_UNIX_EXTRA_SOURCES od-unix/video_sdl.cpp)
+    list(APPEND WINUAE_UNIX_EXTRA_LIBRARIES ${SDL2_LIBRARIES})
+    list(APPEND WINUAE_UNIX_EXTRA_LIBRARY_DIRS ${SDL2_LIBRARY_DIRS})
+else()
+    list(APPEND WINUAE_UNIX_EXTRA_SOURCES od-unix/video_null.cpp)
+endif()
 
 set(WINUAE_CORE_SOURCES
     a2091.cpp
@@ -170,9 +191,13 @@ set(WINUAE_CORE_SOURCES
     od-unix/time.cpp
 )
 
+list(APPEND WINUAE_CORE_SOURCES ${WINUAE_UNIX_EXTRA_SOURCES})
 target_sources(winuae_core PRIVATE ${WINUAE_CORE_SOURCES})
 
 if(WINUAE_UNIX_BUILD_EXECUTABLE)
     add_executable(winuae_unix $<TARGET_OBJECTS:winuae_core>)
-    target_link_libraries(winuae_unix PRIVATE pthread ${CMAKE_DL_LIBS} ZLIB::ZLIB)
+    if(WINUAE_UNIX_EXTRA_LIBRARY_DIRS)
+        target_link_directories(winuae_unix PRIVATE ${WINUAE_UNIX_EXTRA_LIBRARY_DIRS})
+    endif()
+    target_link_libraries(winuae_unix PRIVATE pthread ${CMAKE_DL_LIBS} ZLIB::ZLIB ${WINUAE_UNIX_EXTRA_LIBRARIES})
 endif()
