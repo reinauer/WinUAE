@@ -1,0 +1,178 @@
+cmake_minimum_required(VERSION 3.20)
+
+project(winuae_unix_port LANGUAGES C CXX)
+
+option(WINUAE_UNIX_BUILD_EXECUTABLE "Link the initial Unix command-line executable" ON)
+
+find_package(ZLIB REQUIRED)
+
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS ON)
+
+add_library(winuae_core OBJECT)
+
+target_compile_definitions(winuae_core PRIVATE
+    UAE_TARGET_UNIX=1
+    UAE_NOGUI=1
+)
+
+target_include_directories(winuae_core PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/od-unix"
+    "${CMAKE_CURRENT_SOURCE_DIR}/od-unix/include"
+    "${CMAKE_CURRENT_SOURCE_DIR}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include"
+    "${CMAKE_CURRENT_SOURCE_DIR}/archivers/dms"
+    "${CMAKE_CURRENT_SOURCE_DIR}/archivers/lha"
+    "${CMAKE_CURRENT_SOURCE_DIR}/archivers/lzx"
+    "${CMAKE_CURRENT_SOURCE_DIR}/archivers/mp2"
+    "${CMAKE_CURRENT_SOURCE_DIR}/archivers/wrp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/archivers/zip"
+)
+
+target_compile_options(winuae_core PRIVATE
+    $<$<COMPILE_LANGUAGE:CXX>:-Wno-c++11-narrowing>
+    $<$<COMPILE_LANGUAGE:CXX>:-Wno-deprecated-declarations>
+    $<$<COMPILE_LANGUAGE:CXX>:-Wno-deprecated-register>
+    $<$<COMPILE_LANGUAGE:CXX>:-Wno-format-security>
+    $<$<COMPILE_LANGUAGE:CXX>:-Wno-multichar>
+    $<$<COMPILE_LANGUAGE:CXX>:-Wno-unused-value>
+)
+
+set(WINUAE_CORE_SOURCES
+    a2091.cpp
+    akiko.cpp
+    amax.cpp
+    ar.cpp
+    arcadia.cpp
+    aros.rom.cpp
+    audio.cpp
+    autoconf.cpp
+    blitfunc.cpp
+    blitops.cpp
+    blittable.cpp
+    blitter.cpp
+    blkdev.cpp
+    blkdev_cdimage.cpp
+    bsdsocket.cpp
+    calc.cpp
+    cd32_fmv.cpp
+    cd32_fmv_genlock.cpp
+    cdrom.cpp
+    cdtv.cpp
+    cdtvcr.cpp
+    cfgfile.cpp
+    cia.cpp
+    consolehook.cpp
+    cpudefs.cpp
+    cpustbl.cpp
+    cpuemu_0.cpp
+    cpuemu_11.cpp
+    cpuemu_13.cpp
+    cpuemu_20.cpp
+    cpuemu_21.cpp
+    cpuemu_22.cpp
+    cpuemu_23.cpp
+    cpuemu_24.cpp
+    cpuemu_31.cpp
+    cpuemu_32.cpp
+    cpuemu_33.cpp
+    cpuemu_34.cpp
+    cpuemu_35.cpp
+    cpuemu_40.cpp
+    cpuemu_50.cpp
+    cpummu.cpp
+    cpummu30.cpp
+    crc32.cpp
+    custom.cpp
+    debug.cpp
+    debugmem.cpp
+    def_icons.cpp
+    devices.cpp
+    disasm.cpp
+    disk.cpp
+    diskutil.cpp
+    dlopen.cpp
+    dongle.cpp
+    drawing.cpp
+    driveclick.cpp
+    enforcer.cpp
+    ethernet.cpp
+    events.cpp
+    expansion.cpp
+    fdi2raw.cpp
+    filesys.cpp
+    flashrom.cpp
+    fpp.cpp
+    fpp_native.cpp
+    fpp_softfloat.cpp
+    framebufferboards.cpp
+    fsdb.cpp
+    fsdb_unix.cpp
+    gayle.cpp
+    gfxlib.cpp
+    gfxutil.cpp
+    hardfile.cpp
+    hrtmon.rom.cpp
+    ide.cpp
+    idecontrollers.cpp
+    identify.cpp
+    ini.cpp
+    inputdevice.cpp
+    inputrecord.cpp
+    isofs.cpp
+    keybuf.cpp
+    logging.cpp
+    main.cpp
+    memory.cpp
+    missing.cpp
+    mos6502.cpp
+    native2amiga.cpp
+    newcpu.cpp
+    newcpu_common.cpp
+    readcpu.cpp
+    rommgr.cpp
+    rtc.cpp
+    savestate.cpp
+    scp.cpp
+    scsi.cpp
+    scsitape.cpp
+    statusline.cpp
+    test_card.cpp
+    tinyxml2.cpp
+    traps.cpp
+    uaeexe.cpp
+    uaelib.cpp
+    uaeresource.cpp
+    vm.cpp
+    writelog.cpp
+    zfile.cpp
+    archivers/mp2/kjmp2.cpp
+    softfloat/softfloat.cpp
+    softfloat/softfloat_decimal.cpp
+    softfloat/softfloat_fpsp.cpp
+    od-unix/charset.cpp
+    od-unix/config.cpp
+    od-unix/filesys_host.cpp
+    od-unix/graphics.cpp
+    od-unix/gui.cpp
+    od-unix/hardfile_host.cpp
+    od-unix/input.cpp
+    od-unix/logging.cpp
+    od-unix/mman.cpp
+    od-unix/parallel.cpp
+    od-unix/sound.cpp
+    od-unix/stubs.cpp
+    od-unix/support.cpp
+    od-unix/threading.cpp
+    od-unix/time.cpp
+)
+
+target_sources(winuae_core PRIVATE ${WINUAE_CORE_SOURCES})
+
+if(WINUAE_UNIX_BUILD_EXECUTABLE)
+    add_executable(winuae_unix $<TARGET_OBJECTS:winuae_core>)
+    target_link_libraries(winuae_unix PRIVATE pthread ${CMAKE_DL_LIBS} ZLIB::ZLIB)
+endif()
