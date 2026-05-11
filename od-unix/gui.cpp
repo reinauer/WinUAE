@@ -44,14 +44,95 @@ int gui_init(void)
     return 0;
 #endif
 }
-int gui_update(void) { return 0; }
+int gui_update(void) { return 1; }
 void gui_exit(void) {}
-void gui_led(int, int, int) {}
+void gui_led(int led, int on, int brightness)
+{
+    if (on >= 0 && led >= 0 && led < int(sizeof(gui_ledstate) * 8)) {
+        if (on) {
+            gui_ledstate |= 1u << led;
+        } else {
+            gui_ledstate &= ~(1u << led);
+        }
+    }
+    if (led == LED_POWER && brightness >= 0) {
+        gui_data.powerled_brightness = brightness;
+    }
+}
 void gui_filename(int, const TCHAR*) {}
-void gui_fps(int, int, bool, int, int) {}
+void gui_fps(int fps, int lines, bool lace, int idle, int color)
+{
+    gui_data.fps = fps;
+    gui_data.lines = lines;
+    gui_data.lace = lace;
+    gui_data.idle = idle;
+    gui_data.fps_color = color;
+    gui_led(LED_FPS, 1, -1);
+    gui_led(LED_LINES, 1, -1);
+    gui_led(LED_CPU, 1, -1);
+    gui_led(LED_SND, (gui_data.sndbuf_status > 1 || gui_data.sndbuf_status < 0) ? 0 : 1, -1);
+}
 void gui_lock(void) {}
 void gui_unlock(void) {}
-void gui_flicker_led(int, int, int) {}
+
+static void gui_flicker_led_single(int led, int status)
+{
+    static int resetcounter[LED_MAX];
+    uae_s8 *target = nullptr;
+
+    if (led == LED_HD) {
+        target = &gui_data.hd;
+    } else if (led == LED_CD) {
+        target = &gui_data.cd;
+    } else if (led == LED_MD) {
+        target = &gui_data.md;
+    } else if (led == LED_NET) {
+        target = &gui_data.net;
+    }
+    if (!target) {
+        return;
+    }
+
+    const uae_s8 old = *target;
+    if (status < 0) {
+        gui_led(led, old < 0 ? -1 : 0, -1);
+        return;
+    }
+    if (status == 0 && old < 0) {
+        *target = 0;
+        resetcounter[led] = 0;
+        gui_led(led, 0, -1);
+        return;
+    }
+    if (status == 0) {
+        resetcounter[led]--;
+        if (resetcounter[led] > 0) {
+            return;
+        }
+    }
+
+    *target = status;
+    resetcounter[led] = 15;
+    if (old != *target) {
+        gui_led(led, *target, -1);
+    }
+}
+
+void gui_flicker_led(int led, int, int status)
+{
+    if (led < 0) {
+        gui_flicker_led_single(LED_HD, 0);
+        gui_flicker_led_single(LED_CD, 0);
+        if (gui_data.net >= 0) {
+            gui_flicker_led_single(LED_NET, 0);
+        }
+        if (gui_data.md >= 0) {
+            gui_flicker_led_single(LED_MD, 0);
+        }
+    } else {
+        gui_flicker_led_single(led, status);
+    }
+}
 void gui_disk_image_change(int, const TCHAR*, bool) {}
 
 #ifdef WINUAE_UNIX_WITH_INTEGRATED_QT_UI
