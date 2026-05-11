@@ -1872,6 +1872,7 @@ public:
         addPage(QStringLiteral("Disk Swapper"), QStringLiteral("diskimage.ico"), makeDiskSwapperPage());
         addPage(QStringLiteral("Hard drives"), QStringLiteral("drive.ico"), makeHardDrivesPage());
         addPage(QStringLiteral("Expansion boards"), QStringLiteral("expansion.ico"), makeExpansionPage());
+        addPage(QStringLiteral("Hardware info"), QStringLiteral("expansion.ico"), makeHardwareInfoPage());
         addPage(QStringLiteral("Display"), QStringLiteral("screen.ico"), makeDisplayPage());
         addPage(QStringLiteral("Filter"), QStringLiteral("screen.ico"), makeFilterPage());
         addPage(QStringLiteral("Output"), QStringLiteral("avioutput.ico"), makeOutputPage());
@@ -1889,6 +1890,9 @@ public:
                 return;
             }
             pageStack->setCurrentIndex(item->data(0, Qt::UserRole).toInt());
+            if (item->text(0) == QStringLiteral("Hardware info")) {
+                refreshHardwareInfoPage();
+            }
         });
 
         QFrame *outerFrame = new QFrame;
@@ -2069,6 +2073,10 @@ private:
     QComboBox *rtg32Bit = nullptr;
     QComboBox *rtgRefreshRate = nullptr;
     QComboBox *rtgBuffers = nullptr;
+    QTreeWidget *hardwareBoardList = nullptr;
+    QCheckBox *hardwareCustomBoardOrder = nullptr;
+    QPushButton *hardwareMoveUp = nullptr;
+    QPushButton *hardwareMoveDown = nullptr;
 
     QCheckBox *dfEnable[4] = {};
     QComboBox *dfType[4] = {};
@@ -3443,6 +3451,173 @@ private:
             }
         });
         return page;
+    }
+
+    QWidget *makeHardwareInfoPage()
+    {
+        QWidget *page = makePage();
+        QVBoxLayout *root = new QVBoxLayout(page);
+        root->setContentsMargins(4, 4, 4, 4);
+
+        hardwareBoardList = new QTreeWidget;
+        hardwareBoardList->setRootIsDecorated(false);
+        hardwareBoardList->setAlternatingRowColors(true);
+        hardwareBoardList->setSelectionMode(QAbstractItemView::SingleSelection);
+        hardwareBoardList->setEditTriggers(QAbstractItemView::NoEditTriggers);
+        hardwareBoardList->setHeaderLabels({
+            QStringLiteral("Type"),
+            QStringLiteral("Name"),
+            QStringLiteral("Start"),
+            QStringLiteral("End"),
+            QStringLiteral("Size"),
+            QStringLiteral("ID")
+        });
+        root->addWidget(hardwareBoardList, 1);
+
+        QHBoxLayout *actions = new QHBoxLayout;
+        hardwareCustomBoardOrder = new QCheckBox(QStringLiteral("Custom board order"));
+        hardwareMoveUp = new QPushButton(QStringLiteral("Move up"));
+        hardwareMoveDown = new QPushButton(QStringLiteral("Move down"));
+        hardwareMoveUp->setEnabled(false);
+        hardwareMoveDown->setEnabled(false);
+        actions->addWidget(hardwareCustomBoardOrder);
+        actions->addStretch();
+        actions->addWidget(hardwareMoveUp);
+        actions->addWidget(hardwareMoveDown);
+        root->addLayout(actions);
+
+        connect(hardwareCustomBoardOrder, &QCheckBox::toggled, this, [this]() { refreshHardwareInfoPage(); });
+        return page;
+    }
+
+    quint64 bytesFromMemoryText(QString text) const
+    {
+        text = text.trimmed();
+        if (text == QStringLiteral("None") || text.isEmpty()) {
+            return 0;
+        }
+        if (text.endsWith(QStringLiteral("KB"))) {
+            text.chop(2);
+            return quint64(text.trimmed().toDouble() * 1024.0);
+        }
+        if (text.endsWith(QStringLiteral("MB"))) {
+            text.chop(2);
+            return quint64(text.trimmed().toDouble() * 1024.0 * 1024.0);
+        }
+        return 0;
+    }
+
+    QString hardwareSizeText(quint64 bytes) const
+    {
+        if (!bytes) {
+            return QStringLiteral("-");
+        }
+        return QStringLiteral("0x%1").arg(bytes, 8, 16, QLatin1Char('0'));
+    }
+
+    void addHardwareBoardRow(
+        const QString &type,
+        const QString &name,
+        const QString &start,
+        const QString &end,
+        const QString &size,
+        const QString &id)
+    {
+        if (!hardwareBoardList) {
+            return;
+        }
+        QTreeWidgetItem *item = new QTreeWidgetItem(hardwareBoardList);
+        item->setText(0, type);
+        item->setText(1, name);
+        item->setText(2, start);
+        item->setText(3, end);
+        item->setText(4, size);
+        item->setText(5, id);
+    }
+
+    void refreshHardwareInfoPage()
+    {
+        if (!hardwareBoardList) {
+            return;
+        }
+        hardwareBoardList->clear();
+
+        const quint64 chipBytes = bytesFromMemoryText(chipMem ? chipMem->currentText() : QString());
+        if (chipBytes) {
+            addHardwareBoardRow(
+                QStringLiteral("-"),
+                QStringLiteral("Chip memory"),
+                QStringLiteral("0x00000000"),
+                QStringLiteral("0x%1").arg(chipBytes - 1, 8, 16, QLatin1Char('0')),
+                hardwareSizeText(chipBytes),
+                QStringLiteral("-"));
+        }
+
+        const quint64 slowBytes = bytesFromMemoryText(slowMem ? slowMem->currentText() : QString());
+        if (slowBytes) {
+            addHardwareBoardRow(QStringLiteral("-"), QStringLiteral("Slow memory"), QStringLiteral("-"), QStringLiteral("-"), hardwareSizeText(slowBytes), QStringLiteral("-"));
+        }
+
+        const quint64 z2Bytes = bytesFromMemoryText(z2Fast ? z2Fast->currentText() : QString());
+        if (z2Bytes) {
+            addHardwareBoardRow(QStringLiteral("Z2"), QStringLiteral("Fast memory"), QStringLiteral("-"), QStringLiteral("-"), hardwareSizeText(z2Bytes), QStringLiteral("-"));
+        }
+
+        const quint64 z3Bytes = bytesFromMemoryText(z3Fast ? z3Fast->currentText() : QString());
+        if (z3Bytes) {
+            addHardwareBoardRow(QStringLiteral("Z3"), QStringLiteral("Fast memory"), QStringLiteral("-"), QStringLiteral("-"), hardwareSizeText(z3Bytes), QStringLiteral("-"));
+        }
+
+        const quint64 z3ChipBytes = bytesFromMemoryText(z3ChipMem ? z3ChipMem->currentText() : QString());
+        if (z3ChipBytes) {
+            addHardwareBoardRow(QStringLiteral("Z3"), QStringLiteral("Z3 chip memory"), QStringLiteral("-"), QStringLiteral("-"), hardwareSizeText(z3ChipBytes), QStringLiteral("-"));
+        }
+
+        const quint64 processorBytes = bytesFromMemoryText(processorSlotMem ? processorSlotMem->currentText() : QString());
+        if (processorBytes) {
+            addHardwareBoardRow(QStringLiteral("-"), QStringLiteral("Processor slot memory"), QStringLiteral("-"), QStringLiteral("-"), hardwareSizeText(processorBytes), QStringLiteral("-"));
+        }
+
+        const quint64 rtgBytes = bytesFromMemoryText(rtgMem ? rtgMem->currentText() : QString());
+        if (rtgBytes) {
+            addHardwareBoardRow(
+                rtgType && rtgType->currentText() == QStringLiteral("ZorroII") ? QStringLiteral("Z2") : QStringLiteral("Z3"),
+                QStringLiteral("RTG graphics card"),
+                QStringLiteral("-"),
+                QStringLiteral("-"),
+                hardwareSizeText(rtgBytes),
+                QStringLiteral("gfxcard"));
+        }
+
+        storeCurrentCustomRomBoard();
+        for (int i = 0; i < customRomBoards.size(); i++) {
+            const WinUaeQtRomBoard &board = customRomBoards[i];
+            if (board.start.isEmpty() || board.end.isEmpty()) {
+                continue;
+            }
+            bool startOk = false;
+            bool endOk = false;
+            const quint64 start = board.start.toULongLong(&startOk, 16);
+            const quint64 end = board.end.toULongLong(&endOk, 16);
+            const quint64 size = startOk && endOk && end >= start ? end - start + 1 : 0;
+            addHardwareBoardRow(
+                QStringLiteral("-"),
+                QStringLiteral("Custom ROM board #%1").arg(i + 1),
+                QStringLiteral("0x%1").arg(start, 8, 16, QLatin1Char('0')),
+                QStringLiteral("0x%1").arg(end, 8, 16, QLatin1Char('0')),
+                hardwareSizeText(size),
+                board.path.isEmpty() ? QStringLiteral("-") : QFileInfo(board.path).fileName());
+        }
+
+        for (int i = 0; i < hardwareBoardList->columnCount(); i++) {
+            hardwareBoardList->resizeColumnToContents(i);
+        }
+        if (hardwareMoveUp) {
+            hardwareMoveUp->setEnabled(false);
+        }
+        if (hardwareMoveDown) {
+            hardwareMoveDown->setEnabled(false);
+        }
     }
 
     QWidget *makeDisplayPage()
@@ -5614,6 +5789,8 @@ private:
         rtg32Bit->setCurrentText(QStringLiteral("B8G8R8A8 (*)"));
         rtgRefreshRate->setCurrentText(QStringLiteral("Chipset"));
         rtgBuffers->setCurrentText(QStringLiteral("Double"));
+        hardwareCustomBoardOrder->setChecked(false);
+        refreshHardwareInfoPage();
 
         romFile->setCurrentText(envString("WINUAE_KICKSTART_ROM"));
         extendedRomFile->setCurrentText(QString());
@@ -6815,6 +6992,7 @@ private:
                 settings.insert(romBoardKey(i), value);
             }
         }
+        settings.insert(QStringLiteral("board_custom_order"), hardwareCustomBoardOrder->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
         for (int i = 0; i < 4; i++) {
             const int driveType = dfEnable[i]->isChecked() ? floppyTypeConfigValue(dfType[i]->currentText()) : -1;
             settings.insert(QStringLiteral("floppy%1type").arg(i), QString::number(driveType));
@@ -7157,6 +7335,7 @@ private:
             QStringLiteral("romboard2_options"),
             QStringLiteral("romboard3_options"),
             QStringLiteral("romboard4_options"),
+            QStringLiteral("board_custom_order"),
             QStringLiteral("floppy0"),
             QStringLiteral("floppy1"),
             QStringLiteral("floppy2"),
@@ -7678,6 +7857,7 @@ private:
             applySetting(setting.key, setting.value);
         }
         updateMountButtons();
+        refreshHardwareInfoPage();
         loadedConfig = config;
         configPath->setText(path);
         configName->setCurrentText(QFileInfo(path).completeBaseName());
@@ -7726,6 +7906,9 @@ private:
             }
         } else if (romBoardIndexFromKey(key) >= 0) {
             applyCustomRomBoard(romBoardIndexFromKey(key), value);
+        } else if (key == QStringLiteral("board_custom_order")) {
+            hardwareCustomBoardOrder->setChecked(configBoolValue(value));
+            refreshHardwareInfoPage();
         } else if (key == QStringLiteral("floppy_speed")) {
             floppySpeed->setValue(floppySpeedSliderPosition(value.toInt()));
             updateFloppySpeedLabel();
