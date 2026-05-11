@@ -20,4 +20,6 @@ struct WinUaeQtLauncherResult {
 int runWinUaeQtLauncher(QApplication &app);
 int runWinUaeQtLauncher(int argc, char **argv);
 WinUaeQtLauncherResult runWinUaeQtLauncherForConfig(QApplication &app);
+WinUaeQtLauncherResult runWinUaeQtLauncherForConfig(QApplication &app, const QString &initialConfigPath);
 WinUaeQtLauncherResult runWinUaeQtLauncherForConfig(int argc, char **argv);
+WinUaeQtLauncherResult runWinUaeQtLauncherForConfig(int argc, char **argv, const QString &initialConfigPath);
