@@ -59,13 +59,21 @@ cp -R "${app_dir}" "${staging_dir}/WinUAE.app"
 ln -s /Applications "${staging_dir}/Applications"
 
 volume_icon="${app_dir}/Contents/Resources/WinUAE.icns"
-if [[ -f "${volume_icon}" ]]; then
-    cp "${volume_icon}" "${staging_dir}/.VolumeIcon.icns"
-    if command -v SetFile >/dev/null 2>&1; then
-        SetFile -a C "${staging_dir}" || true
-        SetFile -c icnC "${staging_dir}/.VolumeIcon.icns" || true
+apply_volume_icon() {
+    local target_dir="$1"
+
+    if [[ ! -f "${volume_icon}" ]]; then
+        return
     fi
-fi
+
+    cp "${volume_icon}" "${target_dir}/.VolumeIcon.icns"
+    if command -v SetFile >/dev/null 2>&1; then
+        SetFile -a C "${target_dir}" || true
+        SetFile -a V "${target_dir}/.VolumeIcon.icns" || true
+    fi
+}
+
+apply_volume_icon "${staging_dir}"
 
 background_ppm="${staging_dir}/.background/background.ppm"
 background_png="${staging_dir}/.background/background.png"
@@ -97,14 +105,14 @@ BEGIN {
 sips -s format png "${background_ppm}" --out "${background_png}" >/dev/null
 rm -f "${background_ppm}"
 
-hdiutil create -volname "${volume_name}" -srcfolder "${staging_dir}" -format UDRW -ov "${rw_dmg}" >/dev/null
-mount_dir="$(mktemp -d /tmp/winuae-dmg.XXXXXX)"
-hdiutil attach "${rw_dmg}" -readwrite -noverify -noautoopen -mountpoint "${mount_dir}" >/dev/null
-
-if [[ -f "${mount_dir}/.VolumeIcon.icns" ]] && command -v SetFile >/dev/null 2>&1; then
-    SetFile -a C "${mount_dir}" || true
-    SetFile -c icnC "${mount_dir}/.VolumeIcon.icns" || true
+hdiutil create -volname "${volume_name}" -srcfolder "${staging_dir}" -fs HFS+ -format UDRW -ov "${rw_dmg}" >/dev/null
+mount_dir="$(hdiutil attach "${rw_dmg}" -readwrite -noverify -noautoopen | awk -F '\t' '/\/Volumes\// { print $NF; exit }')"
+if [[ -z "${mount_dir}" || ! -d "${mount_dir}" ]]; then
+    echo "error: failed to mount ${rw_dmg}" >&2
+    exit 1
 fi
+
+apply_volume_icon "${mount_dir}"
 
 if [[ "${WINUAE_SKIP_FINDER_LAYOUT:-0}" != "1" ]] && command -v osascript >/dev/null 2>&1; then
     osascript <<EOF
@@ -124,10 +132,33 @@ tell application "Finder"
     set background picture of viewOptions to backgroundPicture
     set position of item "WinUAE.app" of dmgFolder to {178, 200}
     set position of item "Applications" of dmgFolder to {462, 200}
+    update dmgFolder
     delay 1
     close dmgWindow
 end tell
 EOF
+    for _ in {1..20}; do
+        if [[ -f "${mount_dir}/.DS_Store" ]]; then
+            break
+        fi
+        sleep 0.5
+    done
+    if [[ ! -f "${mount_dir}/.DS_Store" ]]; then
+        echo "error: Finder did not write ${mount_dir}/.DS_Store; DMG background layout was not saved" >&2
+        exit 1
+    fi
+fi
+
+apply_volume_icon "${mount_dir}"
+if [[ -f "${volume_icon}" ]] && command -v SetFile >/dev/null 2>&1 && command -v GetFileInfo >/dev/null 2>&1; then
+    volume_attrs="$(GetFileInfo -a "${mount_dir}" 2>/dev/null || true)"
+    case "${volume_attrs}" in
+        *C*) ;;
+        *)
+            echo "error: custom volume icon attribute was not set on ${mount_dir}" >&2
+            exit 1
+            ;;
+    esac
 fi
 
 sync
