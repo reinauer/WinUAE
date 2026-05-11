@@ -1065,6 +1065,39 @@ static const AboutLink aboutLinks[] = {
     { "AmiKit", "http://amikit.amiga.sk/" }
 };
 
+struct ConfigChoice {
+    const char *display;
+    const char *value;
+};
+
+static const ConfigChoice printerTypeChoices[] = {
+    { "Passthrough", "none" },
+    { "ASCII-Only", "ascii" },
+    { "Epson Matrix Printer Emulation, 9pin", "epson_matrix_9pin" },
+    { "Epson Matrix Printer Emulation, 48pin", "epson_matrix_48pin" },
+    { "PostScript (Passthrough)", "postscript_passthrough" },
+    { "PostScript (Emulation)", "postscript_emulation" }
+};
+
+static const ConfigChoice dongleChoices[] = {
+    { "None", "none" },
+    { "RoboCop 3", "robocop 3" },
+    { "Leader Board", "leaderboard" },
+    { "B.A.T. II", "b.a.t. ii" },
+    { "Italy '90 Soccer", "italy'90 soccer" },
+    { "Dames Grand-Maitre", "dames grand maitre" },
+    { "Rugby Coach", "rugby coach" },
+    { "Cricket Captain", "cricket captain" },
+    { "Leviathan", "leviathan" },
+    { "Music Master", "musicmaster" },
+    { "Logistics/SuperBase", "logistics" },
+    { "Scala MM (Red)", "scala red" },
+    { "Scala MM (Green)", "scala green" },
+    { "Striker Manager", "strikermanager" },
+    { "Multi-Player Soccer Manager", "multi-player soccer manager" },
+    { "Football Director 2", "football director 2" }
+};
+
 static QIcon resourceIcon(const QString &name)
 {
     const QString path = sourceFile(QStringLiteral("od-win32/resources/") + name);
@@ -1099,6 +1132,55 @@ static QComboBox *pathCombo()
     w->setInsertPolicy(QComboBox::NoInsert);
     w->lineEdit()->setClearButtonEnabled(true);
     return w;
+}
+
+static QStringList configChoiceDisplays(const ConfigChoice *choices, int count)
+{
+    QStringList items;
+    for (int i = 0; i < count; i++) {
+        items.append(QString::fromLatin1(choices[i].display));
+    }
+    return items;
+}
+
+static QString configChoiceValue(const ConfigChoice *choices, int count, const QString &display)
+{
+    for (int i = 0; i < count; i++) {
+        if (display == QString::fromLatin1(choices[i].display)) {
+            return QString::fromLatin1(choices[i].value);
+        }
+    }
+    return QString();
+}
+
+static QString configChoiceDisplay(const ConfigChoice *choices, int count, const QString &value)
+{
+    for (int i = 0; i < count; i++) {
+        if (value.compare(QString::fromLatin1(choices[i].value), Qt::CaseInsensitive) == 0) {
+            return QString::fromLatin1(choices[i].display);
+        }
+    }
+    return QString::fromLatin1(choices[0].display);
+}
+
+static QStringList unixSerialPortItems()
+{
+    QStringList items { QStringLiteral("<None>") };
+    const QStringList filters {
+        QStringLiteral("cu.*"),
+        QStringLiteral("tty.*"),
+        QStringLiteral("ttyUSB*"),
+        QStringLiteral("ttyACM*"),
+        QStringLiteral("ttyS*")
+    };
+    const QStringList entries = QDir(QStringLiteral("/dev")).entryList(filters, QDir::System | QDir::Files | QDir::Readable, QDir::Name);
+    for (const QString &entry : entries) {
+        const QString path = QDir(QStringLiteral("/dev")).filePath(entry);
+        if (!items.contains(path)) {
+            items.append(path);
+        }
+    }
+    return items;
 }
 
 static QStringList floppyTypeItems(int drive, bool quickstart)
@@ -1435,6 +1517,7 @@ public:
         addPage(QStringLiteral("Display"), QStringLiteral("screen.ico"), makeDisplayPage());
         addPage(QStringLiteral("Sound"), QStringLiteral("sound.ico"), makeSoundPage());
         addPage(QStringLiteral("Game ports"), QStringLiteral("joystick.ico"), makeGamePortsPage());
+        addPage(QStringLiteral("IO ports"), QStringLiteral("port.ico"), makeIoPortsPage());
         addPage(QStringLiteral("Input"), QStringLiteral("port.ico"), makeInputPage());
         addPage(QStringLiteral("Paths"), QStringLiteral("paths.ico"), makePathsPage());
         addPage(QStringLiteral("Miscellaneous"), QStringLiteral("misc.ico"), makeMiscPage());
@@ -1681,6 +1764,23 @@ private:
     QComboBox *magicMouseCursor = nullptr;
     QCheckBox *tabletLibrary = nullptr;
     QComboBox *tabletMode = nullptr;
+    QComboBox *printerPort = nullptr;
+    QComboBox *printerType = nullptr;
+    QSpinBox *printerAutoFlush = nullptr;
+    QLineEdit *ghostscriptParams = nullptr;
+    QComboBox *samplerDevice = nullptr;
+    QCheckBox *samplerStereo = nullptr;
+    QComboBox *serialPort = nullptr;
+    QCheckBox *serialShared = nullptr;
+    QCheckBox *serialCtsRts = nullptr;
+    QCheckBox *serialDirect = nullptr;
+    QCheckBox *uaeSerial = nullptr;
+    QCheckBox *serialStatus = nullptr;
+    QCheckBox *serialRingIndicator = nullptr;
+    QComboBox *midiOut = nullptr;
+    QComboBox *midiIn = nullptr;
+    QCheckBox *midiRouter = nullptr;
+    QComboBox *protectionDongle = nullptr;
     QLineEdit *emulatorPath = nullptr;
     QLineEdit *romsPath = nullptr;
     QLineEdit *configsPath = nullptr;
@@ -3100,6 +3200,120 @@ private:
         mouseUntrapMode->setCurrentIndex(qBound(0, nextIndex, 3));
     }
 
+    QWidget *makeIoPortsPage()
+    {
+        QWidget *page = makePage();
+        QVBoxLayout *root = new QVBoxLayout(page);
+        root->setContentsMargins(4, 4, 4, 4);
+        root->setSpacing(6);
+
+        QGridLayout *parallel = new QGridLayout;
+        parallel->setColumnStretch(1, 1);
+        printerPort = combo({ QStringLiteral("<None>") });
+        printerType = combo(configChoiceDisplays(printerTypeChoices, int(sizeof(printerTypeChoices) / sizeof(printerTypeChoices[0]))));
+        QPushButton *flushPrinter = new QPushButton(QStringLiteral("Flush print job"));
+        flushPrinter->setEnabled(false);
+        printerAutoFlush = new QSpinBox;
+        printerAutoFlush->setRange(0, 3600);
+        ghostscriptParams = new QLineEdit;
+        samplerDevice = combo({ QStringLiteral("<None>") });
+        samplerStereo = new QCheckBox(QStringLiteral("Stereo sampler"));
+        parallel->addWidget(label(QStringLiteral("Printer:")), 0, 0);
+        parallel->addWidget(printerPort, 0, 1, 1, 3);
+        parallel->addWidget(label(QStringLiteral("Type:")), 1, 0);
+        parallel->addWidget(printerType, 1, 1, 1, 3);
+        parallel->addWidget(flushPrinter, 2, 1);
+        parallel->addWidget(label(QStringLiteral("Autoflush:")), 2, 2);
+        parallel->addWidget(printerAutoFlush, 2, 3);
+        parallel->addWidget(label(QStringLiteral("Ghostscript extra parameters:")), 3, 0);
+        parallel->addWidget(ghostscriptParams, 3, 1, 1, 3);
+        parallel->addWidget(label(QStringLiteral("Sampler:")), 4, 0);
+        parallel->addWidget(samplerDevice, 4, 1, 1, 3);
+        parallel->addWidget(samplerStereo, 5, 1, 1, 3);
+        root->addWidget(groupBox(QStringLiteral("Parallel Port"), parallel));
+
+        QGridLayout *serial = new QGridLayout;
+        serial->setColumnStretch(1, 1);
+        serialPort = combo(unixSerialPortItems());
+        serialPort->setEditable(true);
+        serialPort->setInsertPolicy(QComboBox::NoInsert);
+        serialPort->lineEdit()->setClearButtonEnabled(true);
+        serialShared = new QCheckBox(QStringLiteral("Shared"));
+        serialCtsRts = new QCheckBox(QStringLiteral("Host RTS/CTS"));
+        serialDirect = new QCheckBox(QStringLiteral("Direct"));
+        uaeSerial = new QCheckBox(QStringLiteral("uaeserial.device"));
+        serialStatus = new QCheckBox(QStringLiteral("Serial status (RTS/CTS/DTR/DTE/CD)"));
+        serialRingIndicator = new QCheckBox(QStringLiteral("Serial status: Ring Indicator"));
+        serial->addWidget(serialPort, 0, 0, 1, 4);
+        serial->addWidget(serialShared, 1, 0);
+        serial->addWidget(serialCtsRts, 1, 1);
+        serial->addWidget(serialDirect, 1, 2);
+        serial->addWidget(uaeSerial, 1, 3);
+        serial->addWidget(serialStatus, 2, 0, 1, 2);
+        serial->addWidget(serialRingIndicator, 2, 2, 1, 2);
+        root->addWidget(groupBox(QStringLiteral("Serial Port"), serial));
+
+        QGridLayout *midi = new QGridLayout;
+        midi->setColumnStretch(1, 1);
+        midi->setColumnStretch(3, 1);
+        midiOut = combo({ QStringLiteral("<None>") });
+        midiIn = combo({ QStringLiteral("<None>") });
+        midiRouter = new QCheckBox(QStringLiteral("Route MIDI In to MIDI Out"));
+        midi->addWidget(label(QStringLiteral("Out:")), 0, 0);
+        midi->addWidget(midiOut, 0, 1);
+        midi->addWidget(label(QStringLiteral("In:")), 0, 2);
+        midi->addWidget(midiIn, 0, 3);
+        midi->addWidget(midiRouter, 1, 1, 1, 3);
+        root->addWidget(groupBox(QStringLiteral("MIDI"), midi));
+
+        QGridLayout *dongle = new QGridLayout;
+        dongle->setColumnStretch(1, 1);
+        protectionDongle = combo(configChoiceDisplays(dongleChoices, int(sizeof(dongleChoices) / sizeof(dongleChoices[0]))));
+        dongle->addWidget(label(QStringLiteral("Dongle:")), 0, 0);
+        dongle->addWidget(protectionDongle, 0, 1);
+        root->addWidget(groupBox(QStringLiteral("Protection Dongle"), dongle));
+        root->addStretch(1);
+
+        connect(serialPort, &QComboBox::currentTextChanged, this, [this](const QString &) { updateIoPortsState(); });
+        connect(samplerDevice, &QComboBox::currentTextChanged, this, [this](const QString &) { updateIoPortsState(); });
+        connect(midiOut, &QComboBox::currentTextChanged, this, [this](const QString &) { updateIoPortsState(); });
+        connect(midiIn, &QComboBox::currentTextChanged, this, [this](const QString &) { updateIoPortsState(); });
+        updateIoPortsState();
+        return page;
+    }
+
+    void updateIoPortsState()
+    {
+        const QString serial = serialPort ? serialPort->currentText().trimmed() : QString();
+        const bool serialEnabled = !serial.isEmpty()
+            && serial != QStringLiteral("<None>")
+            && serial.compare(QStringLiteral("none"), Qt::CaseInsensitive) != 0;
+        if (serialShared) {
+            serialShared->setEnabled(serialEnabled);
+        }
+        if (serialCtsRts) {
+            serialCtsRts->setEnabled(serialEnabled);
+        }
+        if (serialDirect) {
+            serialDirect->setEnabled(serialEnabled);
+        }
+        if (serialStatus) {
+            serialStatus->setEnabled(serialEnabled);
+        }
+        if (serialRingIndicator) {
+            serialRingIndicator->setEnabled(serialEnabled);
+        }
+        if (samplerStereo) {
+            samplerStereo->setEnabled(samplerDevice && samplerDevice->currentText() != QStringLiteral("<None>"));
+        }
+        const bool midiActive = midiOut && midiIn
+            && midiOut->currentText() != QStringLiteral("<None>")
+            && midiIn->currentText() != QStringLiteral("<None>");
+        if (midiRouter) {
+            midiRouter->setEnabled(midiActive);
+        }
+    }
+
     QWidget *makeInputPage()
     {
         QWidget *page = makePage();
@@ -3796,6 +4010,24 @@ private:
         tabletMode->setCurrentText(QStringLiteral("-"));
         tabletLibrary->setChecked(false);
         updateMouseExtraState();
+        printerPort->setCurrentText(QStringLiteral("<None>"));
+        printerType->setCurrentText(QStringLiteral("Passthrough"));
+        printerAutoFlush->setValue(5);
+        ghostscriptParams->clear();
+        samplerDevice->setCurrentText(QStringLiteral("<None>"));
+        samplerStereo->setChecked(false);
+        serialPort->setCurrentText(QStringLiteral("<None>"));
+        serialShared->setChecked(false);
+        serialCtsRts->setChecked(true);
+        serialDirect->setChecked(false);
+        uaeSerial->setChecked(false);
+        serialStatus->setChecked(true);
+        serialRingIndicator->setChecked(false);
+        midiOut->setCurrentText(QStringLiteral("<None>"));
+        midiIn->setCurrentText(QStringLiteral("<None>"));
+        midiRouter->setChecked(false);
+        protectionDongle->setCurrentText(QStringLiteral("None"));
+        updateIoPortsState();
         romsPath->setText(QDir::homePath());
         configsPath->setText(QDir::homePath());
         const QDir home(QDir::homePath());
@@ -4964,6 +5196,34 @@ private:
             settings.insert(QStringLiteral("floppy%1soundvolume_empty").arg(i), QString::number(floppySoundEmptyAttenuationValue(i)));
             settings.insert(QStringLiteral("floppy%1soundvolume_disk").arg(i), QString::number(floppySoundDiskAttenuationValue(i)));
         }
+        const QString printerTypeValue = configChoiceValue(printerTypeChoices, int(sizeof(printerTypeChoices) / sizeof(printerTypeChoices[0])), printerType->currentText());
+        settings.insert(QStringLiteral("parallel_matrix_emulation"),
+            printerTypeValue.startsWith(QStringLiteral("postscript_")) ? QStringLiteral("none") : printerTypeValue);
+        settings.insert(QStringLiteral("parallel_postscript_detection"),
+            printerTypeValue.startsWith(QStringLiteral("postscript_")) ? QStringLiteral("true") : QStringLiteral("false"));
+        settings.insert(QStringLiteral("parallel_postscript_emulation"),
+            printerTypeValue == QStringLiteral("postscript_emulation") ? QStringLiteral("true") : QStringLiteral("false"));
+        settings.insert(QStringLiteral("parallel_autoflush"), QString::number(printerAutoFlush->value()));
+        if (!ghostscriptParams->text().trimmed().isEmpty()) {
+            settings.insert(QStringLiteral("ghostscript_parameters"), ghostscriptParams->text().trimmed());
+        }
+        settings.insert(QStringLiteral("sampler_stereo"), samplerStereo->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
+        const QString serial = serialPort->currentText().trimmed();
+        if (!serial.isEmpty()
+            && serial != QStringLiteral("<None>")
+            && serial.compare(QStringLiteral("none"), Qt::CaseInsensitive) != 0) {
+            settings.insert(QStringLiteral("unix.serial_port"), serial);
+        }
+        settings.insert(QStringLiteral("serial_on_demand"), serialShared->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
+        settings.insert(QStringLiteral("serial_hardware_ctsrts"), serialCtsRts->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
+        settings.insert(QStringLiteral("serial_status"), serialStatus->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
+        settings.insert(QStringLiteral("serial_ri"), serialRingIndicator->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
+        settings.insert(QStringLiteral("serial_direct"), serialDirect->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
+        settings.insert(QStringLiteral("uaeserial"), uaeSerial->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
+        const QString dongle = configChoiceValue(dongleChoices, int(sizeof(dongleChoices) / sizeof(dongleChoices[0])), protectionDongle->currentText());
+        if (!dongle.isEmpty() && dongle != QStringLiteral("none")) {
+            settings.insert(QStringLiteral("dongle"), dongle);
+        }
         if (rtgMem->currentText() != QStringLiteral("None")) {
             settings.insert(QStringLiteral("gfxcard_size"), QString::number(megabytesFromText(rtgMem->currentText())));
             settings.insert(QStringLiteral("gfxcard_type"), rtgType->currentText());
@@ -5147,6 +5407,20 @@ private:
             QStringLiteral("floppy1soundvolume_disk"),
             QStringLiteral("floppy2soundvolume_disk"),
             QStringLiteral("floppy3soundvolume_disk"),
+            QStringLiteral("parallel_matrix_emulation"),
+            QStringLiteral("parallel_postscript_detection"),
+            QStringLiteral("parallel_postscript_emulation"),
+            QStringLiteral("parallel_autoflush"),
+            QStringLiteral("ghostscript_parameters"),
+            QStringLiteral("sampler_stereo"),
+            QStringLiteral("unix.serial_port"),
+            QStringLiteral("serial_on_demand"),
+            QStringLiteral("serial_hardware_ctsrts"),
+            QStringLiteral("serial_status"),
+            QStringLiteral("serial_ri"),
+            QStringLiteral("serial_direct"),
+            QStringLiteral("uaeserial"),
+            QStringLiteral("dongle"),
             QStringLiteral("gfxcard_size"),
             QStringLiteral("gfxcard_type"),
             QStringLiteral("gfxcard_options"),
@@ -5731,6 +6005,50 @@ private:
             floppySoundDiskAttenuation[drive] = qBound(0, value.toInt(), 100);
             if (drive == currentFloppySoundDrive) {
                 loadSelectedFloppySound();
+            }
+        } else if (key == QStringLiteral("parallel_matrix_emulation")) {
+            printerType->setCurrentText(configChoiceDisplay(printerTypeChoices, int(sizeof(printerTypeChoices) / sizeof(printerTypeChoices[0])), value));
+        } else if (key == QStringLiteral("parallel_postscript_detection")) {
+            if (configBoolValue(value)) {
+                printerType->setCurrentText(QStringLiteral("PostScript (Passthrough)"));
+            } else if (printerType->currentText().startsWith(QStringLiteral("PostScript"))) {
+                printerType->setCurrentText(QStringLiteral("Passthrough"));
+            }
+        } else if (key == QStringLiteral("parallel_postscript_emulation")) {
+            if (configBoolValue(value)) {
+                printerType->setCurrentText(QStringLiteral("PostScript (Emulation)"));
+            } else if (printerType->currentText() == QStringLiteral("PostScript (Emulation)")) {
+                printerType->setCurrentText(QStringLiteral("PostScript (Passthrough)"));
+            }
+        } else if (key == QStringLiteral("parallel_autoflush")) {
+            printerAutoFlush->setValue(qBound(0, value.toInt(), 3600));
+        } else if (key == QStringLiteral("ghostscript_parameters")) {
+            ghostscriptParams->setText(value);
+        } else if (key == QStringLiteral("sampler_stereo")) {
+            samplerStereo->setChecked(configBoolValue(value));
+            updateIoPortsState();
+        } else if (key == QStringLiteral("unix.serial_port") || key == QStringLiteral("serial_port")) {
+            serialPort->setCurrentText(value.isEmpty() ? QStringLiteral("<None>") : value);
+            updateIoPortsState();
+        } else if (key == QStringLiteral("serial_on_demand")) {
+            serialShared->setChecked(configBoolValue(value));
+        } else if (key == QStringLiteral("serial_hardware_ctsrts")) {
+            serialCtsRts->setChecked(configBoolValue(value));
+        } else if (key == QStringLiteral("serial_status")) {
+            serialStatus->setChecked(configBoolValue(value));
+        } else if (key == QStringLiteral("serial_ri")) {
+            serialRingIndicator->setChecked(configBoolValue(value));
+        } else if (key == QStringLiteral("serial_direct")) {
+            serialDirect->setChecked(configBoolValue(value));
+        } else if (key == QStringLiteral("uaeserial")) {
+            uaeSerial->setChecked(configBoolValue(value));
+        } else if (key == QStringLiteral("dongle")) {
+            bool ok = false;
+            const int index = value.toInt(&ok);
+            if (ok && index >= 0 && index < int(sizeof(dongleChoices) / sizeof(dongleChoices[0]))) {
+                protectionDongle->setCurrentText(QString::fromLatin1(dongleChoices[index].display));
+            } else {
+                protectionDongle->setCurrentText(configChoiceDisplay(dongleChoices, int(sizeof(dongleChoices) / sizeof(dongleChoices[0])), value));
             }
         } else if (key.startsWith(QStringLiteral("joyport")) && key.size() == 8) {
             bool ok = false;
