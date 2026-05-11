@@ -1202,6 +1202,66 @@ static QString floppySpeedText(int value)
     return QStringLiteral("%1%").arg(value);
 }
 
+static int jitCacheSizeFromPosition(int position)
+{
+    if (position <= 0) {
+        return 0;
+    }
+    return 1024 << qBound(0, position - 1, 7);
+}
+
+static int jitCachePositionFromSize(int size)
+{
+    if (size <= 0) {
+        return 0;
+    }
+    int position = 1;
+    int cacheSize = 1024;
+    while (position < 8 && size > cacheSize) {
+        cacheSize <<= 1;
+        position++;
+    }
+    return position;
+}
+
+static QString jitCacheText(int size)
+{
+    return QStringLiteral("%1 MB").arg(size > 0 ? size / 1024 : 0);
+}
+
+static int cpuMultiplierValue(const QString &text)
+{
+    if (text.startsWith(QStringLiteral("2x"))) {
+        return 2;
+    }
+    if (text.startsWith(QStringLiteral("4x"))) {
+        return 4;
+    }
+    if (text.startsWith(QStringLiteral("8x"))) {
+        return 8;
+    }
+    if (text.startsWith(QStringLiteral("16x"))) {
+        return 16;
+    }
+    return 1;
+}
+
+static QString cpuMultiplierText(int value)
+{
+    switch (value) {
+    case 2:
+        return QStringLiteral("2x (A500)");
+    case 4:
+        return QStringLiteral("4x (A1200)");
+    case 8:
+        return QStringLiteral("8x");
+    case 16:
+        return QStringLiteral("16x");
+    default:
+        return QStringLiteral("1x");
+    }
+}
+
 static bool configBoolValue(const QString &value)
 {
     return value.compare(QStringLiteral("true"), Qt::CaseInsensitive) == 0
@@ -1406,9 +1466,28 @@ private:
     QButtonGroup *fpuButtons = nullptr;
     QCheckBox *cpu24Bit = nullptr;
     QCheckBox *moreCompatible = nullptr;
+    QCheckBox *cpuDataCache = nullptr;
     QCheckBox *jit = nullptr;
+    QCheckBox *cpuUnimplemented = nullptr;
+    QButtonGroup *mmuButtons = nullptr;
     QComboBox *chipset = nullptr;
     QComboBox *chipsetCompatible = nullptr;
+    QCheckBox *fpuStrict = nullptr;
+    QCheckBox *fpuUnimplemented = nullptr;
+    QComboBox *fpuMode = nullptr;
+    QButtonGroup *cpuSpeedButtons = nullptr;
+    QSlider *cpuSpeed = nullptr;
+    QLineEdit *cpuSpeedLabel = nullptr;
+    QComboBox *cpuFrequency = nullptr;
+    QLineEdit *cpuFrequencyCustom = nullptr;
+    QSlider *jitCache = nullptr;
+    QLineEdit *jitCacheLabel = nullptr;
+    QCheckBox *jitFpu = nullptr;
+    QCheckBox *jitConstJump = nullptr;
+    QCheckBox *jitHardFlush = nullptr;
+    QButtonGroup *jitTrust = nullptr;
+    QCheckBox *jitNoFlags = nullptr;
+    QCheckBox *jitCatchFault = nullptr;
 
     QComboBox *chipMem = nullptr;
     QComboBox *z2Fast = nullptr;
@@ -1697,6 +1776,7 @@ private:
             cpuButtons->addButton(button, name.mid(2).toInt() + 68000);
             connect(button, &QRadioButton::clicked, this, [this]() {
                 updateFpuControls();
+                updateCpuControlState();
             });
             if (name == QStringLiteral("68020")) {
                 button->setChecked(true);
@@ -1704,11 +1784,28 @@ private:
         }
         cpu24Bit = new QCheckBox(QStringLiteral("24-bit addressing"));
         moreCompatible = new QCheckBox(QStringLiteral("More compatible"));
+        cpuDataCache = new QCheckBox(QStringLiteral("Data cache emulation"));
         jit = new QCheckBox(QStringLiteral("JIT"));
+        cpuUnimplemented = new QCheckBox(QStringLiteral("Unimplemented CPU emu"));
         cpu->addWidget(cpu24Bit);
         cpu->addWidget(moreCompatible);
+        cpu->addWidget(cpuDataCache);
         cpu->addWidget(jit);
+        cpu->addWidget(cpuUnimplemented);
         left->addWidget(groupBox(QStringLiteral("CPU"), cpu));
+
+        mmuButtons = new QButtonGroup(this);
+        QHBoxLayout *mmu = new QHBoxLayout;
+        const QStringList mmus = { QStringLiteral("None"), QStringLiteral("MMU"), QStringLiteral("EC") };
+        for (int i = 0; i < mmus.size(); i++) {
+            QRadioButton *button = new QRadioButton(mmus[i]);
+            mmu->addWidget(button);
+            mmuButtons->addButton(button, i);
+            if (i == 0) {
+                button->setChecked(true);
+            }
+        }
+        left->addWidget(groupBox(QStringLiteral("MMU"), mmu));
 
         fpuButtons = new QButtonGroup(this);
         QVBoxLayout *fpu = new QVBoxLayout;
@@ -1722,38 +1819,99 @@ private:
                 button->setChecked(true);
             }
         }
-        updateFpuControls();
+        fpuStrict = new QCheckBox(QStringLiteral("More compatible"));
+        fpuUnimplemented = new QCheckBox(QStringLiteral("Unimplemented FPU emu"));
+        fpuMode = combo({
+            QStringLiteral("Host (64-bit)"),
+            QStringLiteral("Host (80-bit)"),
+            QStringLiteral("Softfloat (80-bit)")
+        }, QStringLiteral("Host (64-bit)"));
+        fpu->addWidget(fpuStrict);
+        fpu->addWidget(fpuUnimplemented);
+        fpu->addWidget(fpuMode);
         left->addWidget(groupBox(QStringLiteral("FPU"), fpu));
         left->addStretch();
 
         QVBoxLayout *right = new QVBoxLayout;
-        QVBoxLayout *speed = new QVBoxLayout;
-        speed->addWidget(new QRadioButton(QStringLiteral("Fastest possible")));
+        QGridLayout *speed = new QGridLayout;
+        cpuSpeedButtons = new QButtonGroup(this);
+        QRadioButton *fastest = new QRadioButton(QStringLiteral("Fastest possible"));
         QRadioButton *approx = new QRadioButton(QStringLiteral("Approximate A500/A1200 or cycle-exact"));
         approx->setChecked(true);
-        speed->addWidget(approx);
-        QSlider *cpuSpeed = new QSlider(Qt::Horizontal);
-        cpuSpeed->setRange(0, 10);
+        cpuSpeedButtons->addButton(fastest, 1);
+        cpuSpeedButtons->addButton(approx, 0);
+        speed->addWidget(fastest, 0, 0, 1, 2);
+        speed->addWidget(approx, 1, 0, 1, 2);
+        cpuSpeed = new QSlider(Qt::Horizontal);
+        cpuSpeed->setRange(-9, 50);
         cpuSpeed->setTickInterval(1);
         cpuSpeed->setTickPosition(QSlider::TicksAbove);
-        speed->addWidget(cpuSpeed);
+        cpuSpeedLabel = new QLineEdit;
+        cpuSpeedLabel->setReadOnly(true);
+        cpuSpeedLabel->setAlignment(Qt::AlignCenter);
+        cpuSpeedLabel->setMinimumWidth(60);
+        speed->addWidget(label(QStringLiteral("CPU Speed")), 2, 0);
+        speed->addWidget(cpuSpeed, 2, 1);
+        speed->addWidget(cpuSpeedLabel, 2, 2);
         right->addWidget(groupBox(QStringLiteral("CPU Emulation Speed"), speed));
 
         QGridLayout *cycle = new QGridLayout;
+        cpuFrequency = combo({
+            QStringLiteral("1x"),
+            QStringLiteral("2x (A500)"),
+            QStringLiteral("4x (A1200)"),
+            QStringLiteral("8x"),
+            QStringLiteral("16x"),
+            QStringLiteral("Custom")
+        }, QStringLiteral("4x (A1200)"));
+        cpuFrequencyCustom = new QLineEdit;
+        cpuFrequencyCustom->setPlaceholderText(QStringLiteral("MHz"));
         cycle->addWidget(label(QStringLiteral("CPU Frequency")), 0, 0);
-        cycle->addWidget(combo({ QStringLiteral("Default"), QStringLiteral("7 MHz"), QStringLiteral("14 MHz"), QStringLiteral("28 MHz") }), 0, 1);
-        cycle->addWidget(new QLineEdit, 0, 2);
+        cycle->addWidget(cpuFrequency, 0, 1);
+        cycle->addWidget(cpuFrequencyCustom, 0, 2);
         right->addWidget(groupBox(QStringLiteral("Cycle-exact CPU Emulation Speed"), cycle));
 
         QGridLayout *jitBox = new QGridLayout;
+        jitCache = new QSlider(Qt::Horizontal);
+        jitCache->setRange(0, 8);
+        jitCache->setTickInterval(1);
+        jitCache->setTickPosition(QSlider::TicksAbove);
+        jitCacheLabel = new QLineEdit;
+        jitCacheLabel->setReadOnly(true);
+        jitCacheLabel->setAlignment(Qt::AlignCenter);
+        jitCacheLabel->setMinimumWidth(60);
+        jitFpu = new QCheckBox(QStringLiteral("FPU support"));
+        jitConstJump = new QCheckBox(QStringLiteral("Constant jump"));
+        jitHardFlush = new QCheckBox(QStringLiteral("Hard flush"));
+        jitTrust = new QButtonGroup(this);
+        QRadioButton *jitDirect = new QRadioButton(QStringLiteral("Direct"));
+        QRadioButton *jitIndirect = new QRadioButton(QStringLiteral("Indirect"));
+        jitTrust->addButton(jitDirect, 0);
+        jitTrust->addButton(jitIndirect, 1);
+        jitDirect->setChecked(true);
+        jitNoFlags = new QCheckBox(QStringLiteral("No flags"));
+        jitCatchFault = new QCheckBox(QStringLiteral("Catch unexpected exceptions"));
         jitBox->addWidget(label(QStringLiteral("Cache size:")), 0, 0);
-        jitBox->addWidget(new QSlider(Qt::Horizontal), 0, 1);
-        jitBox->addWidget(new QLineEdit(QStringLiteral("0")), 0, 2);
-        jitBox->addWidget(new QCheckBox(QStringLiteral("FPU support")), 1, 0);
-        jitBox->addWidget(new QCheckBox(QStringLiteral("Constant jump")), 1, 1);
-        jitBox->addWidget(new QCheckBox(QStringLiteral("No flags")), 1, 2);
+        jitBox->addWidget(jitCache, 0, 1);
+        jitBox->addWidget(jitCacheLabel, 0, 2);
+        jitBox->addWidget(jitFpu, 1, 0);
+        jitBox->addWidget(jitConstJump, 1, 1);
+        jitBox->addWidget(jitHardFlush, 1, 2);
+        jitBox->addWidget(jitDirect, 2, 0);
+        jitBox->addWidget(jitIndirect, 2, 1);
+        jitBox->addWidget(jitNoFlags, 2, 2);
+        jitBox->addWidget(jitCatchFault, 3, 0, 1, 3);
         right->addWidget(groupBox(QStringLiteral("Advanced JIT Settings"), jitBox));
         right->addStretch();
+
+        connect(cpu24Bit, &QCheckBox::toggled, this, [this]() { updateCpuControlState(); });
+        connect(moreCompatible, &QCheckBox::toggled, this, [this]() { updateCpuControlState(); });
+        connect(jit, &QCheckBox::toggled, this, [this]() { updateCpuControlState(); });
+        connect(fpuButtons, QOverload<QAbstractButton *>::of(&QButtonGroup::buttonClicked), this, [this]() { updateCpuControlState(); });
+        connect(cpuSpeed, &QSlider::valueChanged, this, [this]() { updateCpuSpeedLabel(); });
+        connect(jitCache, &QSlider::valueChanged, this, [this]() { updateJitCacheLabel(); });
+        updateFpuControls();
+        updateCpuControlState();
 
         root->addLayout(left, 1);
         root->addLayout(right, 2);
@@ -3043,6 +3201,80 @@ private:
         floppySpeedLabel->setText(floppySpeedText(floppySpeedConfigValue(floppySpeed->value())));
     }
 
+    void updateCpuSpeedLabel()
+    {
+        if (!cpuSpeed || !cpuSpeedLabel) {
+            return;
+        }
+        const int value = cpuSpeed->value() * 10;
+        cpuSpeedLabel->setText(QStringLiteral("%1%2%").arg(value >= 0 ? QStringLiteral("+") : QString()).arg(value));
+    }
+
+    void updateJitCacheLabel()
+    {
+        if (!jitCache || !jitCacheLabel) {
+            return;
+        }
+        jitCacheLabel->setText(jitCacheText(jit->isChecked() ? jitCacheSizeFromPosition(jitCache->value()) : 0));
+    }
+
+    void updateCpuControlState()
+    {
+        const int cpu = selectedCpuModel();
+        const int fpu = fpuModelConfigValue(cpu);
+        bool jitEnabled = jit && jit->isChecked();
+        if (cpu24Bit) {
+            cpu24Bit->setEnabled(cpu <= 68030);
+        }
+        if (jit) {
+            jit->setEnabled(cpu >= 68020 && !cpu24Bit->isChecked());
+            if (!jit->isEnabled() && jit->isChecked()) {
+                jit->setChecked(false);
+            }
+            jitEnabled = jit->isChecked();
+        }
+        if (cpuDataCache) {
+            cpuDataCache->setEnabled(cpu >= 68030 && moreCompatible->isChecked() && !jitEnabled);
+        }
+        if (cpuUnimplemented) {
+            cpuUnimplemented->setEnabled(cpu == 68060 && !jitEnabled);
+        }
+        if (mmuButtons) {
+            const bool mmuEnabled = cpu >= 68030 && !jitEnabled;
+            for (QAbstractButton *button : mmuButtons->buttons()) {
+                button->setEnabled(button == mmuButtons->button(0) || mmuEnabled);
+            }
+            if (!mmuEnabled && mmuButtons->checkedId() != 0) {
+                mmuButtons->button(0)->setChecked(true);
+            }
+        }
+        const bool hasFpu = fpu != 0;
+        if (fpuStrict) {
+            fpuStrict->setEnabled(hasFpu);
+        }
+        if (fpuUnimplemented) {
+            fpuUnimplemented->setEnabled(hasFpu && !jitEnabled);
+        }
+        if (fpuMode) {
+            fpuMode->setEnabled(hasFpu);
+        }
+        const bool jitOptions = jitEnabled && cpu >= 68020 && !cpu24Bit->isChecked();
+        for (QWidget *widget : { static_cast<QWidget *>(jitCache), static_cast<QWidget *>(jitCacheLabel), static_cast<QWidget *>(jitConstJump), static_cast<QWidget *>(jitHardFlush), static_cast<QWidget *>(jitNoFlags), static_cast<QWidget *>(jitCatchFault) }) {
+            if (widget) {
+                widget->setEnabled(jitOptions);
+            }
+        }
+        if (jitFpu) {
+            jitFpu->setEnabled(jitOptions && hasFpu);
+        }
+        if (jitTrust) {
+            for (QAbstractButton *button : jitTrust->buttons()) {
+                button->setEnabled(jitOptions);
+            }
+        }
+        updateJitCacheLabel();
+    }
+
     void resetDefaults()
     {
         loadedConfig = WinUaeQtConfig();
@@ -3072,6 +3304,34 @@ private:
         ntsc->setChecked(false);
 
         applyModelPreset(QStringLiteral("A1200"));
+        setFpuButton(0);
+        moreCompatible->setChecked(false);
+        cpuDataCache->setChecked(false);
+        cpuUnimplemented->setChecked(true);
+        if (QAbstractButton *button = mmuButtons->button(0)) {
+            button->setChecked(true);
+        }
+        fpuStrict->setChecked(false);
+        fpuUnimplemented->setChecked(true);
+        fpuMode->setCurrentText(QStringLiteral("Host (64-bit)"));
+        if (QAbstractButton *button = cpuSpeedButtons->button(0)) {
+            button->setChecked(true);
+        }
+        cpuSpeed->setValue(0);
+        updateCpuSpeedLabel();
+        cpuFrequency->setCurrentText(QStringLiteral("4x (A1200)"));
+        cpuFrequencyCustom->clear();
+        jit->setChecked(false);
+        jitCache->setValue(jitCachePositionFromSize(8192));
+        jitFpu->setChecked(false);
+        jitConstJump->setChecked(true);
+        jitHardFlush->setChecked(false);
+        if (QAbstractButton *button = jitTrust->button(0)) {
+            button->setChecked(true);
+        }
+        jitNoFlags->setChecked(false);
+        jitCatchFault->setChecked(true);
+        updateCpuControlState();
         chipMem->setCurrentText(QStringLiteral("2 MB"));
         z2Fast->setCurrentText(QStringLiteral("None"));
         slowMem->setCurrentText(QStringLiteral("None"));
@@ -3231,6 +3491,7 @@ private:
             button->setChecked(true);
         }
         updateFpuControls();
+        updateCpuControlState();
     }
 
     void setFpuButton(int model)
@@ -3240,6 +3501,7 @@ private:
             button->setChecked(true);
         }
         updateFpuControls();
+        updateCpuControlState();
     }
 
     int selectedCpuModel() const
@@ -3262,6 +3524,11 @@ private:
         const int cpu = selectedCpuModel();
         if (QAbstractButton *internal = fpuButtons->button(FpuInternal)) {
             internal->setEnabled(cpu >= 68040);
+            if (!internal->isEnabled() && internal->isChecked()) {
+                if (QAbstractButton *none = fpuButtons->button(0)) {
+                    none->setChecked(true);
+                }
+            }
         }
     }
 
@@ -4211,11 +4478,33 @@ private:
         settings.insert(QStringLiteral("chipset"), chipset->currentText().toLower());
         settings.insert(QStringLiteral("chipset_compatible"), chipsetCompatible->currentText());
         settings.insert(QStringLiteral("cpu_model"), QString::number(cpu));
+        settings.insert(QStringLiteral("cpu_speed"), cpuSpeedButtons->checkedId() == 1 ? QStringLiteral("max") : QStringLiteral("real"));
+        if (cpuSpeed->value() != 0) {
+            settings.insert(QStringLiteral("cpu_throttle"), QString::number(cpuSpeed->value() * 100.0, 'f', 1));
+        }
+        settings.insert(QStringLiteral("cpu_compatible"), moreCompatible->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
         if (fpu) {
             settings.insert(QStringLiteral("fpu_model"), QString::number(fpu));
         }
-        if (cpu >= 68020) {
-            settings.insert(QStringLiteral("cpu_24bit_addressing"), cpu24Bit->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
+        settings.insert(QStringLiteral("cpu_24bit_addressing"), cpu24Bit->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
+        if (mmuButtons->checkedId() == 1 && cpu >= 68030) {
+            settings.insert(QStringLiteral("mmu_model"), QString::number(cpu));
+        } else if (mmuButtons->checkedId() == 2 && cpu >= 68030) {
+            settings.insert(QStringLiteral("mmu_model"), QStringLiteral("68ec0%1").arg(cpu % 100, 2, 10, QLatin1Char('0')));
+        }
+        settings.insert(QStringLiteral("cpu_no_unimplemented"), cpuUnimplemented->isChecked() ? QStringLiteral("false") : QStringLiteral("true"));
+        settings.insert(QStringLiteral("fpu_no_unimplemented"), fpuUnimplemented->isChecked() ? QStringLiteral("false") : QStringLiteral("true"));
+        settings.insert(QStringLiteral("fpu_strict"), fpuStrict->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
+        settings.insert(QStringLiteral("fpu_softfloat"), fpuMode->currentText() == QStringLiteral("Softfloat (80-bit)") ? QStringLiteral("true") : QStringLiteral("false"));
+        settings.insert(QStringLiteral("fpu_msvc_long_double"), fpuMode->currentText() == QStringLiteral("Host (80-bit)") ? QStringLiteral("true") : QStringLiteral("false"));
+        if (cpuFrequency->currentText() == QStringLiteral("Custom")) {
+            bool ok = false;
+            const double mhz = cpuFrequencyCustom->text().toDouble(&ok);
+            if (ok && mhz >= 1.0 && mhz < 99.0) {
+                settings.insert(QStringLiteral("cpu_frequency"), QString::number(qRound64(mhz * 1000000.0)));
+            }
+        } else {
+            settings.insert(QStringLiteral("cpu_multiplier"), QString::number(cpuMultiplierValue(cpuFrequency->currentText())));
         }
         settings.insert(QStringLiteral("chipmem_size"), QString::number(chipMemConfigValue()));
         if (z2Fast->currentText() != QStringLiteral("None")) {
@@ -4228,7 +4517,17 @@ private:
         if (z3Fast->currentText() != QStringLiteral("None")) {
             settings.insert(QStringLiteral("z3mem_size"), QString::number(megabytesFromText(z3Fast->currentText())));
         }
-        settings.insert(QStringLiteral("cachesize"), jit->isChecked() ? QStringLiteral("8") : QStringLiteral("0"));
+        settings.insert(QStringLiteral("cachesize"), QString::number(jit->isChecked() ? jitCacheSizeFromPosition(jitCache->value()) : 0));
+        settings.insert(QStringLiteral("compfpu"), jitFpu->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
+        settings.insert(QStringLiteral("comp_constjump"), jitConstJump->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
+        settings.insert(QStringLiteral("comp_flushmode"), jitHardFlush->isChecked() ? QStringLiteral("hard") : QStringLiteral("soft"));
+        settings.insert(QStringLiteral("comp_nf"), jitNoFlags->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
+        settings.insert(QStringLiteral("comp_catchfault"), jitCatchFault->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
+        const QString trust = jitTrust->checkedId() == 1 ? QStringLiteral("indirect") : QStringLiteral("direct");
+        settings.insert(QStringLiteral("comp_trustbyte"), trust);
+        settings.insert(QStringLiteral("comp_trustword"), trust);
+        settings.insert(QStringLiteral("comp_trustlong"), trust);
+        settings.insert(QStringLiteral("comp_trustnaddr"), trust);
         settings.insert(QStringLiteral("sound_output"), soundOutputConfigValue(soundOutputButtons->checkedId()));
         settings.insert(QStringLiteral("sound_auto"), soundAutomatic->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
         settings.insert(QStringLiteral("sound_volume"), QString::number(100 - soundMasterVolume->value()));
@@ -4370,13 +4669,33 @@ private:
             QStringLiteral("chipset"),
             QStringLiteral("chipset_compatible"),
             QStringLiteral("cpu_model"),
+            QStringLiteral("cpu_speed"),
+            QStringLiteral("cpu_throttle"),
+            QStringLiteral("cpu_compatible"),
             QStringLiteral("fpu_model"),
             QStringLiteral("cpu_24bit_addressing"),
+            QStringLiteral("mmu_model"),
+            QStringLiteral("cpu_no_unimplemented"),
+            QStringLiteral("fpu_no_unimplemented"),
+            QStringLiteral("fpu_strict"),
+            QStringLiteral("fpu_softfloat"),
+            QStringLiteral("fpu_msvc_long_double"),
+            QStringLiteral("cpu_multiplier"),
+            QStringLiteral("cpu_frequency"),
             QStringLiteral("chipmem_size"),
             QStringLiteral("fastmem_size"),
             QStringLiteral("bogomem_size"),
             QStringLiteral("z3mem_size"),
             QStringLiteral("cachesize"),
+            QStringLiteral("compfpu"),
+            QStringLiteral("comp_constjump"),
+            QStringLiteral("comp_flushmode"),
+            QStringLiteral("comp_nf"),
+            QStringLiteral("comp_catchfault"),
+            QStringLiteral("comp_trustbyte"),
+            QStringLiteral("comp_trustword"),
+            QStringLiteral("comp_trustlong"),
+            QStringLiteral("comp_trustnaddr"),
             QStringLiteral("sound_output"),
             QStringLiteral("sound_auto"),
             QStringLiteral("sound_volume"),
@@ -4614,10 +4933,73 @@ private:
             quickModel->setCurrentText(value);
         } else if (key == QStringLiteral("cpu_model")) {
             setCpuButton(value.toInt());
+        } else if (key == QStringLiteral("cpu_speed")) {
+            const bool fastest = value.compare(QStringLiteral("max"), Qt::CaseInsensitive) == 0;
+            if (QAbstractButton *button = cpuSpeedButtons->button(fastest ? 1 : 0)) {
+                button->setChecked(true);
+            }
+        } else if (key == QStringLiteral("cpu_throttle")) {
+            cpuSpeed->setValue(qBound(cpuSpeed->minimum(), qRound(value.toDouble() / 100.0), cpuSpeed->maximum()));
+            updateCpuSpeedLabel();
+        } else if (key == QStringLiteral("cpu_compatible")) {
+            moreCompatible->setChecked(configBoolValue(value));
+            updateCpuControlState();
         } else if (key == QStringLiteral("fpu_model")) {
             setFpuButton(value.toInt());
         } else if (key == QStringLiteral("cpu_24bit_addressing")) {
             cpu24Bit->setChecked(value.compare(QStringLiteral("true"), Qt::CaseInsensitive) == 0);
+            updateCpuControlState();
+        } else if (key == QStringLiteral("mmu_model")) {
+            const QString lower = value.toLower();
+            const int id = lower.startsWith(QStringLiteral("68ec")) ? 2 : (value.toInt() > 0 ? 1 : 0);
+            if (QAbstractButton *button = mmuButtons->button(id)) {
+                button->setChecked(true);
+            }
+        } else if (key == QStringLiteral("cpu_no_unimplemented")) {
+            cpuUnimplemented->setChecked(!configBoolValue(value));
+        } else if (key == QStringLiteral("fpu_no_unimplemented")) {
+            fpuUnimplemented->setChecked(!configBoolValue(value));
+        } else if (key == QStringLiteral("fpu_strict")) {
+            fpuStrict->setChecked(configBoolValue(value));
+        } else if (key == QStringLiteral("fpu_softfloat")) {
+            if (configBoolValue(value)) {
+                fpuMode->setCurrentText(QStringLiteral("Softfloat (80-bit)"));
+            } else if (fpuMode->currentText() == QStringLiteral("Softfloat (80-bit)")) {
+                fpuMode->setCurrentText(QStringLiteral("Host (64-bit)"));
+            }
+        } else if (key == QStringLiteral("fpu_msvc_long_double")) {
+            if (configBoolValue(value)) {
+                fpuMode->setCurrentText(QStringLiteral("Host (80-bit)"));
+            } else if (fpuMode->currentText() == QStringLiteral("Host (80-bit)")) {
+                fpuMode->setCurrentText(QStringLiteral("Host (64-bit)"));
+            }
+        } else if (key == QStringLiteral("cpu_multiplier")) {
+            cpuFrequency->setCurrentText(cpuMultiplierText(value.toInt()));
+        } else if (key == QStringLiteral("cpu_frequency")) {
+            cpuFrequency->setCurrentText(QStringLiteral("Custom"));
+            cpuFrequencyCustom->setText(QString::number(value.toDouble() / 1000000.0, 'f', 6));
+        } else if (key == QStringLiteral("cachesize")) {
+            const int size = value.toInt();
+            jit->setChecked(size > 0);
+            jitCache->setValue(jitCachePositionFromSize(size));
+            updateCpuControlState();
+        } else if (key == QStringLiteral("compfpu")) {
+            jitFpu->setChecked(configBoolValue(value));
+        } else if (key == QStringLiteral("comp_constjump")) {
+            jitConstJump->setChecked(configBoolValue(value));
+        } else if (key == QStringLiteral("comp_flushmode")) {
+            jitHardFlush->setChecked(value.compare(QStringLiteral("hard"), Qt::CaseInsensitive) == 0 || configBoolValue(value));
+        } else if (key == QStringLiteral("comp_nf")) {
+            jitNoFlags->setChecked(configBoolValue(value));
+        } else if (key == QStringLiteral("comp_catchfault")) {
+            jitCatchFault->setChecked(configBoolValue(value));
+        } else if (key == QStringLiteral("comp_trustbyte")
+            || key == QStringLiteral("comp_trustword")
+            || key == QStringLiteral("comp_trustlong")
+            || key == QStringLiteral("comp_trustnaddr")) {
+            if (QAbstractButton *button = jitTrust->button(value.compare(QStringLiteral("indirect"), Qt::CaseInsensitive) == 0 ? 1 : 0)) {
+                button->setChecked(true);
+            }
         } else if (key == QStringLiteral("chipmem_size")) {
             const QMap<int, QString> map = { { 1, QStringLiteral("512 KB") }, { 2, QStringLiteral("1 MB") }, { 4, QStringLiteral("2 MB") }, { 8, QStringLiteral("4 MB") }, { 16, QStringLiteral("8 MB") } };
             chipMem->setCurrentText(map.value(value.toInt(), QStringLiteral("2 MB")));
