@@ -2387,6 +2387,14 @@ private:
     QComboBox *cdSlotType = nullptr;
     QComboBox *cdSlotPath = nullptr;
     QCheckBox *cdSpeedTurbo = nullptr;
+    QCheckBox *hostDriveAutomount = nullptr;
+    QCheckBox *hostRemovableDrives = nullptr;
+    QCheckBox *hostNetworkDrives = nullptr;
+    QCheckBox *hostCdDrives = nullptr;
+    QCheckBox *filesysNoFsdb = nullptr;
+    QCheckBox *hostNoRecycleBin = nullptr;
+    QCheckBox *hostAutomountRemovable = nullptr;
+    QCheckBox *filesysLimitSize = nullptr;
     QVector<WinUaeQtCdSlot> cdSlots;
     int currentCdSlot = 0;
     bool cdSlotUpdating = false;
@@ -3784,6 +3792,32 @@ private:
         buttons->addWidget(propertiesMountButton, 1, 2);
         buttons->addWidget(removeMountButton, 1, 3);
         root->addLayout(buttons);
+
+        hostDriveAutomount = new QCheckBox(QStringLiteral("Add PC drives at startup"));
+        hostRemovableDrives = new QCheckBox(QStringLiteral("Include removable drives.."));
+        hostNetworkDrives = new QCheckBox(QStringLiteral("Include network drives.."));
+        hostCdDrives = new QCheckBox(QStringLiteral("CDFS automount CD/DVD drives"));
+        filesysNoFsdb = new QCheckBox(QStringLiteral("Disable UAEFSDB-support"));
+        hostNoRecycleBin = new QCheckBox(QStringLiteral("Don't use Windows Recycle Bin"));
+        hostAutomountRemovable = new QCheckBox(QStringLiteral("Automount removable drives"));
+        filesysLimitSize = new QCheckBox(QStringLiteral("Limit size of directory drives to 1G"));
+        for (QCheckBox *check : { hostDriveAutomount, hostRemovableDrives, hostNetworkDrives, hostCdDrives, hostNoRecycleBin, hostAutomountRemovable }) {
+            check->setEnabled(false);
+            check->setToolTip(QStringLiteral("Windows host-drive automount option; Unix backend not implemented yet."));
+        }
+        filesysLimitSize->setToolTip(QStringLiteral("Workaround for old installers that calculate free space incorrectly if a directory drive is large."));
+        QGridLayout *options = new QGridLayout;
+        options->setColumnStretch(0, 1);
+        options->setColumnStretch(1, 1);
+        options->addWidget(hostDriveAutomount, 0, 0);
+        options->addWidget(hostRemovableDrives, 1, 0);
+        options->addWidget(hostNetworkDrives, 2, 0);
+        options->addWidget(hostCdDrives, 3, 0);
+        options->addWidget(filesysNoFsdb, 0, 1);
+        options->addWidget(hostNoRecycleBin, 1, 1);
+        options->addWidget(hostAutomountRemovable, 2, 1);
+        options->addWidget(filesysLimitSize, 3, 1);
+        root->addWidget(groupBox(QStringLiteral("Options"), options));
 
         cdSlotNumber = combo({});
         for (int i = 0; i < MaxCdSlots; i++) {
@@ -6705,6 +6739,14 @@ private:
             updateMountButtons();
         }
         clearCdSlots();
+        hostDriveAutomount->setChecked(false);
+        hostRemovableDrives->setChecked(false);
+        hostNetworkDrives->setChecked(false);
+        hostCdDrives->setChecked(false);
+        filesysNoFsdb->setChecked(false);
+        hostNoRecycleBin->setChecked(false);
+        hostAutomountRemovable->setChecked(false);
+        filesysLimitSize->setChecked(false);
 
         windowWidth->setText(QStringLiteral("720"));
         windowHeight->setText(QStringLiteral("568"));
@@ -8243,6 +8285,8 @@ private:
             }
         }
         settings.insert(QStringLiteral("cd_speed"), cdSpeedTurbo->isChecked() ? QStringLiteral("0") : QStringLiteral("100"));
+        settings.insert(QStringLiteral("filesys_no_fsdb"), filesysNoFsdb->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
+        settings.insert(QStringLiteral("filesys_max_size"), filesysLimitSize->isChecked() ? QString::number(950 * 1024) : QStringLiteral("0"));
         const int replaySeconds = stateReplayRate->currentText().trimmed() == QStringLiteral("-") ? -1 : stateReplayRate->currentText().toInt();
         settings.insert(QStringLiteral("state_replay_rate"), QString::number(replaySeconds > 0 ? replaySeconds * 50 : -1));
         settings.insert(QStringLiteral("state_replay_buffers"), QString::number(qMax(1, stateReplayBuffers->currentText().toInt())));
@@ -8603,6 +8647,8 @@ private:
             QStringLiteral("cdimage6"),
             QStringLiteral("cdimage7"),
             QStringLiteral("cd_speed"),
+            QStringLiteral("filesys_no_fsdb"),
+            QStringLiteral("filesys_max_size"),
             QStringLiteral("state_replay_rate"),
             QStringLiteral("state_replay_buffers"),
             QStringLiteral("state_replay_autoplay"),
@@ -8964,6 +9010,11 @@ private:
             }
         } else if (key == QStringLiteral("cd_speed")) {
             cdSpeedTurbo->setChecked(value == QStringLiteral("0"));
+        } else if (key == QStringLiteral("filesys_no_fsdb")) {
+            filesysNoFsdb->setChecked(configBoolValue(value));
+        } else if (key == QStringLiteral("filesys_max_size")) {
+            bool ok = false;
+            filesysLimitSize->setChecked(configIntegerValue(value, &ok) != 0 && ok);
         } else if (key == QStringLiteral("state_replay_rate")) {
             const int seconds = value.toInt() > 0 ? value.toInt() / 50 : -1;
             stateReplayRate->setCurrentText(seconds > 0 ? QString::number(seconds) : QStringLiteral("-"));
