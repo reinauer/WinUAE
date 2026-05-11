@@ -9,6 +9,7 @@
 
 #include "sysconfig.h"
 #include "sysdeps.h"
+#include "disk.h"
 #include "options.h"
 
 static QStringList parsedLines;
@@ -41,6 +42,12 @@ void cfgfile_parse_line(struct uae_prefs *prefs, TCHAR *line, int)
         copyText(prefs->floppyslots[0].df, sizeof prefs->floppyslots[0].df, value);
     } else if (!strcmp(key, "floppy1")) {
         copyText(prefs->floppyslots[1].df, sizeof prefs->floppyslots[1].df, value);
+    } else if (!strcmp(key, "floppy0type")) {
+        prefs->floppyslots[0].dfxtype = atoi(value);
+    } else if (!strcmp(key, "floppy1type")) {
+        prefs->floppyslots[1].dfxtype = atoi(value);
+    } else if (!strcmp(key, "floppy2type")) {
+        prefs->floppyslots[2].dfxtype = atoi(value);
     } else if (!strcmp(key, "chipset")) {
         prefs->chipset_mask = !strcmp(value, "aga") ? 0x0707 : 0x0101;
     } else if (!strcmp(key, "chipset_compatible")) {
@@ -105,6 +112,9 @@ static bool testRepresentativeConfig()
     settings.insert(QStringLiteral("kickstart_ext_rom_file"), QStringLiteral("/roms/ext.rom"));
     settings.insert(QStringLiteral("floppy0"), QStringLiteral("/disks/install.adf"));
     settings.insert(QStringLiteral("floppy1"), QStringLiteral("/disks/extras.adf"));
+    settings.insert(QStringLiteral("floppy0type"), QStringLiteral("0"));
+    settings.insert(QStringLiteral("floppy1type"), QStringLiteral("1"));
+    settings.insert(QStringLiteral("floppy2type"), QStringLiteral("-1"));
     settings.insert(QStringLiteral("nr_floppies"), QStringLiteral("2"));
     settings.insert(QStringLiteral("chipset"), QStringLiteral("aga"));
     settings.insert(QStringLiteral("chipset_compatible"), QStringLiteral("A1200"));
@@ -135,6 +145,7 @@ static bool testRepresentativeConfig()
     ok = require(ok, "adapter rejected representative config") && ok;
     ok = requireInt(parsedLines.size(), settings.size(), "parsed line count") && ok;
     ok = require(parsedLines.contains(QStringLiteral("chipset_compatible=A1200")), "chipset compatibility was not delegated") && ok;
+    ok = require(parsedLines.contains(QStringLiteral("floppy1type=1")), "floppy drive type was not delegated") && ok;
     ok = require(parsedLines.contains(QStringLiteral("fpu_model=68882")), "fpu model was not delegated") && ok;
     ok = require(parsedLines.contains(QStringLiteral("sound_output=normal")), "sound output was not delegated") && ok;
 
@@ -142,6 +153,9 @@ static bool testRepresentativeConfig()
     ok = requireText(prefs->romextfile, "/roms/ext.rom", "romextfile") && ok;
     ok = requireText(prefs->floppyslots[0].df, "/disks/install.adf", "floppy0") && ok;
     ok = requireText(prefs->floppyslots[1].df, "/disks/extras.adf", "floppy1") && ok;
+    ok = requireInt(prefs->floppyslots[0].dfxtype, DRV_35_DD, "floppy0type") && ok;
+    ok = requireInt(prefs->floppyslots[1].dfxtype, DRV_35_HD, "floppy1type") && ok;
+    ok = requireInt(prefs->floppyslots[2].dfxtype, DRV_NONE, "floppy2type") && ok;
     ok = requireInt(prefs->nr_floppies, 2, "nr_floppies") && ok;
     ok = requireInt(prefs->cs_compatible, CP_A1200, "cs_compatible") && ok;
     ok = requireInt(prefs->cpu_model, 68020, "cpu_model") && ok;
