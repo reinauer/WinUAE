@@ -1,7 +1,10 @@
 #include <QtWidgets>
 
 #include <QDesktopServices>
+#include <QFileOpenEvent>
 #include <QUrl>
+
+#include <functional>
 
 #include "config.h"
 #include "launcher.h"
@@ -2283,24 +2286,86 @@ static QString envString(const char *name)
     return QString::fromLocal8Bit(qgetenv(name));
 }
 
+static bool isConfigPath(const QString &path)
+{
+    return path.endsWith(QStringLiteral(".uae"), Qt::CaseInsensitive);
+}
+
 static QString initialConfigPathFromArguments(const QStringList &arguments)
 {
     for (int i = 1; i < arguments.size(); i++) {
         const QString arg = arguments[i];
-        if ((arg == QStringLiteral("-f") || arg == QStringLiteral("--config")) && i + 1 < arguments.size()) {
+        if ((arg == QStringLiteral("-f")
+             || arg == QStringLiteral("-config")
+             || arg == QStringLiteral("--config")) && i + 1 < arguments.size()) {
             const QString path = arguments[i + 1];
-            if (path.endsWith(QStringLiteral(".uae"), Qt::CaseInsensitive)) {
+            if (isConfigPath(path)) {
                 return path;
             }
             i++;
             continue;
         }
-        if (!arg.startsWith(QLatin1Char('-')) && arg.endsWith(QStringLiteral(".uae"), Qt::CaseInsensitive)) {
+        const QString configPrefix = QStringLiteral("-config=");
+        const QString longConfigPrefix = QStringLiteral("--config=");
+        if (arg.startsWith(configPrefix) || arg.startsWith(longConfigPrefix)) {
+            const int offset = arg.startsWith(configPrefix) ? configPrefix.size() : longConfigPrefix.size();
+            const QString path = arg.mid(offset);
+            if (isConfigPath(path)) {
+                return path;
+            }
+            continue;
+        }
+        if (!arg.startsWith(QLatin1Char('-')) && isConfigPath(arg)) {
             return arg;
         }
     }
     return QString();
 }
+
+class WinUaeQtApplication final : public QApplication {
+public:
+    using ConfigOpenHandler = std::function<void(const QString &)>;
+
+    WinUaeQtApplication(int &argc, char **argv)
+        : QApplication(argc, argv)
+    {
+    }
+
+    void setConfigOpenHandler(ConfigOpenHandler handler)
+    {
+        configOpenHandler = std::move(handler);
+        if (!pendingConfigPath.isEmpty() && configOpenHandler) {
+            const QString path = pendingConfigPath;
+            pendingConfigPath.clear();
+            configOpenHandler(path);
+        }
+    }
+
+protected:
+    bool event(QEvent *event) override
+    {
+        if (event->type() == QEvent::FileOpen) {
+            const QFileOpenEvent *openEvent = static_cast<QFileOpenEvent *>(event);
+            QString path = openEvent->file();
+            if (path.isEmpty() && openEvent->url().isLocalFile()) {
+                path = openEvent->url().toLocalFile();
+            }
+            if (isConfigPath(path)) {
+                if (configOpenHandler) {
+                    configOpenHandler(path);
+                } else {
+                    pendingConfigPath = path;
+                }
+                return true;
+            }
+        }
+        return QApplication::event(event);
+    }
+
+private:
+    QString pendingConfigPath;
+    ConfigOpenHandler configOpenHandler;
+};
 
 class WinUaeQtDialog final : public QDialog {
 public:
@@ -2432,6 +2497,16 @@ public:
     const WinUaeQtLauncherResult &launcherResult() const
     {
         return result;
+    }
+
+    void openConfigFile(const QString &path)
+    {
+        if (path.isEmpty()) {
+            return;
+        }
+        loadConfig(path);
+        raise();
+        activateWindow();
     }
 
 private:
@@ -10195,13 +10270,18 @@ int runWinUaeQtLauncher(QApplication &app)
         WinUaeQtDialog::StartMode::DetachedProcess,
         nullptr,
         initialConfigPathFromArguments(app.arguments()));
+    if (WinUaeQtApplication *qtApp = dynamic_cast<WinUaeQtApplication *>(&app)) {
+        qtApp->setConfigOpenHandler([&dialog](const QString &path) {
+            dialog.openConfigFile(path);
+        });
+    }
     dialog.show();
     return app.exec();
 }
 
 int runWinUaeQtLauncher(int argc, char **argv)
 {
-    QApplication app(argc, argv);
+    WinUaeQtApplication app(argc, argv);
     return runWinUaeQtLauncher(app);
 }
 
@@ -10212,6 +10292,11 @@ WinUaeQtLauncherResult runWinUaeQtLauncherForConfig(QApplication &app)
         WinUaeQtDialog::StartMode::ReturnConfig,
         nullptr,
         initialConfigPathFromArguments(app.arguments()));
+    if (WinUaeQtApplication *qtApp = dynamic_cast<WinUaeQtApplication *>(&app)) {
+        qtApp->setConfigOpenHandler([&dialog](const QString &path) {
+            dialog.openConfigFile(path);
+        });
+    }
     if (dialog.exec() == QDialog::Accepted) {
         return dialog.launcherResult();
     }
@@ -10223,6 +10308,6 @@ WinUaeQtLauncherResult runWinUaeQtLauncherForConfig(QApplication &app)
 
 WinUaeQtLauncherResult runWinUaeQtLauncherForConfig(int argc, char **argv)
 {
-    QApplication app(argc, argv);
+    WinUaeQtApplication app(argc, argv);
     return runWinUaeQtLauncherForConfig(app);
 }
