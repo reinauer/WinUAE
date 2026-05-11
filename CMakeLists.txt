@@ -220,7 +220,6 @@ set(WINUAE_CORE_SOURCES
     od-unix/parallel.cpp
     od-unix/rtg.cpp
     od-unix/sound.cpp
-    od-unix/startup_config.cpp
     od-unix/stubs.cpp
     od-unix/support.cpp
     od-unix/threading.cpp
@@ -269,6 +268,12 @@ if(WINUAE_UNIX_WITH_QT_UI OR WINUAE_UNIX_WITH_INTEGRATED_QT_UI)
             od-unix/qt/launcher.cpp
             od-unix/qt/launcher_bridge.cpp
             od-unix/qt/launcher_backend.cpp
+            od-unix/qt/prefs_adapter.cpp
+        )
+        target_include_directories(winuae_unix_qt_frontend PRIVATE
+            "${CMAKE_CURRENT_SOURCE_DIR}/od-unix"
+            "${CMAKE_CURRENT_SOURCE_DIR}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/include"
         )
         target_compile_definitions(winuae_unix_qt_frontend PRIVATE
             WINUAE_UNIX_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
