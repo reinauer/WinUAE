@@ -2,6 +2,7 @@
 #include "sysdeps.h"
 
 #include <ctype.h>
+#include <cstdlib>
 #include <limits.h>
 #include <map>
 #include <string>
@@ -258,6 +259,40 @@ static int parse_bool_value(const std::string &value)
     return v == "1" || v == "true" || v == "yes" || v == "on";
 }
 
+static bool parse_int_value(const TCHAR *value, int *out)
+{
+    if (!value || !out) {
+        return false;
+    }
+    std::string text = trim_copy(value);
+    if (text.empty()) {
+        return false;
+    }
+    char *end = NULL;
+    long parsed = strtol(text.c_str(), &end, 0);
+    if (!end || *end != 0) {
+        return false;
+    }
+    *out = (int)parsed;
+    return true;
+}
+
+static int activity_priority_index_from_value(int value, int defpri)
+{
+    switch (value) {
+    case 1:
+        return 0;
+    case 0:
+        return 1;
+    case -1:
+        return 2;
+    case -2:
+        return 3;
+    default:
+        return defpri;
+    }
+}
+
 static void add_line(std::vector<std::string> &lines, const std::string &option, const std::string &value)
 {
     if (!value.empty()) {
@@ -401,6 +436,63 @@ int target_parse_option(struct uae_prefs *p, const TCHAR *option, const TCHAR *v
             p->input_mouse_untrap |= MOUSEUNTRAP_MIDDLEBUTTON;
         } else {
             p->input_mouse_untrap &= ~MOUSEUNTRAP_MIDDLEBUTTON;
+        }
+        return 1;
+    }
+    if (!_tcsicmp(option, _T("active_not_captured_pause"))) {
+        p->win32_active_nocapture_pause = parse_bool_value(value ? value : "");
+        return 1;
+    }
+    if (!_tcsicmp(option, _T("active_not_captured_nosound"))) {
+        p->win32_active_nocapture_nosound = parse_bool_value(value ? value : "");
+        return 1;
+    }
+    if (!_tcsicmp(option, _T("inactive_pause"))) {
+        p->win32_inactive_pause = parse_bool_value(value ? value : "");
+        return 1;
+    }
+    if (!_tcsicmp(option, _T("inactive_nosound"))) {
+        p->win32_inactive_nosound = parse_bool_value(value ? value : "");
+        return 1;
+    }
+    if (!_tcsicmp(option, _T("iconified_pause"))) {
+        p->win32_iconified_pause = parse_bool_value(value ? value : "");
+        return 1;
+    }
+    if (!_tcsicmp(option, _T("iconified_nosound"))) {
+        p->win32_iconified_nosound = parse_bool_value(value ? value : "");
+        return 1;
+    }
+    if (!_tcsicmp(option, _T("active_input"))
+        || !_tcsicmp(option, _T("inactive_input"))
+        || !_tcsicmp(option, _T("iconified_input"))) {
+        int parsed = 0;
+        if (!parse_int_value(value, &parsed)) {
+            return 0;
+        }
+        if (!_tcsicmp(option, _T("active_input"))) {
+            p->win32_active_input = parsed;
+        } else if (!_tcsicmp(option, _T("inactive_input"))) {
+            p->win32_inactive_input = parsed;
+        } else {
+            p->win32_iconified_input = parsed;
+        }
+        return 1;
+    }
+    if (!_tcsicmp(option, _T("active_priority"))
+        || !_tcsicmp(option, _T("activepriority"))
+        || !_tcsicmp(option, _T("inactive_priority"))
+        || !_tcsicmp(option, _T("iconified_priority"))) {
+        int parsed = 0;
+        if (!parse_int_value(value, &parsed)) {
+            return 0;
+        }
+        if (!_tcsicmp(option, _T("active_priority")) || !_tcsicmp(option, _T("activepriority"))) {
+            p->win32_active_capture_priority = activity_priority_index_from_value(parsed, 1);
+        } else if (!_tcsicmp(option, _T("inactive_priority"))) {
+            p->win32_inactive_priority = activity_priority_index_from_value(parsed, 1);
+        } else {
+            p->win32_iconified_priority = activity_priority_index_from_value(parsed, 2);
         }
         return 1;
     }
