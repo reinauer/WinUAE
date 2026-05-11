@@ -1099,6 +1099,44 @@ static const ConfigChoice dongleChoices[] = {
     { "Football Director 2", "football director 2" }
 };
 
+static const ConfigChoice keyboardLedChoices[] = {
+    { "None", "none" },
+    { "Power", "POWER" },
+    { "DF0", "DF0" },
+    { "DF1", "DF1" },
+    { "DF2", "DF2" },
+    { "DF3", "DF3" },
+    { "HD", "HD" },
+    { "CD", "CD" },
+    { "DF*", "DFx" }
+};
+
+struct MiscCheckChoice {
+    const char *display;
+    const char *key;
+    bool defaultChecked;
+};
+
+static const MiscCheckChoice miscCheckChoices[] = {
+    { "Show GUI on startup", "use_gui", true },
+    { "Synchronize clock", "synchronize_clock", false },
+    { "One second reboot pause", "cpu_reset_pause", false },
+    { "Faster RTG", "rtg_nocustom", true },
+    { "Clipboard sharing", "clipboard_sharing", false },
+    { "Allow native code", "native_code", false },
+    { "Native on-screen display", "show_leds", false },
+    { "RTG on-screen display", "show_leds_rtg", false },
+    { "Log illegal memory accesses", "log_illegal_mem", false },
+    { "Master floppy write protection", "floppy_write_protect", false },
+    { "Master harddrive write protection", "harddrive_write_protect", false },
+    { "Hide all UAE autoconfig boards", "uae_hide_autoconfig", false },
+    { "Power led dims when audio filter is disabled", "power_led_dim", false },
+    { "Debug memory space", "debug_mem", false },
+    { "Force hard reset if CPU halted", "cpu_halt_auto_reset", false },
+    { "A600/A1200/A4000 IDE scsi.device disable", "scsidevice_disable", false },
+    { "Warp mode reset", "warpboot", false }
+};
+
 static QIcon resourceIcon(const QString &name)
 {
     const QString path = sourceFile(QStringLiteral("od-win32/resources/") + name);
@@ -1809,6 +1847,21 @@ private:
     QCheckBox *logWindow = nullptr;
     QComboBox *pathDefaultType = nullptr;
     QComboBox *logSelect = nullptr;
+    QListWidget *miscOptionList = nullptr;
+    QMap<QString, QListWidgetItem*> miscOptionItems;
+    QComboBox *miscScsiMode = nullptr;
+    QComboBox *miscWindowedStyle = nullptr;
+    QComboBox *miscVideoApi = nullptr;
+    QComboBox *miscVideoApiOptions = nullptr;
+    QComboBox *miscLanguage = nullptr;
+    QComboBox *miscGuiSize = nullptr;
+    QCheckBox *miscGuiResize = nullptr;
+    QCheckBox *miscGuiFullscreen = nullptr;
+    QCheckBox *miscGuiDarkMode = nullptr;
+    QComboBox *stateFileName = nullptr;
+    QCheckBox *stateFileClear = nullptr;
+    QComboBox *keyboardLed[3] = {};
+    QCheckBox *keyboardLedUsb = nullptr;
     WinUaeQtLauncherBackend launcherBackend;
     WinUaeQtConfig loadedConfig;
     WinUaeQtLauncherResult result;
@@ -3645,15 +3698,117 @@ private:
         QWidget *page = makePage();
         QHBoxLayout *root = new QHBoxLayout(page);
         root->setContentsMargins(4, 4, 4, 4);
-        QListWidget *misc = new QListWidget;
-        misc->addItems({ QStringLiteral("Logging"), QStringLiteral("State files"), QStringLiteral("GUI"), QStringLiteral("Keyboard LEDs") });
-        root->addWidget(misc, 2);
+        miscOptionList = new QListWidget;
+        miscOptionList->setAlternatingRowColors(true);
+        miscOptionItems.clear();
+        for (const MiscCheckChoice &choice : miscCheckChoices) {
+            QListWidgetItem *item = new QListWidgetItem(QString::fromLatin1(choice.display), miscOptionList);
+            item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
+            item->setCheckState(choice.defaultChecked ? Qt::Checked : Qt::Unchecked);
+            miscOptionItems.insert(QString::fromLatin1(choice.key), item);
+        }
+        root->addWidget(miscOptionList, 2);
+
         QVBoxLayout *right = new QVBoxLayout;
-        right->addWidget(groupBox(QStringLiteral("Miscellaneous Options"), new QVBoxLayout));
-        right->addWidget(groupBox(QStringLiteral("GUI"), new QVBoxLayout));
-        right->addWidget(groupBox(QStringLiteral("State Files"), new QVBoxLayout));
+        QGridLayout *miscOptions = new QGridLayout;
+        miscOptions->setColumnStretch(1, 1);
+        miscScsiMode = combo({ QStringLiteral("SCSI emulation"), QStringLiteral("SPTI"), QStringLiteral("SPTI + SCSI SCAN") });
+        miscWindowedStyle = combo({ QStringLiteral("Borderless"), QStringLiteral("Minimal"), QStringLiteral("Standard"), QStringLiteral("Extended") });
+        miscVideoApi = combo({ QStringLiteral("Unix video backend") });
+        miscVideoApiOptions = combo({ QStringLiteral("Default") });
+        miscScsiMode->setEnabled(false);
+        miscWindowedStyle->setEnabled(false);
+        miscVideoApi->setEnabled(false);
+        miscVideoApiOptions->setEnabled(false);
+        miscOptions->addWidget(label(QStringLiteral("SCSI and CD/DVD access:")), 0, 0);
+        miscOptions->addWidget(miscScsiMode, 0, 1);
+        miscOptions->addWidget(label(QStringLiteral("Windowed style:")), 1, 0);
+        miscOptions->addWidget(miscWindowedStyle, 1, 1);
+        miscOptions->addWidget(miscVideoApi, 2, 1);
+        miscOptions->addWidget(miscVideoApiOptions, 3, 1);
+        right->addWidget(groupBox(QStringLiteral("Miscellaneous Options"), miscOptions));
+
+        QGridLayout *gui = new QGridLayout;
+        gui->setColumnStretch(1, 1);
+        miscLanguage = combo({ QStringLiteral("Autodetect"), QStringLiteral("English (built-in)") });
+        QPushButton *guiFont = new QPushButton(QStringLiteral("GUI Font..."));
+        QPushButton *osdFont = new QPushButton(QStringLiteral("OSD Font..."));
+        QPushButton *setDefault = new QPushButton(QStringLiteral("Set default"));
+        miscGuiSize = combo({ QStringLiteral("Select..."), QStringLiteral("200%"), QStringLiteral("150%"), QStringLiteral("100%"), QStringLiteral("80%") });
+        QPushButton *resetLists = new QPushButton(QStringLiteral("Reset list customizations"));
+        miscGuiResize = new QCheckBox(QStringLiteral("Resizeable GUI"));
+        miscGuiFullscreen = new QCheckBox(QStringLiteral("Fullscreen GUI"));
+        miscGuiDarkMode = new QCheckBox(QStringLiteral("Dark mode"));
+        guiFont->setEnabled(false);
+        osdFont->setEnabled(false);
+        setDefault->setEnabled(false);
+        miscGuiSize->setEnabled(false);
+        resetLists->setEnabled(false);
+        miscGuiResize->setEnabled(false);
+        miscGuiFullscreen->setEnabled(false);
+        miscGuiDarkMode->setEnabled(false);
+        gui->addWidget(miscLanguage, 0, 0, 1, 2);
+        gui->addWidget(guiFont, 1, 0);
+        gui->addWidget(osdFont, 1, 1);
+        gui->addWidget(setDefault, 2, 0);
+        gui->addWidget(miscGuiSize, 2, 1);
+        gui->addWidget(resetLists, 3, 0, 1, 2);
+        gui->addWidget(miscGuiResize, 4, 0, 1, 2);
+        gui->addWidget(miscGuiFullscreen, 5, 0, 1, 2);
+        gui->addWidget(miscGuiDarkMode, 6, 0, 1, 2);
+        right->addWidget(groupBox(QStringLiteral("GUI"), gui));
+
+        QGridLayout *stateFiles = new QGridLayout;
+        stateFiles->setColumnStretch(0, 1);
+        stateFileName = pathCombo();
+        stateFileClear = new QCheckBox;
+        QPushButton *loadState = new QPushButton(QStringLiteral("Load state..."));
+        QPushButton *saveState = new QPushButton(QStringLiteral("Save state..."));
+        QPushButton *browseState = smallButton(QStringLiteral("..."));
+        loadState->setEnabled(false);
+        saveState->setEnabled(false);
+        stateFiles->addWidget(stateFileName, 0, 0);
+        stateFiles->addWidget(stateFileClear, 0, 1);
+        stateFiles->addWidget(browseState, 0, 2);
+        stateFiles->addWidget(loadState, 1, 0);
+        stateFiles->addWidget(saveState, 1, 1, 1, 2);
+        right->addWidget(groupBox(QStringLiteral("State Files"), stateFiles));
+
+        QGridLayout *keyboard = new QGridLayout;
+        for (int i = 0; i < 3; i++) {
+            keyboardLed[i] = combo(configChoiceDisplays(keyboardLedChoices, int(sizeof(keyboardLedChoices) / sizeof(keyboardLedChoices[0]))));
+            keyboard->addWidget(keyboardLed[i], 0, i);
+        }
+        keyboardLedUsb = new QCheckBox(QStringLiteral("USB mode"));
+        keyboardLedUsb->setEnabled(false);
+        keyboard->addWidget(keyboardLedUsb, 0, 3);
+        right->addWidget(groupBox(QStringLiteral("Keyboard LEDs"), keyboard));
         root->addLayout(right, 1);
+
+        connect(browseState, &QPushButton::clicked, this, [this]() {
+            const QString selected = QFileDialog::getOpenFileName(this, QStringLiteral("Select state file"), stateFileName->currentText(), QStringLiteral("WinUAE state files (*.uss);;All files (*)"));
+            if (!selected.isEmpty()) {
+                stateFileName->setCurrentText(selected);
+                stateFileClear->setChecked(false);
+            }
+        });
+        connect(stateFileName, &QComboBox::currentTextChanged, this, [this](const QString &text) {
+            stateFileClear->setChecked(text.trimmed().isEmpty());
+        });
         return page;
+    }
+
+    bool miscOptionChecked(const QString &key) const
+    {
+        QListWidgetItem *item = miscOptionItems.value(key, nullptr);
+        return item && item->checkState() == Qt::Checked;
+    }
+
+    void setMiscOptionChecked(const QString &key, bool checked)
+    {
+        if (QListWidgetItem *item = miscOptionItems.value(key, nullptr)) {
+            item->setCheckState(checked ? Qt::Checked : Qt::Unchecked);
+        }
     }
 
     QWidget *makeAboutPage()
@@ -4194,6 +4349,14 @@ private:
         midiRouter->setChecked(false);
         protectionDongle->setCurrentText(QStringLiteral("None"));
         updateIoPortsState();
+        for (const MiscCheckChoice &choice : miscCheckChoices) {
+            setMiscOptionChecked(QString::fromLatin1(choice.key), choice.defaultChecked);
+        }
+        stateFileName->setCurrentText(QString());
+        stateFileClear->setChecked(false);
+        for (int i = 0; i < 3; i++) {
+            keyboardLed[i]->setCurrentText(QStringLiteral("None"));
+        }
         romsPath->setText(QDir::homePath());
         configsPath->setText(QDir::homePath());
         const QDir home(QDir::homePath());
@@ -5396,6 +5559,28 @@ private:
         if (!dongle.isEmpty() && dongle != QStringLiteral("none")) {
             settings.insert(QStringLiteral("dongle"), dongle);
         }
+        for (const MiscCheckChoice &choice : miscCheckChoices) {
+            const QString key = QString::fromLatin1(choice.key);
+            if (key == QStringLiteral("power_led_dim")) {
+                settings.insert(key, miscOptionChecked(key) ? QStringLiteral("128") : QStringLiteral("0"));
+            } else {
+                settings.insert(key, miscOptionChecked(key) ? QStringLiteral("true") : QStringLiteral("false"));
+            }
+        }
+        if (stateFileName && !stateFileClear->isChecked() && !stateFileName->currentText().trimmed().isEmpty()) {
+            settings.insert(QStringLiteral("statefile"), stateFileName->currentText().trimmed());
+        }
+        QStringList ledValues;
+        bool anyKeyboardLed = false;
+        const QStringList ledNames { QStringLiteral("numlock"), QStringLiteral("capslock"), QStringLiteral("scrolllock") };
+        for (int i = 0; i < 3; i++) {
+            const QString value = configChoiceValue(keyboardLedChoices, int(sizeof(keyboardLedChoices) / sizeof(keyboardLedChoices[0])), keyboardLed[i]->currentText());
+            ledValues.append(QStringLiteral("%1:%2").arg(ledNames[i], value.isEmpty() ? QStringLiteral("none") : value));
+            anyKeyboardLed = anyKeyboardLed || (!value.isEmpty() && value.compare(QStringLiteral("none"), Qt::CaseInsensitive) != 0);
+        }
+        if (anyKeyboardLed) {
+            settings.insert(QStringLiteral("keyboard_leds"), ledValues.join(QLatin1Char(',')));
+        }
         if (rtgMem->currentText() != QStringLiteral("None")) {
             settings.insert(QStringLiteral("gfxcard_size"), QString::number(megabytesFromText(rtgMem->currentText())));
             settings.insert(QStringLiteral("gfxcard_type"), rtgType->currentText());
@@ -5613,6 +5798,25 @@ private:
             QStringLiteral("serial_direct"),
             QStringLiteral("uaeserial"),
             QStringLiteral("dongle"),
+            QStringLiteral("use_gui"),
+            QStringLiteral("synchronize_clock"),
+            QStringLiteral("cpu_reset_pause"),
+            QStringLiteral("rtg_nocustom"),
+            QStringLiteral("clipboard_sharing"),
+            QStringLiteral("native_code"),
+            QStringLiteral("show_leds"),
+            QStringLiteral("show_leds_rtg"),
+            QStringLiteral("log_illegal_mem"),
+            QStringLiteral("floppy_write_protect"),
+            QStringLiteral("harddrive_write_protect"),
+            QStringLiteral("uae_hide_autoconfig"),
+            QStringLiteral("power_led_dim"),
+            QStringLiteral("debug_mem"),
+            QStringLiteral("cpu_halt_auto_reset"),
+            QStringLiteral("scsidevice_disable"),
+            QStringLiteral("warpboot"),
+            QStringLiteral("statefile"),
+            QStringLiteral("keyboard_leds"),
             QStringLiteral("gfxcard_size"),
             QStringLiteral("gfxcard_type"),
             QStringLiteral("gfxcard_options"),
@@ -6253,6 +6457,31 @@ private:
                 protectionDongle->setCurrentText(QString::fromLatin1(dongleChoices[index].display));
             } else {
                 protectionDongle->setCurrentText(configChoiceDisplay(dongleChoices, int(sizeof(dongleChoices) / sizeof(dongleChoices[0])), value));
+            }
+        } else if (miscOptionItems.contains(key)) {
+            if (key == QStringLiteral("power_led_dim")) {
+                setMiscOptionChecked(key, value.toInt() != 0);
+            } else {
+                setMiscOptionChecked(key, configBoolValue(value));
+            }
+        } else if (key == QStringLiteral("statefile")) {
+            stateFileName->setCurrentText(value);
+            stateFileClear->setChecked(value.trimmed().isEmpty());
+        } else if (key == QStringLiteral("keyboard_leds")) {
+            for (const QString &field : value.split(QLatin1Char(','))) {
+                const QStringList parts = field.split(QLatin1Char(':'));
+                if (parts.size() != 2) {
+                    continue;
+                }
+                const QString name = parts[0].trimmed().toLower();
+                const QString led = configChoiceDisplay(keyboardLedChoices, int(sizeof(keyboardLedChoices) / sizeof(keyboardLedChoices[0])), parts[1].trimmed());
+                if (name == QStringLiteral("numlock")) {
+                    keyboardLed[0]->setCurrentText(led);
+                } else if (name == QStringLiteral("capslock")) {
+                    keyboardLed[1]->setCurrentText(led);
+                } else if (name == QStringLiteral("scrolllock")) {
+                    keyboardLed[2]->setCurrentText(led);
+                }
             }
         } else if (key.startsWith(QStringLiteral("joyport")) && key.size() == 8) {
             bool ok = false;
