@@ -1262,6 +1262,76 @@ static QString cpuMultiplierText(int value)
     }
 }
 
+static QString chipsetConfigValue(const QString &text)
+{
+    if (text == QStringLiteral("A1000 (No EHB)")) {
+        return QStringLiteral("a1000_noehb");
+    }
+    if (text == QStringLiteral("A1000")) {
+        return QStringLiteral("a1000");
+    }
+    if (text == QStringLiteral("ECS Agnus")) {
+        return QStringLiteral("ecs_agnus");
+    }
+    if (text == QStringLiteral("ECS Denise")) {
+        return QStringLiteral("ecs_denise");
+    }
+    if (text == QStringLiteral("ECS")) {
+        return QStringLiteral("ecs");
+    }
+    if (text == QStringLiteral("AGA")) {
+        return QStringLiteral("aga");
+    }
+    return QStringLiteral("ocs");
+}
+
+static QString chipsetText(const QString &value)
+{
+    const QString lower = value.toLower();
+    if (lower == QStringLiteral("a1000_noehb")) {
+        return QStringLiteral("A1000 (No EHB)");
+    }
+    if (lower == QStringLiteral("a1000")) {
+        return QStringLiteral("A1000");
+    }
+    if (lower == QStringLiteral("ecs_agnus")) {
+        return QStringLiteral("ECS Agnus");
+    }
+    if (lower == QStringLiteral("ecs_denise")) {
+        return QStringLiteral("ECS Denise");
+    }
+    if (lower == QStringLiteral("ecs")) {
+        return QStringLiteral("ECS");
+    }
+    if (lower == QStringLiteral("aga")) {
+        return QStringLiteral("AGA");
+    }
+    return QStringLiteral("OCS");
+}
+
+static QString displayOptimizationConfigValue(const QString &text)
+{
+    if (text == QStringLiteral("Partial")) {
+        return QStringLiteral("partial");
+    }
+    if (text == QStringLiteral("None")) {
+        return QStringLiteral("none");
+    }
+    return QStringLiteral("full");
+}
+
+static QString displayOptimizationText(const QString &value)
+{
+    const QString lower = value.toLower();
+    if (lower == QStringLiteral("partial")) {
+        return QStringLiteral("Partial");
+    }
+    if (lower == QStringLiteral("none")) {
+        return QStringLiteral("None");
+    }
+    return QStringLiteral("Full");
+}
+
 static bool configBoolValue(const QString &value)
 {
     return value.compare(QStringLiteral("true"), Qt::CaseInsensitive) == 0
@@ -1488,6 +1558,13 @@ private:
     QButtonGroup *jitTrust = nullptr;
     QCheckBox *jitNoFlags = nullptr;
     QCheckBox *jitCatchFault = nullptr;
+    QCheckBox *chipsetNtsc = nullptr;
+    QCheckBox *chipsetCycleExact = nullptr;
+    QCheckBox *chipsetCycleExactMemory = nullptr;
+    QCheckBox *immediateBlits = nullptr;
+    QCheckBox *waitingBlits = nullptr;
+    QComboBox *displayOptimization = nullptr;
+    QButtonGroup *collisionButtons = nullptr;
 
     QComboBox *chipMem = nullptr;
     QComboBox *z2Fast = nullptr;
@@ -1921,27 +1998,114 @@ private:
     QWidget *makeChipsetPage()
     {
         QWidget *page = makePage();
-        QVBoxLayout *root = new QVBoxLayout(page);
+        QGridLayout *root = new QGridLayout(page);
         root->setContentsMargins(4, 4, 4, 4);
+        root->setColumnStretch(0, 1);
+        root->setColumnStretch(1, 1);
 
-        chipset = combo({ QStringLiteral("OCS"), QStringLiteral("ECS"), QStringLiteral("AGA") }, QStringLiteral("AGA"));
+        chipset = combo({
+            QStringLiteral("OCS"),
+            QStringLiteral("ECS Agnus"),
+            QStringLiteral("ECS Denise"),
+            QStringLiteral("ECS"),
+            QStringLiteral("AGA"),
+            QStringLiteral("A1000"),
+            QStringLiteral("A1000 (No EHB)")
+        }, QStringLiteral("AGA"));
+        chipsetNtsc = new QCheckBox(QStringLiteral("NTSC"));
+        chipsetCycleExact = new QCheckBox(QStringLiteral("Cycle-exact (Full)"));
+        chipsetCycleExactMemory = new QCheckBox(QStringLiteral("Cycle-exact (DMA/Memory accesses)"));
         chipsetCompatible = combo({
+            QStringLiteral("-"),
+            QStringLiteral("Generic"),
+            QStringLiteral("CDTV"),
+            QStringLiteral("CDTV-CR"),
+            QStringLiteral("CD32"),
             QStringLiteral("A500"),
             QStringLiteral("A500+"),
             QStringLiteral("A600"),
+            QStringLiteral("A1000"),
             QStringLiteral("A1200"),
-            QStringLiteral("A4000")
+            QStringLiteral("A2000"),
+            QStringLiteral("A3000"),
+            QStringLiteral("A3000T"),
+            QStringLiteral("A4000"),
+            QStringLiteral("A4000T"),
+            QStringLiteral("Velvet"),
+            QStringLiteral("Casablanca"),
+            QStringLiteral("DraCo")
         }, QStringLiteral("A1200"));
         QGridLayout *basic = new QGridLayout;
         basic->setColumnStretch(1, 1);
         basic->addWidget(label(QStringLiteral("Chipset:")), 0, 0);
         basic->addWidget(chipset, 0, 1);
-        basic->addWidget(label(QStringLiteral("Compatible:")), 1, 0);
-        basic->addWidget(chipsetCompatible, 1, 1);
-        basic->addWidget(new QCheckBox(QStringLiteral("Immediate blitter")), 2, 1);
-        basic->addWidget(new QCheckBox(QStringLiteral("Cycle-exact")), 3, 1);
-        root->addWidget(groupBox(QStringLiteral("Chipset"), basic));
-        root->addStretch();
+        basic->addWidget(chipsetNtsc, 0, 2);
+        basic->addWidget(label(QStringLiteral("Chipset Extra:")), 1, 0);
+        basic->addWidget(chipsetCompatible, 1, 1, 1, 2);
+        basic->addWidget(chipsetCycleExact, 2, 1, 1, 2);
+        basic->addWidget(chipsetCycleExactMemory, 3, 1, 1, 2);
+        root->addWidget(groupBox(QStringLiteral("Chipset"), basic), 0, 0);
+
+        immediateBlits = new QCheckBox(QStringLiteral("Immediate Blitter"));
+        waitingBlits = new QCheckBox(QStringLiteral("Wait for Blitter"));
+        displayOptimization = combo({
+            QStringLiteral("Full"),
+            QStringLiteral("Partial"),
+            QStringLiteral("None")
+        }, QStringLiteral("Full"));
+        QGridLayout *options = new QGridLayout;
+        options->setColumnStretch(1, 1);
+        options->addWidget(immediateBlits, 0, 0, 1, 2);
+        options->addWidget(waitingBlits, 1, 0, 1, 2);
+        options->addWidget(label(QStringLiteral("Optimizations:")), 2, 0);
+        options->addWidget(displayOptimization, 2, 1);
+        root->addWidget(groupBox(QStringLiteral("Options"), options), 0, 1);
+
+        collisionButtons = new QButtonGroup(this);
+        QGridLayout *collision = new QGridLayout;
+        const QStringList collisions = {
+            QStringLiteral("None"),
+            QStringLiteral("Sprites only"),
+            QStringLiteral("Sprites and Sprites vs. Playfield"),
+            QStringLiteral("Full")
+        };
+        for (int i = 0; i < collisions.size(); i++) {
+            QRadioButton *button = new QRadioButton(collisions[i]);
+            collisionButtons->addButton(button, i);
+            collision->addWidget(button, i / 2, i % 2);
+            if (i == 3) {
+                button->setChecked(true);
+            }
+        }
+        root->addWidget(groupBox(QStringLiteral("Collision Level"), collision), 1, 0, 1, 2);
+        root->setRowStretch(2, 1);
+
+        connect(chipsetNtsc, &QCheckBox::toggled, this, [this](bool checked) {
+            setCheckBoxIfChanged(ntsc, checked);
+        });
+        connect(ntsc, &QCheckBox::toggled, this, [this](bool checked) {
+            setCheckBoxIfChanged(chipsetNtsc, checked);
+        });
+        connect(chipsetCycleExact, &QCheckBox::toggled, this, [this](bool checked) {
+            if (checked) {
+                chipsetCycleExactMemory->setChecked(true);
+            }
+        });
+        connect(chipsetCycleExactMemory, &QCheckBox::toggled, this, [this](bool checked) {
+            if (!checked) {
+                chipsetCycleExact->setChecked(false);
+            }
+        });
+        connect(immediateBlits, &QCheckBox::toggled, this, [this](bool checked) {
+            if (checked) {
+                waitingBlits->setChecked(false);
+            }
+        });
+        connect(waitingBlits, &QCheckBox::toggled, this, [this](bool checked) {
+            if (checked) {
+                immediateBlits->setChecked(false);
+            }
+        });
         return page;
     }
 
@@ -3302,6 +3466,15 @@ private:
         quickHostConfiguration->setCurrentText(QStringLiteral("Default"));
         compatibility->setValue(1);
         ntsc->setChecked(false);
+        chipsetNtsc->setChecked(false);
+        chipsetCycleExact->setChecked(false);
+        chipsetCycleExactMemory->setChecked(false);
+        immediateBlits->setChecked(false);
+        waitingBlits->setChecked(false);
+        displayOptimization->setCurrentText(QStringLiteral("Full"));
+        if (QAbstractButton *button = collisionButtons->button(3)) {
+            button->setChecked(true);
+        }
 
         applyModelPreset(QStringLiteral("A1200"));
         setFpuButton(0);
@@ -4475,8 +4648,29 @@ private:
         }
         settings.insert(QStringLiteral("nr_floppies"), QString::number(enabledFloppyCount()));
         settings.insert(QStringLiteral("floppy_speed"), QString::number(floppySpeedConfigValue(floppySpeed->value())));
-        settings.insert(QStringLiteral("chipset"), chipset->currentText().toLower());
+        settings.insert(QStringLiteral("chipset"), chipsetConfigValue(chipset->currentText()));
         settings.insert(QStringLiteral("chipset_compatible"), chipsetCompatible->currentText());
+        settings.insert(QStringLiteral("ntsc"), chipsetNtsc->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
+        settings.insert(QStringLiteral("immediate_blits"), immediateBlits->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
+        settings.insert(QStringLiteral("waiting_blits"), waitingBlits->isChecked() ? QStringLiteral("automatic") : QStringLiteral("disabled"));
+        settings.insert(QStringLiteral("collision_level"), QStringList({ QStringLiteral("none"), QStringLiteral("sprites"), QStringLiteral("playfields"), QStringLiteral("full") }).value(collisionButtons->checkedId(), QStringLiteral("full")));
+        settings.insert(QStringLiteral("display_optimizations"), displayOptimizationConfigValue(displayOptimization->currentText()));
+        if (chipsetCycleExact->isChecked()) {
+            settings.insert(QStringLiteral("cycle_exact"), QStringLiteral("true"));
+            settings.insert(QStringLiteral("cpu_cycle_exact"), QStringLiteral("true"));
+            settings.insert(QStringLiteral("cpu_memory_cycle_exact"), QStringLiteral("true"));
+            settings.insert(QStringLiteral("blitter_cycle_exact"), QStringLiteral("true"));
+        } else if (chipsetCycleExactMemory->isChecked()) {
+            settings.insert(QStringLiteral("cycle_exact"), QStringLiteral("memory"));
+            settings.insert(QStringLiteral("cpu_cycle_exact"), QStringLiteral("false"));
+            settings.insert(QStringLiteral("cpu_memory_cycle_exact"), QStringLiteral("true"));
+            settings.insert(QStringLiteral("blitter_cycle_exact"), QStringLiteral("true"));
+        } else {
+            settings.insert(QStringLiteral("cycle_exact"), QStringLiteral("false"));
+            settings.insert(QStringLiteral("cpu_cycle_exact"), QStringLiteral("false"));
+            settings.insert(QStringLiteral("cpu_memory_cycle_exact"), QStringLiteral("false"));
+            settings.insert(QStringLiteral("blitter_cycle_exact"), QStringLiteral("false"));
+        }
         settings.insert(QStringLiteral("cpu_model"), QString::number(cpu));
         settings.insert(QStringLiteral("cpu_speed"), cpuSpeedButtons->checkedId() == 1 ? QStringLiteral("max") : QStringLiteral("real"));
         if (cpuSpeed->value() != 0) {
@@ -4668,6 +4862,15 @@ private:
             QStringLiteral("floppy_speed"),
             QStringLiteral("chipset"),
             QStringLiteral("chipset_compatible"),
+            QStringLiteral("ntsc"),
+            QStringLiteral("immediate_blits"),
+            QStringLiteral("waiting_blits"),
+            QStringLiteral("collision_level"),
+            QStringLiteral("display_optimizations"),
+            QStringLiteral("cycle_exact"),
+            QStringLiteral("cpu_cycle_exact"),
+            QStringLiteral("cpu_memory_cycle_exact"),
+            QStringLiteral("blitter_cycle_exact"),
             QStringLiteral("cpu_model"),
             QStringLiteral("cpu_speed"),
             QStringLiteral("cpu_throttle"),
@@ -4927,10 +5130,46 @@ private:
         } else if (key == QStringLiteral("cd_speed")) {
             cdSpeedTurbo->setChecked(value == QStringLiteral("0"));
         } else if (key == QStringLiteral("chipset")) {
-            chipset->setCurrentText(value.toUpper());
+            chipset->setCurrentText(chipsetText(value));
         } else if (key == QStringLiteral("chipset_compatible")) {
             chipsetCompatible->setCurrentText(value);
             quickModel->setCurrentText(value);
+        } else if (key == QStringLiteral("ntsc")) {
+            chipsetNtsc->setChecked(configBoolValue(value));
+            ntsc->setChecked(configBoolValue(value));
+        } else if (key == QStringLiteral("immediate_blits")) {
+            immediateBlits->setChecked(configBoolValue(value));
+        } else if (key == QStringLiteral("waiting_blits")) {
+            waitingBlits->setChecked(value.compare(QStringLiteral("disabled"), Qt::CaseInsensitive) != 0 && value != QStringLiteral("0"));
+        } else if (key == QStringLiteral("collision_level")) {
+            const QString lower = value.toLower();
+            int id = lower == QStringLiteral("none") ? 0
+                : lower == QStringLiteral("sprites") ? 1
+                : lower == QStringLiteral("playfields") ? 2
+                : 3;
+            if (QAbstractButton *button = collisionButtons->button(id)) {
+                button->setChecked(true);
+            }
+        } else if (key == QStringLiteral("display_optimizations")) {
+            displayOptimization->setCurrentText(displayOptimizationText(value));
+        } else if (key == QStringLiteral("cycle_exact")) {
+            const QString lower = value.toLower();
+            chipsetCycleExact->setChecked(lower == QStringLiteral("true"));
+            chipsetCycleExactMemory->setChecked(lower == QStringLiteral("true") || lower == QStringLiteral("memory"));
+        } else if (key == QStringLiteral("cpu_cycle_exact")) {
+            chipsetCycleExact->setChecked(configBoolValue(value));
+            if (configBoolValue(value)) {
+                chipsetCycleExactMemory->setChecked(true);
+            }
+        } else if (key == QStringLiteral("cpu_memory_cycle_exact")) {
+            chipsetCycleExactMemory->setChecked(configBoolValue(value));
+            if (!configBoolValue(value)) {
+                chipsetCycleExact->setChecked(false);
+            }
+        } else if (key == QStringLiteral("blitter_cycle_exact")) {
+            if (!configBoolValue(value)) {
+                chipsetCycleExactMemory->setChecked(false);
+            }
         } else if (key == QStringLiteral("cpu_model")) {
             setCpuButton(value.toInt());
         } else if (key == QStringLiteral("cpu_speed")) {
