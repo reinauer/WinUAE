@@ -2202,6 +2202,19 @@ private:
     QComboBox *magicMouseCursor = nullptr;
     QCheckBox *tabletLibrary = nullptr;
     QComboBox *tabletMode = nullptr;
+    QComboBox *inputType = nullptr;
+    QComboBox *inputDevice = nullptr;
+    QCheckBox *inputDeviceEnabled = nullptr;
+    QTreeWidget *inputMappingList = nullptr;
+    QComboBox *inputSubEvent = nullptr;
+    QComboBox *inputAmigaEvent = nullptr;
+    QSpinBox *inputDeadzone = nullptr;
+    QSpinBox *inputAutofireRate = nullptr;
+    QSpinBox *inputJoyMouseDigital = nullptr;
+    QSpinBox *inputJoyMouseAnalog = nullptr;
+    QComboBox *inputCopyFrom = nullptr;
+    QCheckBox *inputPageUpEnd = nullptr;
+    QCheckBox *inputSwapBackslashF11 = nullptr;
     QComboBox *printerPort = nullptr;
     QComboBox *printerType = nullptr;
     QSpinBox *printerAutoFlush = nullptr;
@@ -4526,17 +4539,168 @@ private:
     QWidget *makeInputPage()
     {
         QWidget *page = makePage();
-        QHBoxLayout *root = new QHBoxLayout(page);
+        QVBoxLayout *root = new QVBoxLayout(page);
         root->setContentsMargins(4, 4, 4, 4);
-        QListWidget *devices = new QListWidget;
-        devices->addItems({ QStringLiteral("Keyboard"), QStringLiteral("Mouse") });
-        root->addWidget(devices, 1);
-        QVBoxLayout *right = new QVBoxLayout;
-        right->addWidget(combo({ QStringLiteral("Configuration #1"), QStringLiteral("Configuration #2") }));
-        right->addWidget(new QTableWidget(8, 3), 1);
-        right->addWidget(new QPushButton(QStringLiteral("Remap")));
-        root->addLayout(right, 2);
+
+        QGridLayout *top = new QGridLayout;
+        top->setColumnStretch(1, 1);
+        inputType = combo({
+            QStringLiteral("Configuration #1"),
+            QStringLiteral("Configuration #2"),
+            QStringLiteral("Configuration #3"),
+            QStringLiteral("Configuration #4"),
+            QStringLiteral("Game Ports")
+        }, QStringLiteral("Game Ports"));
+        inputDevice = combo({
+            QStringLiteral("Keyboard"),
+            QStringLiteral("Mouse"),
+            QStringLiteral("Joystick")
+        });
+        inputDeviceEnabled = new QCheckBox(QStringLiteral("Device enabled"));
+        top->addWidget(inputType, 0, 0);
+        top->addWidget(inputDevice, 0, 1);
+        top->addWidget(inputDeviceEnabled, 0, 2, Qt::AlignRight | Qt::AlignVCenter);
+        root->addLayout(top);
+
+        inputMappingList = new QTreeWidget;
+        inputMappingList->setRootIsDecorated(false);
+        inputMappingList->setAlternatingRowColors(true);
+        inputMappingList->setSelectionMode(QAbstractItemView::SingleSelection);
+        inputMappingList->setHeaderLabels({
+            QStringLiteral("Host widget"),
+            QStringLiteral("Amiga event"),
+            QStringLiteral("Autofire"),
+            QStringLiteral("Toggle"),
+            QStringLiteral("Invert"),
+            QStringLiteral("Qualifier"),
+            QStringLiteral("#")
+        });
+        inputMappingList->header()->setStretchLastSection(false);
+        inputMappingList->header()->setSectionResizeMode(0, QHeaderView::Stretch);
+        for (int i = 1; i < inputMappingList->columnCount(); i++) {
+            inputMappingList->header()->setSectionResizeMode(i, QHeaderView::ResizeToContents);
+        }
+        root->addWidget(inputMappingList, 1);
+
+        QHBoxLayout *eventRow = new QHBoxLayout;
+        inputSubEvent = combo({ QStringLiteral("1"), QStringLiteral("2"), QStringLiteral("3"), QStringLiteral("4"), QStringLiteral("5"), QStringLiteral("6"), QStringLiteral("7"), QStringLiteral("8") });
+        inputAmigaEvent = combo({
+            QStringLiteral("<None>"),
+            QStringLiteral("Joystick 1 Fire"),
+            QStringLiteral("Joystick 1 Up"),
+            QStringLiteral("Joystick 1 Down"),
+            QStringLiteral("Joystick 1 Left"),
+            QStringLiteral("Joystick 1 Right"),
+            QStringLiteral("Left mouse button"),
+            QStringLiteral("Right mouse button")
+        });
+        QPushButton *inputTest = new QPushButton(QStringLiteral("Test"));
+        QPushButton *inputRemap = new QPushButton(QStringLiteral("Remap"));
+        inputTest->setEnabled(false);
+        inputRemap->setEnabled(false);
+        eventRow->addWidget(inputSubEvent);
+        eventRow->addWidget(inputAmigaEvent, 1);
+        eventRow->addWidget(inputTest);
+        eventRow->addWidget(inputRemap);
+        root->addLayout(eventRow);
+
+        QGridLayout *bottom = new QGridLayout;
+        bottom->setColumnStretch(1, 1);
+        bottom->setColumnStretch(3, 1);
+        inputDeadzone = new QSpinBox;
+        inputDeadzone->setRange(0, 100);
+        inputDeadzone->setSuffix(QStringLiteral("%"));
+        inputAutofireRate = new QSpinBox;
+        inputAutofireRate->setRange(1, 10000);
+        inputJoyMouseDigital = new QSpinBox;
+        inputJoyMouseDigital->setRange(1, 1000);
+        inputJoyMouseAnalog = new QSpinBox;
+        inputJoyMouseAnalog->setRange(1, 1000);
+        inputCopyFrom = combo({
+            QStringLiteral("Custom #1"),
+            QStringLiteral("Custom #2"),
+            QStringLiteral("Custom #3"),
+            QStringLiteral("Custom #4"),
+            QStringLiteral("Default"),
+            QStringLiteral("Default (PC KB)")
+        });
+        QPushButton *inputCopy = new QPushButton(QStringLiteral("Copy from:"));
+        QPushButton *inputSwap = new QPushButton(QStringLiteral("Swap 1<>2"));
+        inputCopy->setEnabled(false);
+        inputSwap->setEnabled(false);
+        inputPageUpEnd = new QCheckBox(QStringLiteral("Page Up = End"));
+        inputSwapBackslashF11 = new QCheckBox(QStringLiteral("Swap Backslash/F11"));
+        inputSwapBackslashF11->setTristate(true);
+
+        bottom->addWidget(label(QStringLiteral("Joystick dead zone (%):")), 0, 0);
+        bottom->addWidget(inputDeadzone, 0, 1);
+        bottom->addWidget(label(QStringLiteral("Digital joy-mouse speed:")), 0, 2);
+        bottom->addWidget(inputJoyMouseDigital, 0, 3);
+        bottom->addWidget(inputCopy, 0, 4);
+        bottom->addWidget(label(QStringLiteral("Autofire rate (lines):")), 1, 0);
+        bottom->addWidget(inputAutofireRate, 1, 1);
+        bottom->addWidget(label(QStringLiteral("Analog joy-mouse speed:")), 1, 2);
+        bottom->addWidget(inputJoyMouseAnalog, 1, 3);
+        bottom->addWidget(inputCopyFrom, 1, 4);
+        bottom->addWidget(inputPageUpEnd, 2, 1);
+        bottom->addWidget(inputSwapBackslashF11, 2, 2, 1, 2);
+        bottom->addWidget(inputSwap, 2, 4);
+        root->addLayout(bottom);
+
+        connect(inputDevice, &QComboBox::currentTextChanged, this, [this](const QString &) { refreshInputMappingList(); });
+        refreshInputMappingList();
         return page;
+    }
+
+    void refreshInputMappingList()
+    {
+        if (!inputMappingList || !inputDevice) {
+            return;
+        }
+        inputMappingList->clear();
+
+        QStringList hostWidgets;
+        const QString device = inputDevice->currentText();
+        if (device == QStringLiteral("Mouse")) {
+            hostWidgets = {
+                QStringLiteral("X Axis"),
+                QStringLiteral("Y Axis"),
+                QStringLiteral("Button 1"),
+                QStringLiteral("Button 2"),
+                QStringLiteral("Wheel")
+            };
+        } else if (device == QStringLiteral("Joystick")) {
+            hostWidgets = {
+                QStringLiteral("X Axis"),
+                QStringLiteral("Y Axis"),
+                QStringLiteral("Button 1"),
+                QStringLiteral("Button 2"),
+                QStringLiteral("Button 3")
+            };
+        } else {
+            hostWidgets = {
+                QStringLiteral("Cursor Up"),
+                QStringLiteral("Cursor Down"),
+                QStringLiteral("Cursor Left"),
+                QStringLiteral("Cursor Right"),
+                QStringLiteral("Space"),
+                QStringLiteral("Left Ctrl"),
+                QStringLiteral("Left Alt"),
+                QStringLiteral("F11")
+            };
+        }
+
+        int row = 1;
+        for (const QString &hostWidget : hostWidgets) {
+            QTreeWidgetItem *item = new QTreeWidgetItem(inputMappingList);
+            item->setText(0, hostWidget);
+            item->setText(1, QStringLiteral("<None>"));
+            item->setText(2, QStringLiteral("-"));
+            item->setText(3, QStringLiteral("-"));
+            item->setText(4, QStringLiteral("-"));
+            item->setText(5, QStringLiteral("-"));
+            item->setText(6, QString::number(row++));
+        }
     }
 
     QWidget *makePathsPage()
@@ -6071,6 +6235,19 @@ private:
         }
         portAutoswitch->setChecked(true);
         mouseSpeed->setValue(100);
+        inputType->setCurrentText(QStringLiteral("Game Ports"));
+        inputDevice->setCurrentText(QStringLiteral("Keyboard"));
+        inputDeviceEnabled->setChecked(true);
+        inputSubEvent->setCurrentText(QStringLiteral("1"));
+        inputAmigaEvent->setCurrentText(QStringLiteral("<None>"));
+        inputDeadzone->setValue(33);
+        inputAutofireRate->setValue(600);
+        inputJoyMouseDigital->setValue(10);
+        inputJoyMouseAnalog->setValue(100);
+        inputCopyFrom->setCurrentText(QStringLiteral("Custom #1"));
+        inputPageUpEnd->setChecked(false);
+        inputSwapBackslashF11->setCheckState(Qt::Unchecked);
+        refreshInputMappingList();
         mouseUntrapMode->setCurrentText(QStringLiteral("Middle button"));
         magicMouseCursor->setCurrentText(QStringLiteral("Show both cursors"));
         virtualMouseDriver->setChecked(false);
@@ -7473,6 +7650,15 @@ private:
                 settings.insert(QStringLiteral("joyport%1mode").arg(i), mode);
             }
         }
+        const int inputConfig = inputType->currentText() == QStringLiteral("Game Ports")
+            ? 0
+            : qBound(1, inputType->currentIndex() + 1, 4);
+        settings.insert(QStringLiteral("input.config"), QString::number(inputConfig));
+        settings.insert(QStringLiteral("input.joystick_deadzone"), QString::number(inputDeadzone->value()));
+        settings.insert(QStringLiteral("input.joymouse_deadzone"), QString::number(inputDeadzone->value()));
+        settings.insert(QStringLiteral("input.autofire_speed"), QString::number(inputAutofireRate->value()));
+        settings.insert(QStringLiteral("input.joymouse_speed_digital"), QString::number(inputJoyMouseDigital->value()));
+        settings.insert(QStringLiteral("input.joymouse_speed_analog"), QString::number(inputJoyMouseAnalog->value()));
         settings.insert(QStringLiteral("input.mouse_speed"), QString::number(mouseSpeed->value()));
         settings.insert(QStringLiteral("input.autoswitch"), portAutoswitch->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
         const int untrapMode = mouseUntrapMode->currentIndex();
@@ -7805,6 +7991,12 @@ private:
             QStringLiteral("joyport1autofire"),
             QStringLiteral("joyport0mode"),
             QStringLiteral("joyport1mode"),
+            QStringLiteral("input.config"),
+            QStringLiteral("input.joystick_deadzone"),
+            QStringLiteral("input.joymouse_deadzone"),
+            QStringLiteral("input.autofire_speed"),
+            QStringLiteral("input.joymouse_speed_digital"),
+            QStringLiteral("input.joymouse_speed_analog"),
             QStringLiteral("input.mouse_speed"),
             QStringLiteral("input.autoswitch"),
             QStringLiteral("middle_mouse"),
@@ -8539,6 +8731,21 @@ private:
             if (ok && port >= 0 && port < 2) {
                 portMode[port]->setCurrentText(joyportModeText(value));
             }
+        } else if (key == QStringLiteral("input.config")) {
+            const int config = value.toInt();
+            if (config <= 0) {
+                inputType->setCurrentText(QStringLiteral("Game Ports"));
+            } else {
+                inputType->setCurrentIndex(qBound(0, config - 1, 3));
+            }
+        } else if (key == QStringLiteral("input.joystick_deadzone") || key == QStringLiteral("input.joymouse_deadzone")) {
+            inputDeadzone->setValue(qBound(inputDeadzone->minimum(), value.toInt(), inputDeadzone->maximum()));
+        } else if (key == QStringLiteral("input.autofire_speed")) {
+            inputAutofireRate->setValue(qBound(inputAutofireRate->minimum(), value.toInt(), inputAutofireRate->maximum()));
+        } else if (key == QStringLiteral("input.joymouse_speed_digital")) {
+            inputJoyMouseDigital->setValue(qBound(inputJoyMouseDigital->minimum(), value.toInt(), inputJoyMouseDigital->maximum()));
+        } else if (key == QStringLiteral("input.joymouse_speed_analog")) {
+            inputJoyMouseAnalog->setValue(qBound(inputJoyMouseAnalog->minimum(), value.toInt(), inputJoyMouseAnalog->maximum()));
         } else if (key == QStringLiteral("input.mouse_speed")) {
             mouseSpeed->setValue(qBound(mouseSpeed->minimum(), value.toInt(), mouseSpeed->maximum()));
         } else if (key == QStringLiteral("input.autoswitch")) {
