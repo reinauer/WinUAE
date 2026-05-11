@@ -58,6 +58,15 @@ mkdir -p "${staging_dir}/.background"
 cp -R "${app_dir}" "${staging_dir}/WinUAE.app"
 ln -s /Applications "${staging_dir}/Applications"
 
+volume_icon="${app_dir}/Contents/Resources/WinUAE.icns"
+if [[ -f "${volume_icon}" ]]; then
+    cp "${volume_icon}" "${staging_dir}/.VolumeIcon.icns"
+    if command -v SetFile >/dev/null 2>&1; then
+        SetFile -a C "${staging_dir}" || true
+        SetFile -c icnC "${staging_dir}/.VolumeIcon.icns" || true
+    fi
+fi
+
 background_ppm="${staging_dir}/.background/background.ppm"
 background_png="${staging_dir}/.background/background.png"
 awk '
@@ -91,6 +100,11 @@ rm -f "${background_ppm}"
 hdiutil create -volname "${volume_name}" -srcfolder "${staging_dir}" -format UDRW -ov "${rw_dmg}" >/dev/null
 mount_dir="$(mktemp -d /tmp/winuae-dmg.XXXXXX)"
 hdiutil attach "${rw_dmg}" -readwrite -noverify -noautoopen -mountpoint "${mount_dir}" >/dev/null
+
+if [[ -f "${mount_dir}/.VolumeIcon.icns" ]] && command -v SetFile >/dev/null 2>&1; then
+    SetFile -a C "${mount_dir}" || true
+    SetFile -c icnC "${mount_dir}/.VolumeIcon.icns" || true
+fi
 
 if [[ "${WINUAE_SKIP_FINDER_LAYOUT:-0}" != "1" ]] && command -v osascript >/dev/null 2>&1; then
     osascript <<EOF
