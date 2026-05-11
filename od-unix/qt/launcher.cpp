@@ -1278,6 +1278,22 @@ static QString sourceFile(const QString &relative)
     return QDir(QString::fromUtf8(WINUAE_UNIX_SOURCE_DIR)).filePath(relative);
 }
 
+static QString resourceFile(const QString &relative)
+{
+    const QDir appDir(QCoreApplication::applicationDirPath());
+#ifdef Q_OS_MACOS
+    const QString bundlePath = appDir.filePath(QStringLiteral("../Resources/") + relative);
+    if (QFileInfo::exists(bundlePath)) {
+        return bundlePath;
+    }
+#endif
+    const QString localPath = appDir.filePath(relative);
+    if (QFileInfo::exists(localPath)) {
+        return localPath;
+    }
+    return sourceFile(relative);
+}
+
 static QString versionString()
 {
     return QStringLiteral("WinUAE %1.%2.%3")
@@ -1573,7 +1589,7 @@ static const ConfigChoice rtgAspectRatioChoices[] = {
 
 static QIcon resourceIcon(const QString &name)
 {
-    const QString path = sourceFile(QStringLiteral("od-win32/resources/") + name);
+    const QString path = resourceFile(QStringLiteral("od-win32/resources/") + name);
     return QFileInfo::exists(path) ? QIcon(path) : QIcon();
 }
 
