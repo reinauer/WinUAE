@@ -30,6 +30,7 @@ static constexpr int MaxMountEntries = 8;
 static constexpr int MaxControllerUnits = 8;
 static constexpr int MaxCdSlots = 8;
 static constexpr int MaxRomBoards = 4;
+static constexpr int MaxDiskSwapperSlots = 20;
 
 struct WinUaeQtCdSlot {
     QString path;
@@ -1512,6 +1513,7 @@ public:
         addPage(QStringLiteral("ROM"), QStringLiteral("chip.ico"), makeRomPage());
         addPage(QStringLiteral("RAM"), QStringLiteral("chip.ico"), makeMemoryPage());
         addPage(QStringLiteral("Floppy drives"), QStringLiteral("35floppy.ico"), makeFloppyPage());
+        addPage(QStringLiteral("Disk Swapper"), QStringLiteral("diskimage.ico"), makeDiskSwapperPage());
         addPage(QStringLiteral("Hard drives"), QStringLiteral("drive.ico"), makeHardDrivesPage());
         addPage(QStringLiteral("Expansion boards"), QStringLiteral("expansion.ico"), makeExpansionPage());
         addPage(QStringLiteral("Display"), QStringLiteral("screen.ico"), makeDisplayPage());
@@ -1696,6 +1698,11 @@ private:
     QCheckBox *dfWriteProtect[4] = {};
     QSlider *floppySpeed = nullptr;
     QLineEdit *floppySpeedLabel = nullptr;
+    QTableWidget *diskSwapperList = nullptr;
+    QComboBox *diskSwapperPath = nullptr;
+    QPushButton *diskSwapperInsertButton = nullptr;
+    QPushButton *diskSwapperRemoveButton = nullptr;
+    QPushButton *diskSwapperRemoveAllButton = nullptr;
     QTreeWidget *mountedDrives = nullptr;
     QPushButton *addDirectoryMountButton = nullptr;
     QPushButton *addHardfileMountButton = nullptr;
@@ -2448,6 +2455,9 @@ private:
         connect(eject, &QPushButton::clicked, this, [this, drive]() {
             dfPath[drive]->setCurrentText(QString());
         });
+        connect(dfPath[drive], &QComboBox::currentTextChanged, this, [this](const QString &) {
+            updateDiskSwapperDriveColumn();
+        });
         if (drive < 2 && quickDfPath[drive]) {
             connect(dfPath[drive], &QComboBox::currentTextChanged, this, [this, drive](const QString &text) {
                 if (quickDfPath[drive]->currentText() != text) {
@@ -2473,6 +2483,156 @@ private:
             connect(quickDfWriteProtect[drive], &QCheckBox::toggled, this, [this, drive]() {
                 syncQuickDriveToFloppy(drive);
             });
+        }
+    }
+
+    QWidget *makeDiskSwapperPage()
+    {
+        QWidget *page = makePage();
+        QVBoxLayout *root = new QVBoxLayout(page);
+        root->setContentsMargins(4, 4, 4, 4);
+        diskSwapperList = new QTableWidget(MaxDiskSwapperSlots, 3);
+        diskSwapperList->setSelectionBehavior(QAbstractItemView::SelectRows);
+        diskSwapperList->setSelectionMode(QAbstractItemView::SingleSelection);
+        diskSwapperList->setEditTriggers(QAbstractItemView::NoEditTriggers);
+        diskSwapperList->verticalHeader()->hide();
+        diskSwapperList->setHorizontalHeaderLabels({ QStringLiteral("#"), QStringLiteral("Disk image"), QStringLiteral("Drive") });
+        diskSwapperList->horizontalHeader()->setStretchLastSection(false);
+        diskSwapperList->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+        diskSwapperList->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
+        diskSwapperList->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
+        for (int row = 0; row < MaxDiskSwapperSlots; row++) {
+            QTableWidgetItem *slot = new QTableWidgetItem(QString::number(row + 1));
+            slot->setFlags(slot->flags() & ~Qt::ItemIsEditable);
+            diskSwapperList->setItem(row, 0, slot);
+            setDiskSwapperPath(row, QString());
+        }
+        root->addWidget(diskSwapperList, 1);
+
+        QHBoxLayout *pathRow = new QHBoxLayout;
+        diskSwapperPath = pathCombo();
+        QPushButton *browse = smallButton(QStringLiteral("..."));
+        pathRow->addWidget(diskSwapperPath, 1);
+        pathRow->addWidget(browse);
+        root->addLayout(pathRow);
+
+        QHBoxLayout *buttons = new QHBoxLayout;
+        diskSwapperInsertButton = new QPushButton(QStringLiteral("Insert floppy disk image"));
+        diskSwapperRemoveButton = new QPushButton(QStringLiteral("Remove floppy disk image"));
+        diskSwapperRemoveAllButton = new QPushButton(QStringLiteral("Remove all"));
+        buttons->addWidget(diskSwapperInsertButton);
+        buttons->addWidget(diskSwapperRemoveButton);
+        buttons->addWidget(diskSwapperRemoveAllButton);
+        root->addLayout(buttons);
+
+        connect(diskSwapperList->selectionModel(), &QItemSelectionModel::currentRowChanged, this, [this](const QModelIndex &, const QModelIndex &) {
+            updateDiskSwapperSelection();
+        });
+        connect(diskSwapperList, &QTableWidget::cellDoubleClicked, this, [this](int row, int column) {
+            if (column == 1) {
+                browseDiskSwapperImage(row);
+            }
+        });
+        connect(browse, &QPushButton::clicked, this, [this]() {
+            browseDiskSwapperImage(selectedDiskSwapperSlot());
+        });
+        connect(diskSwapperInsertButton, &QPushButton::clicked, this, [this]() {
+            setDiskSwapperPath(selectedDiskSwapperSlot(), diskSwapperPath->currentText().trimmed());
+        });
+        connect(diskSwapperRemoveButton, &QPushButton::clicked, this, [this]() {
+            setDiskSwapperPath(selectedDiskSwapperSlot(), QString());
+            diskSwapperPath->clearEditText();
+        });
+        connect(diskSwapperRemoveAllButton, &QPushButton::clicked, this, [this]() {
+            for (int row = 0; row < MaxDiskSwapperSlots; row++) {
+                setDiskSwapperPath(row, QString());
+            }
+            diskSwapperPath->clearEditText();
+        });
+        diskSwapperList->selectRow(0);
+        updateDiskSwapperSelection();
+        return page;
+    }
+
+    int selectedDiskSwapperSlot() const
+    {
+        if (!diskSwapperList || diskSwapperList->currentRow() < 0) {
+            return 0;
+        }
+        return qBound(0, diskSwapperList->currentRow(), MaxDiskSwapperSlots - 1);
+    }
+
+    QString diskSwapperPathAt(int slot) const
+    {
+        if (!diskSwapperList || slot < 0 || slot >= MaxDiskSwapperSlots) {
+            return QString();
+        }
+        QTableWidgetItem *item = diskSwapperList->item(slot, 1);
+        return item ? item->data(Qt::UserRole).toString() : QString();
+    }
+
+    void setDiskSwapperPath(int slot, const QString &path)
+    {
+        if (!diskSwapperList || slot < 0 || slot >= MaxDiskSwapperSlots) {
+            return;
+        }
+        const QString trimmed = path.trimmed();
+        QTableWidgetItem *image = diskSwapperList->item(slot, 1);
+        if (!image) {
+            image = new QTableWidgetItem;
+            image->setFlags(image->flags() & ~Qt::ItemIsEditable);
+            diskSwapperList->setItem(slot, 1, image);
+        }
+        image->setData(Qt::UserRole, trimmed);
+        image->setText(trimmed.isEmpty() ? QString() : QFileInfo(trimmed).fileName());
+        image->setToolTip(trimmed);
+        QTableWidgetItem *drive = diskSwapperList->item(slot, 2);
+        if (!drive) {
+            drive = new QTableWidgetItem;
+            drive->setFlags(drive->flags() & ~Qt::ItemIsEditable);
+            diskSwapperList->setItem(slot, 2, drive);
+        }
+        updateDiskSwapperDriveColumn();
+    }
+
+    void updateDiskSwapperSelection()
+    {
+        if (!diskSwapperPath) {
+            return;
+        }
+        diskSwapperPath->setCurrentText(diskSwapperPathAt(selectedDiskSwapperSlot()));
+    }
+
+    void updateDiskSwapperDriveColumn()
+    {
+        if (!diskSwapperList) {
+            return;
+        }
+        for (int slot = 0; slot < MaxDiskSwapperSlots; slot++) {
+            QTableWidgetItem *drive = diskSwapperList->item(slot, 2);
+            if (!drive) {
+                continue;
+            }
+            QString driveText;
+            const QString image = diskSwapperPathAt(slot);
+            if (!image.isEmpty()) {
+                for (int i = 0; i < 4; i++) {
+                    if (dfPath[i] && dfPath[i]->currentText() == image) {
+                        driveText = QStringLiteral("DF%1:").arg(i);
+                        break;
+                    }
+                }
+            }
+            drive->setText(driveText);
+        }
+    }
+
+    void browseDiskSwapperImage(int slot)
+    {
+        const QString selected = QFileDialog::getOpenFileName(this, QStringLiteral("Select floppy image"), diskSwapperPathAt(slot), QStringLiteral("Amiga disk images (*.adf *.adz *.ipf *.dms);;All files (*)"));
+        if (!selected.isEmpty()) {
+            diskSwapperPath->setCurrentText(selected);
+            setDiskSwapperPath(slot, selected);
         }
     }
 
@@ -3943,6 +4103,12 @@ private:
             quickDfWriteProtect[i]->setChecked(false);
             quickDfPath[i]->setCurrentText(i == 0 ? envString("WINUAE_FLOPPY0") : QString());
         }
+        for (int i = 0; i < MaxDiskSwapperSlots; i++) {
+            setDiskSwapperPath(i, QString());
+        }
+        if (diskSwapperPath) {
+            diskSwapperPath->clearEditText();
+        }
         if (mountedDrives) {
             mountedDrives->clear();
             updateMountButtons();
@@ -5087,6 +5253,12 @@ private:
         }
         settings.insert(QStringLiteral("nr_floppies"), QString::number(enabledFloppyCount()));
         settings.insert(QStringLiteral("floppy_speed"), QString::number(floppySpeedConfigValue(floppySpeed->value())));
+        for (int i = 0; i < MaxDiskSwapperSlots; i++) {
+            const QString path = diskSwapperPathAt(i);
+            if (!path.isEmpty()) {
+                settings.insert(QStringLiteral("diskimage%1").arg(i), path);
+            }
+        }
         settings.insert(QStringLiteral("chipset"), chipsetConfigValue(chipset->currentText()));
         settings.insert(QStringLiteral("chipset_compatible"), chipsetCompatible->currentText());
         settings.insert(QStringLiteral("ntsc"), chipsetNtsc->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
@@ -5336,6 +5508,26 @@ private:
             QStringLiteral("floppy3wp"),
             QStringLiteral("nr_floppies"),
             QStringLiteral("floppy_speed"),
+            QStringLiteral("diskimage0"),
+            QStringLiteral("diskimage1"),
+            QStringLiteral("diskimage2"),
+            QStringLiteral("diskimage3"),
+            QStringLiteral("diskimage4"),
+            QStringLiteral("diskimage5"),
+            QStringLiteral("diskimage6"),
+            QStringLiteral("diskimage7"),
+            QStringLiteral("diskimage8"),
+            QStringLiteral("diskimage9"),
+            QStringLiteral("diskimage10"),
+            QStringLiteral("diskimage11"),
+            QStringLiteral("diskimage12"),
+            QStringLiteral("diskimage13"),
+            QStringLiteral("diskimage14"),
+            QStringLiteral("diskimage15"),
+            QStringLiteral("diskimage16"),
+            QStringLiteral("diskimage17"),
+            QStringLiteral("diskimage18"),
+            QStringLiteral("diskimage19"),
             QStringLiteral("chipset"),
             QStringLiteral("chipset_compatible"),
             QStringLiteral("ntsc"),
@@ -5679,6 +5871,9 @@ private:
         if (configDescription) {
             configDescription->clear();
         }
+        for (int i = 0; i < MaxDiskSwapperSlots; i++) {
+            setDiskSwapperPath(i, QString());
+        }
         clearCdSlots();
         for (const WinUaeQtConfig::Setting &setting : config.orderedSettings()) {
             applySetting(setting.key, setting.value);
@@ -5747,6 +5942,15 @@ private:
             dfEnable[drive]->setChecked(true);
             dfPath[drive]->setCurrentText(value);
             syncFloppyDriveToQuick(drive);
+        } else if (key.startsWith(QStringLiteral("diskimage"))) {
+            bool ok = false;
+            const int slot = key.mid(9).toInt(&ok);
+            if (ok && slot >= 0 && slot < MaxDiskSwapperSlots) {
+                setDiskSwapperPath(slot, value);
+                if (slot == selectedDiskSwapperSlot()) {
+                    diskSwapperPath->setCurrentText(value);
+                }
+            }
         } else if (key.startsWith(QStringLiteral("uaehf"))) {
             WinUaeQtMountEntry entry;
             if (parseWinUaeQtUaehfMountValue(value, &entry)) {
