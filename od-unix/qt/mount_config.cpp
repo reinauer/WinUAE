@@ -165,10 +165,29 @@ static bool parseHardfileMountValue(QString value, WinUaeQtMountEntry *entry)
     return true;
 }
 
+static bool parseUnitSuffix(const QString &kind, const QString &prefix, int *unit)
+{
+    if (!unit || !kind.startsWith(prefix, Qt::CaseInsensitive)) {
+        return false;
+    }
+
+    const QString suffix = kind.mid(prefix.size());
+    if (suffix.isEmpty()) {
+        *unit = 0;
+        return true;
+    }
+    if (suffix.size() != 1 || !suffix.at(0).isDigit()) {
+        return false;
+    }
+    *unit = suffix.toInt();
+    return true;
+}
+
 bool parseWinUaeQtUaehfMountValue(const QString &value, WinUaeQtMountEntry *entry)
 {
     QString rest = value;
     QString kind;
+    int unit = 0;
     if (!takeConfigField(&rest, QLatin1Char(','), &kind, true)) {
         return false;
     }
@@ -180,6 +199,31 @@ bool parseWinUaeQtUaehfMountValue(const QString &value, WinUaeQtMountEntry *entr
             return false;
         }
         entry->rawConfig = rest;
+        return true;
+    }
+    if (parseUnitSuffix(kind, QStringLiteral("cd"), &unit)) {
+        if (!parseHardfileMountValue(rest, entry)) {
+            return false;
+        }
+        entry->kind = QStringLiteral("cd");
+        entry->emuUnit = unit;
+        entry->readOnly = true;
+        entry->rawConfig = rest;
+        if (entry->hardfileGeometry.isEmpty()) {
+            entry->hardfileGeometry = QStringLiteral("0,0,0,2048");
+        }
+        return true;
+    }
+    if (parseUnitSuffix(kind, QStringLiteral("tape"), &unit)) {
+        if (!parseHardfileMountValue(rest, entry)) {
+            return false;
+        }
+        entry->kind = QStringLiteral("tape");
+        entry->emuUnit = unit;
+        entry->rawConfig = rest;
+        if (entry->hardfileGeometry.isEmpty()) {
+            entry->hardfileGeometry = QStringLiteral("0,0,0,512");
+        }
         return true;
     }
     return false;
@@ -225,6 +269,26 @@ QString serializeWinUaeQtHardfile2MountValue(const WinUaeQtMountEntry &entry)
     return value;
 }
 
+static QString serializeWinUaeQtHardfileLikeMountValue(
+    const WinUaeQtMountEntry &entry,
+    const QString &fallbackDevice,
+    const QString &defaultGeometry,
+    const QString &defaultTail)
+{
+    const QString geometry = entry.hardfileGeometry.isEmpty() ? defaultGeometry : entry.hardfileGeometry;
+    const QString tail = entry.hardfileTail.isEmpty() ? defaultTail : entry.hardfileTail;
+    QString value = QStringLiteral("%1,%2:%3,%4,%5")
+        .arg(winUaeQtConfigAccessValue(entry.readOnly),
+             winUaeQtSanitizedAmigaName(entry.device, fallbackDevice, true),
+             winUaeQtConfigEscapeMin(entry.path),
+             geometry,
+             QString::number(entry.bootPri));
+    if (!tail.isEmpty()) {
+        value += QStringLiteral(",") + tail;
+    }
+    return value;
+}
+
 QString serializeWinUaeQtUaehfDirectoryMountValue(const WinUaeQtMountEntry &entry)
 {
     return QStringLiteral("dir,%1").arg(serializeWinUaeQtFilesystem2MountValue(entry));
@@ -233,4 +297,21 @@ QString serializeWinUaeQtUaehfDirectoryMountValue(const WinUaeQtMountEntry &entr
 QString serializeWinUaeQtUaehfHardfileMountValue(const WinUaeQtMountEntry &entry)
 {
     return QStringLiteral("hdf,%1").arg(serializeWinUaeQtHardfile2MountValue(entry));
+}
+
+QString serializeWinUaeQtUaehfCdMountValue(const WinUaeQtMountEntry &entry)
+{
+    WinUaeQtMountEntry cd = entry;
+    cd.readOnly = true;
+    cd.bootPri = 0;
+    return QStringLiteral("cd%1,%2")
+        .arg(qBound(0, cd.emuUnit, 9))
+        .arg(serializeWinUaeQtHardfileLikeMountValue(cd, QString(), QStringLiteral("0,0,0,2048"), QStringLiteral(",ide0")));
+}
+
+QString serializeWinUaeQtUaehfTapeMountValue(const WinUaeQtMountEntry &entry)
+{
+    return QStringLiteral("tape%1,%2")
+        .arg(qBound(0, entry.emuUnit, 9))
+        .arg(serializeWinUaeQtHardfileLikeMountValue(entry, QString(), QStringLiteral("0,0,0,512"), QStringLiteral(",uae0")));
 }
