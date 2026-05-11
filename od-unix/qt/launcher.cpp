@@ -44,6 +44,33 @@ struct WinUaeQtRomBoard {
     QString path;
 };
 
+struct WinUaeQtFilterState {
+    QString filter = QStringLiteral("none");
+    QString modeH = QStringLiteral("1x");
+    QString modeV = QStringLiteral("-");
+    QString autoscale = QStringLiteral("auto");
+    QString integerLimit = QStringLiteral("1/1");
+    QString keepAspect = QStringLiteral("none");
+    bool enable = true;
+    bool keepAutoscaleAspect = false;
+    bool bilinear = false;
+    double horizZoom = 0.0;
+    double vertZoom = 0.0;
+    double horizZoomMult = 1.0;
+    double vertZoomMult = 1.0;
+    double horizOffset = 0.0;
+    double vertOffset = 0.0;
+    int scanlines = 0;
+    int scanlineLevel = 0;
+    int scanlineOffset = 1;
+    int luminance = 0;
+    int contrast = 0;
+    int saturation = 0;
+    int gamma = 0;
+    int blur = 0;
+    int noise = 0;
+};
+
 enum MountDataRole {
     MountKindRole = Qt::UserRole,
     MountDeviceRole,
@@ -1211,6 +1238,64 @@ static const AdvancedCheckChoice advancedCheckChoices[] = {
     { "Power up memory pattern", "memory_pattern", false }
 };
 
+static const ConfigChoice filterTargetChoices[] = {
+    { "Native", "" },
+    { "RTG", "_rtg" },
+    { "Interlaced", "_lace" }
+};
+
+static const ConfigChoice filterModeChoices[] = {
+    { "None", "none" }
+};
+
+static const ConfigChoice filterModeHChoices[] = {
+    { "1x", "1x" },
+    { "2x", "2x" },
+    { "3x", "3x" },
+    { "4x", "4x" }
+};
+
+static const ConfigChoice filterModeVChoices[] = {
+    { "-", "-" },
+    { "1x", "1x" },
+    { "2x", "2x" },
+    { "3x", "3x" },
+    { "4x", "4x" }
+};
+
+static const ConfigChoice filterAutoscaleChoices[] = {
+    { "Disabled", "none" },
+    { "Automatic", "auto" },
+    { "TV", "standard" },
+    { "Maximum", "max" },
+    { "Scale", "scale" },
+    { "Resize", "resize" },
+    { "Center", "center" },
+    { "Manual", "manual" },
+    { "Integer", "integer" },
+    { "Integer autoscale", "integer_auto" },
+    { "Overscan blanking", "overscan_blanking" }
+};
+
+static const ConfigChoice filterAutoscaleRtgChoices[] = {
+    { "Resize", "resize" },
+    { "Scale", "scale" },
+    { "Center", "center" },
+    { "Integer", "integer" }
+};
+
+static const ConfigChoice filterIntegerLimitChoices[] = {
+    { "1/1", "1/1" },
+    { "1/2", "1/2" },
+    { "1/4", "1/4" },
+    { "1/8", "1/8" }
+};
+
+static const ConfigChoice filterAspectChoices[] = {
+    { "VGA", "vga" },
+    { "TV", "tv" }
+};
+
 static QIcon resourceIcon(const QString &name)
 {
     const QString path = sourceFile(QStringLiteral("od-win32/resources/") + name);
@@ -1337,6 +1422,46 @@ static QString chipsetRevisionConfigValue(QCheckBox *enabled, QLineEdit *field, 
         value = defaultValue;
     }
     return QString::number(qBound(0, value, 255));
+}
+
+static QString filterSuffix(int target)
+{
+    return QString::fromLatin1(filterTargetChoices[qBound(0, target, 2)].value);
+}
+
+static QString filterKey(const QString &base, int target)
+{
+    return base + filterSuffix(target);
+}
+
+static bool isRtgAutoscaleValue(const QString &value)
+{
+    for (const ConfigChoice &choice : filterAutoscaleRtgChoices) {
+        if (value.compare(QString::fromLatin1(choice.value), Qt::CaseInsensitive) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static QString filterAutoscaleConfigValue(const QString &display, int target)
+{
+    QString value = configChoiceValue(
+        target == 1 ? filterAutoscaleRtgChoices : filterAutoscaleChoices,
+        target == 1 ? int(sizeof(filterAutoscaleRtgChoices) / sizeof(filterAutoscaleRtgChoices[0])) : int(sizeof(filterAutoscaleChoices) / sizeof(filterAutoscaleChoices[0])),
+        display);
+    if (target == 1 && !isRtgAutoscaleValue(value)) {
+        value = QStringLiteral("resize");
+    }
+    return value;
+}
+
+static QString filterAutoscaleDisplay(const QString &value, int target)
+{
+    return configChoiceDisplay(
+        target == 1 ? filterAutoscaleRtgChoices : filterAutoscaleChoices,
+        target == 1 ? int(sizeof(filterAutoscaleRtgChoices) / sizeof(filterAutoscaleRtgChoices[0])) : int(sizeof(filterAutoscaleChoices) / sizeof(filterAutoscaleChoices[0])),
+        target == 1 && !isRtgAutoscaleValue(value) ? QStringLiteral("resize") : value);
 }
 
 static QStringList unixSerialPortItems()
@@ -1693,6 +1818,7 @@ public:
         addPage(QStringLiteral("Hard drives"), QStringLiteral("drive.ico"), makeHardDrivesPage());
         addPage(QStringLiteral("Expansion boards"), QStringLiteral("expansion.ico"), makeExpansionPage());
         addPage(QStringLiteral("Display"), QStringLiteral("screen.ico"), makeDisplayPage());
+        addPage(QStringLiteral("Filter"), QStringLiteral("screen.ico"), makeFilterPage());
         addPage(QStringLiteral("Sound"), QStringLiteral("sound.ico"), makeSoundPage());
         addPage(QStringLiteral("Game ports"), QStringLiteral("joystick.ico"), makeGamePortsPage());
         addPage(QStringLiteral("IO ports"), QStringLiteral("port.ico"), makeIoPortsPage());
@@ -1926,6 +2052,36 @@ private:
     QCheckBox *displayFlickerFixer = nullptr;
     QCheckBox *displayLoresSmoothed = nullptr;
     QButtonGroup *displayLineModeButtons = nullptr;
+    QComboBox *filterTarget = nullptr;
+    QCheckBox *filterEnable = nullptr;
+    QComboBox *filterMode = nullptr;
+    QComboBox *filterModeH = nullptr;
+    QComboBox *filterModeV = nullptr;
+    QComboBox *filterAutoscale = nullptr;
+    QComboBox *filterIntegerLimit = nullptr;
+    QDoubleSpinBox *filterHorizZoomMult = nullptr;
+    QDoubleSpinBox *filterVertZoomMult = nullptr;
+    QDoubleSpinBox *filterHorizZoom = nullptr;
+    QDoubleSpinBox *filterVertZoom = nullptr;
+    QDoubleSpinBox *filterHorizOffset = nullptr;
+    QDoubleSpinBox *filterVertOffset = nullptr;
+    QCheckBox *filterKeepAutoscaleAspect = nullptr;
+    QCheckBox *filterKeepAspect = nullptr;
+    QComboBox *filterAspect = nullptr;
+    QCheckBox *filterNtscPixels = nullptr;
+    QCheckBox *filterBilinear = nullptr;
+    QSpinBox *filterScanlines = nullptr;
+    QSpinBox *filterScanlineLevel = nullptr;
+    QSpinBox *filterScanlineOffset = nullptr;
+    QSpinBox *filterLuminance = nullptr;
+    QSpinBox *filterContrast = nullptr;
+    QSpinBox *filterSaturation = nullptr;
+    QSpinBox *filterGamma = nullptr;
+    QSpinBox *filterBlur = nullptr;
+    QSpinBox *filterNoise = nullptr;
+    WinUaeQtFilterState filterStates[3];
+    int currentFilterTarget = 0;
+    bool filterUpdating = false;
     QButtonGroup *soundOutputButtons = nullptr;
     QCheckBox *soundAutomatic = nullptr;
     QSlider *soundMasterVolume = nullptr;
@@ -3275,6 +3431,170 @@ private:
         return page;
     }
 
+    QWidget *makeFilterPage()
+    {
+        QWidget *page = makePage();
+        QVBoxLayout *outer = new QVBoxLayout(page);
+        outer->setContentsMargins(0, 0, 0, 0);
+
+        QWidget *content = new QWidget;
+        QVBoxLayout *root = new QVBoxLayout(content);
+        root->setContentsMargins(4, 4, 4, 4);
+        root->setSpacing(6);
+
+        auto doubleSpin = [](double minimum, double maximum, double step, int decimals) {
+            QDoubleSpinBox *spin = new QDoubleSpinBox;
+            spin->setRange(minimum, maximum);
+            spin->setSingleStep(step);
+            spin->setDecimals(decimals);
+            spin->setAlignment(Qt::AlignRight);
+            return spin;
+        };
+        auto intSpin = [](int minimum, int maximum) {
+            QSpinBox *spin = new QSpinBox;
+            spin->setRange(minimum, maximum);
+            spin->setAlignment(Qt::AlignRight);
+            return spin;
+        };
+
+        filterTarget = combo(configChoiceDisplays(filterTargetChoices, int(sizeof(filterTargetChoices) / sizeof(filterTargetChoices[0]))), QStringLiteral("Native"));
+        filterEnable = new QCheckBox(QStringLiteral("Enabled"));
+        filterMode = combo(configChoiceDisplays(filterModeChoices, int(sizeof(filterModeChoices) / sizeof(filterModeChoices[0]))), QStringLiteral("None"));
+        filterMode->setEnabled(false);
+        filterModeH = combo(configChoiceDisplays(filterModeHChoices, int(sizeof(filterModeHChoices) / sizeof(filterModeHChoices[0]))), QStringLiteral("1x"));
+        filterModeV = combo(configChoiceDisplays(filterModeVChoices, int(sizeof(filterModeVChoices) / sizeof(filterModeVChoices[0]))), QStringLiteral("-"));
+        filterAutoscale = combo({});
+        filterIntegerLimit = combo(configChoiceDisplays(filterIntegerLimitChoices, int(sizeof(filterIntegerLimitChoices) / sizeof(filterIntegerLimitChoices[0]))), QStringLiteral("1/1"));
+        QPushButton *reset = new QPushButton(QStringLiteral("Reset to defaults"));
+
+        QGridLayout *settings = new QGridLayout;
+        settings->setColumnStretch(1, 1);
+        settings->setColumnStretch(3, 1);
+        settings->addWidget(label(QStringLiteral("Target:")), 0, 0);
+        settings->addWidget(filterTarget, 0, 1);
+        settings->addWidget(filterEnable, 0, 2);
+        settings->addWidget(reset, 0, 3);
+        settings->addWidget(label(QStringLiteral("Filter:")), 1, 0);
+        settings->addWidget(filterMode, 1, 1);
+        settings->addWidget(label(QStringLiteral("H/V mode:")), 1, 2);
+        QHBoxLayout *modes = new QHBoxLayout;
+        modes->setContentsMargins(0, 0, 0, 0);
+        modes->addWidget(filterModeH);
+        modes->addWidget(filterModeV);
+        settings->addLayout(modes, 1, 3);
+        settings->addWidget(label(QStringLiteral("Autoscale:")), 2, 0);
+        settings->addWidget(filterAutoscale, 2, 1);
+        settings->addWidget(label(QStringLiteral("Integer limit:")), 2, 2);
+        settings->addWidget(filterIntegerLimit, 2, 3);
+        root->addWidget(groupBox(QStringLiteral("Filter Settings"), settings));
+
+        filterHorizZoomMult = doubleSpin(0.25, 8.0, 0.25, 2);
+        filterVertZoomMult = doubleSpin(0.25, 8.0, 0.25, 2);
+        filterHorizZoom = doubleSpin(-9999.0, 9999.0, 1.0, 0);
+        filterVertZoom = doubleSpin(-9999.0, 9999.0, 1.0, 0);
+        filterHorizOffset = doubleSpin(-9999.0, 9999.0, 1.0, 0);
+        filterVertOffset = doubleSpin(-9999.0, 9999.0, 1.0, 0);
+        QGridLayout *geometry = new QGridLayout;
+        geometry->setColumnStretch(1, 1);
+        geometry->setColumnStretch(3, 1);
+        geometry->addWidget(label(QStringLiteral("Horiz. size:")), 0, 0);
+        geometry->addWidget(filterHorizZoomMult, 0, 1);
+        geometry->addWidget(filterHorizZoom, 0, 2);
+        geometry->addWidget(label(QStringLiteral("Vert. size:")), 1, 0);
+        geometry->addWidget(filterVertZoomMult, 1, 1);
+        geometry->addWidget(filterVertZoom, 1, 2);
+        geometry->addWidget(label(QStringLiteral("Horiz. position:")), 0, 3);
+        geometry->addWidget(filterHorizOffset, 0, 4);
+        geometry->addWidget(label(QStringLiteral("Vert. position:")), 1, 3);
+        geometry->addWidget(filterVertOffset, 1, 4);
+        root->addWidget(groupBox(QStringLiteral("Size and Position"), geometry));
+
+        filterKeepAutoscaleAspect = new QCheckBox(QStringLiteral("Keep autoscale aspect"));
+        filterKeepAspect = new QCheckBox(QStringLiteral("Keep aspect ratio"));
+        filterAspect = combo(configChoiceDisplays(filterAspectChoices, int(sizeof(filterAspectChoices) / sizeof(filterAspectChoices[0]))), QStringLiteral("VGA"));
+        filterNtscPixels = new QCheckBox(QStringLiteral("Always stretch NTSC mode"));
+        QGridLayout *aspect = new QGridLayout;
+        aspect->setColumnStretch(2, 1);
+        aspect->addWidget(filterKeepAutoscaleAspect, 0, 0, 1, 2);
+        aspect->addWidget(filterKeepAspect, 1, 0);
+        aspect->addWidget(filterAspect, 1, 1);
+        aspect->addWidget(filterNtscPixels, 2, 0, 1, 2);
+        root->addWidget(groupBox(QStringLiteral("Aspect Ratio Correction"), aspect));
+
+        filterBilinear = new QCheckBox(QStringLiteral("Point/Bilinear"));
+        filterScanlines = intSpin(0, 1000);
+        filterScanlineLevel = intSpin(0, 1000);
+        filterScanlineOffset = intSpin(-1000, 1000);
+        filterLuminance = intSpin(-1000, 1000);
+        filterContrast = intSpin(-1000, 1000);
+        filterSaturation = intSpin(-1000, 1000);
+        filterGamma = intSpin(-1000, 1000);
+        filterBlur = intSpin(0, 1000);
+        filterNoise = intSpin(0, 1000);
+        QGridLayout *extra = new QGridLayout;
+        extra->setColumnStretch(1, 1);
+        extra->setColumnStretch(3, 1);
+        extra->addWidget(filterBilinear, 0, 0, 1, 2);
+        extra->addWidget(label(QStringLiteral("Scanline opacity:")), 1, 0);
+        extra->addWidget(filterScanlines, 1, 1);
+        extra->addWidget(label(QStringLiteral("Scanline level:")), 1, 2);
+        extra->addWidget(filterScanlineLevel, 1, 3);
+        extra->addWidget(label(QStringLiteral("Scanline offset:")), 2, 0);
+        extra->addWidget(filterScanlineOffset, 2, 1);
+        extra->addWidget(label(QStringLiteral("Brightness:")), 3, 0);
+        extra->addWidget(filterLuminance, 3, 1);
+        extra->addWidget(label(QStringLiteral("Contrast:")), 3, 2);
+        extra->addWidget(filterContrast, 3, 3);
+        extra->addWidget(label(QStringLiteral("Saturation:")), 4, 0);
+        extra->addWidget(filterSaturation, 4, 1);
+        extra->addWidget(label(QStringLiteral("Gamma:")), 4, 2);
+        extra->addWidget(filterGamma, 4, 3);
+        extra->addWidget(label(QStringLiteral("Blurriness:")), 5, 0);
+        extra->addWidget(filterBlur, 5, 1);
+        extra->addWidget(label(QStringLiteral("Noise:")), 5, 2);
+        extra->addWidget(filterNoise, 5, 3);
+        root->addWidget(groupBox(QStringLiteral("Extra Settings"), extra));
+
+        QGridLayout *presets = new QGridLayout;
+        QComboBox *presetName = combo({ QStringLiteral("") });
+        QPushButton *load = new QPushButton(QStringLiteral("Load"));
+        QPushButton *save = new QPushButton(QStringLiteral("Save"));
+        QPushButton *deletePreset = new QPushButton(QStringLiteral("Delete"));
+        load->setEnabled(false);
+        save->setEnabled(false);
+        deletePreset->setEnabled(false);
+        presets->setColumnStretch(0, 1);
+        presets->addWidget(presetName, 0, 0);
+        presets->addWidget(load, 0, 1);
+        presets->addWidget(save, 0, 2);
+        presets->addWidget(deletePreset, 0, 3);
+        root->addWidget(groupBox(QStringLiteral("Presets"), presets));
+        root->addStretch(1);
+
+        QScrollArea *scroll = new QScrollArea;
+        scroll->setFrameShape(QFrame::NoFrame);
+        scroll->setWidgetResizable(true);
+        scroll->setWidget(content);
+        outer->addWidget(scroll);
+
+        connect(filterTarget, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index) {
+            if (filterUpdating || index < 0 || index > 2) {
+                return;
+            }
+            storeFilterUiToState();
+            currentFilterTarget = index;
+            loadFilterStateToUi(index);
+        });
+        connect(filterKeepAspect, &QCheckBox::toggled, this, [this]() { updateFilterControlState(); });
+        connect(reset, &QPushButton::clicked, this, [this]() {
+            filterStates[currentFilterTarget] = defaultFilterState(currentFilterTarget);
+            loadFilterStateToUi(currentFilterTarget);
+        });
+
+        resetFilterStates();
+        return page;
+    }
+
     QWidget *makeSoundPage()
     {
         QWidget *page = makePage();
@@ -4456,6 +4776,231 @@ private:
         updateJitCacheLabel();
     }
 
+    WinUaeQtFilterState defaultFilterState(int target) const
+    {
+        WinUaeQtFilterState state;
+        if (target == 1) {
+            state.autoscale = QStringLiteral("resize");
+        } else if (target == 2) {
+            state.enable = false;
+        }
+        return state;
+    }
+
+    void resetFilterStates()
+    {
+        for (int i = 0; i < 3; i++) {
+            filterStates[i] = defaultFilterState(i);
+        }
+        currentFilterTarget = 0;
+        if (filterTarget) {
+            filterTarget->setCurrentIndex(0);
+            loadFilterStateToUi(0);
+        }
+        if (filterNtscPixels) {
+            filterNtscPixels->setChecked(true);
+        }
+    }
+
+    void updateFilterAutoscaleItems(int target)
+    {
+        if (!filterAutoscale) {
+            return;
+        }
+        const QString current = filterAutoscale->currentText();
+        filterAutoscale->clear();
+        if (target == 1) {
+            filterAutoscale->addItems(configChoiceDisplays(filterAutoscaleRtgChoices, int(sizeof(filterAutoscaleRtgChoices) / sizeof(filterAutoscaleRtgChoices[0]))));
+        } else {
+            filterAutoscale->addItems(configChoiceDisplays(filterAutoscaleChoices, int(sizeof(filterAutoscaleChoices) / sizeof(filterAutoscaleChoices[0]))));
+        }
+        if (!current.isEmpty()) {
+            setComboTextIfChanged(filterAutoscale, current);
+        }
+    }
+
+    WinUaeQtFilterState filterStateFromUi(int target) const
+    {
+        WinUaeQtFilterState state = filterStates[qBound(0, target, 2)];
+        if (!filterTarget || target != currentFilterTarget) {
+            return state;
+        }
+        state.enable = filterEnable->isChecked();
+        state.filter = configChoiceValue(filterModeChoices, int(sizeof(filterModeChoices) / sizeof(filterModeChoices[0])), filterMode->currentText());
+        state.modeH = configChoiceValue(filterModeHChoices, int(sizeof(filterModeHChoices) / sizeof(filterModeHChoices[0])), filterModeH->currentText());
+        state.modeV = configChoiceValue(filterModeVChoices, int(sizeof(filterModeVChoices) / sizeof(filterModeVChoices[0])), filterModeV->currentText());
+        state.autoscale = filterAutoscaleConfigValue(filterAutoscale->currentText(), target);
+        state.integerLimit = configChoiceValue(filterIntegerLimitChoices, int(sizeof(filterIntegerLimitChoices) / sizeof(filterIntegerLimitChoices[0])), filterIntegerLimit->currentText());
+        state.keepAspect = filterKeepAspect->isChecked()
+            ? configChoiceValue(filterAspectChoices, int(sizeof(filterAspectChoices) / sizeof(filterAspectChoices[0])), filterAspect->currentText())
+            : QStringLiteral("none");
+        state.keepAutoscaleAspect = filterKeepAutoscaleAspect->isChecked();
+        state.bilinear = filterBilinear->isChecked();
+        state.horizZoom = filterHorizZoom->value();
+        state.vertZoom = filterVertZoom->value();
+        state.horizZoomMult = filterHorizZoomMult->value();
+        state.vertZoomMult = filterVertZoomMult->value();
+        state.horizOffset = filterHorizOffset->value();
+        state.vertOffset = filterVertOffset->value();
+        state.scanlines = filterScanlines->value();
+        state.scanlineLevel = filterScanlineLevel->value();
+        state.scanlineOffset = filterScanlineOffset->value();
+        state.luminance = filterLuminance->value();
+        state.contrast = filterContrast->value();
+        state.saturation = filterSaturation->value();
+        state.gamma = filterGamma->value();
+        state.blur = filterBlur->value();
+        state.noise = filterNoise->value();
+        return state;
+    }
+
+    void storeFilterUiToState()
+    {
+        if (!filterTarget || filterUpdating) {
+            return;
+        }
+        filterStates[currentFilterTarget] = filterStateFromUi(currentFilterTarget);
+    }
+
+    void updateFilterControlState()
+    {
+        if (!filterTarget) {
+            return;
+        }
+        const int target = filterTarget->currentIndex();
+        filterEnable->setEnabled(target == 2);
+        filterAspect->setEnabled(filterKeepAspect->isChecked());
+    }
+
+    void loadFilterStateToUi(int target)
+    {
+        if (!filterTarget) {
+            return;
+        }
+        filterUpdating = true;
+        const WinUaeQtFilterState state = filterStates[qBound(0, target, 2)];
+        updateFilterAutoscaleItems(target);
+        filterEnable->setChecked(state.enable);
+        filterMode->setCurrentText(configChoiceDisplay(filterModeChoices, int(sizeof(filterModeChoices) / sizeof(filterModeChoices[0])), state.filter));
+        filterModeH->setCurrentText(configChoiceDisplay(filterModeHChoices, int(sizeof(filterModeHChoices) / sizeof(filterModeHChoices[0])), state.modeH));
+        filterModeV->setCurrentText(configChoiceDisplay(filterModeVChoices, int(sizeof(filterModeVChoices) / sizeof(filterModeVChoices[0])), state.modeV));
+        filterAutoscale->setCurrentText(filterAutoscaleDisplay(state.autoscale, target));
+        filterIntegerLimit->setCurrentText(configChoiceDisplay(filterIntegerLimitChoices, int(sizeof(filterIntegerLimitChoices) / sizeof(filterIntegerLimitChoices[0])), state.integerLimit));
+        filterKeepAspect->setChecked(state.keepAspect != QStringLiteral("none"));
+        filterAspect->setCurrentText(configChoiceDisplay(filterAspectChoices, int(sizeof(filterAspectChoices) / sizeof(filterAspectChoices[0])), state.keepAspect));
+        filterKeepAutoscaleAspect->setChecked(state.keepAutoscaleAspect);
+        filterBilinear->setChecked(state.bilinear);
+        filterHorizZoom->setValue(state.horizZoom);
+        filterVertZoom->setValue(state.vertZoom);
+        filterHorizZoomMult->setValue(state.horizZoomMult);
+        filterVertZoomMult->setValue(state.vertZoomMult);
+        filterHorizOffset->setValue(state.horizOffset);
+        filterVertOffset->setValue(state.vertOffset);
+        filterScanlines->setValue(state.scanlines);
+        filterScanlineLevel->setValue(state.scanlineLevel);
+        filterScanlineOffset->setValue(state.scanlineOffset);
+        filterLuminance->setValue(state.luminance);
+        filterContrast->setValue(state.contrast);
+        filterSaturation->setValue(state.saturation);
+        filterGamma->setValue(state.gamma);
+        filterBlur->setValue(state.blur);
+        filterNoise->setValue(state.noise);
+        filterUpdating = false;
+        updateFilterControlState();
+    }
+
+    bool applyFilterSetting(const QString &key, const QString &value)
+    {
+        const QStringList bases = {
+            QStringLiteral("gfx_filter_mode"),
+            QStringLiteral("gfx_filter_mode2"),
+            QStringLiteral("gfx_filter_horiz_zoomf"),
+            QStringLiteral("gfx_filter_vert_zoomf"),
+            QStringLiteral("gfx_filter_horiz_zoom_multf"),
+            QStringLiteral("gfx_filter_vert_zoom_multf"),
+            QStringLiteral("gfx_filter_horiz_offsetf"),
+            QStringLiteral("gfx_filter_vert_offsetf"),
+            QStringLiteral("gfx_filter_keep_aspect"),
+            QStringLiteral("gfx_filter_keep_autoscale_aspect"),
+            QStringLiteral("gfx_filter_autoscale"),
+            QStringLiteral("gfx_filter_autoscale_limit"),
+            QStringLiteral("gfx_filter_luminance"),
+            QStringLiteral("gfx_filter_contrast"),
+            QStringLiteral("gfx_filter_saturation"),
+            QStringLiteral("gfx_filter_gamma"),
+            QStringLiteral("gfx_filter_blur"),
+            QStringLiteral("gfx_filter_noise"),
+            QStringLiteral("gfx_filter_bilinear"),
+            QStringLiteral("gfx_filter_scanlines"),
+            QStringLiteral("gfx_filter_scanlinelevel"),
+            QStringLiteral("gfx_filter_scanlineoffset"),
+            QStringLiteral("gfx_filter_enable")
+        };
+        for (int target = 0; target < 3; target++) {
+            for (const QString &base : bases) {
+                if (key != filterKey(base, target)) {
+                    continue;
+                }
+                WinUaeQtFilterState &state = filterStates[target];
+                if (base == QStringLiteral("gfx_filter_mode")) {
+                    state.modeH = value;
+                } else if (base == QStringLiteral("gfx_filter_mode2")) {
+                    state.modeV = value;
+                } else if (base == QStringLiteral("gfx_filter_horiz_zoomf")) {
+                    state.horizZoom = value.toDouble();
+                } else if (base == QStringLiteral("gfx_filter_vert_zoomf")) {
+                    state.vertZoom = value.toDouble();
+                } else if (base == QStringLiteral("gfx_filter_horiz_zoom_multf")) {
+                    state.horizZoomMult = value.toDouble();
+                } else if (base == QStringLiteral("gfx_filter_vert_zoom_multf")) {
+                    state.vertZoomMult = value.toDouble();
+                } else if (base == QStringLiteral("gfx_filter_horiz_offsetf")) {
+                    state.horizOffset = value.toDouble();
+                } else if (base == QStringLiteral("gfx_filter_vert_offsetf")) {
+                    state.vertOffset = value.toDouble();
+                } else if (base == QStringLiteral("gfx_filter_keep_aspect")) {
+                    state.keepAspect = value;
+                } else if (base == QStringLiteral("gfx_filter_keep_autoscale_aspect")) {
+                    state.keepAutoscaleAspect = value.toInt() != 0 || configBoolValue(value);
+                } else if (base == QStringLiteral("gfx_filter_autoscale")) {
+                    state.autoscale = target == 1 && !isRtgAutoscaleValue(value) ? QStringLiteral("resize") : value;
+                    if (target == 1) {
+                        applyRtgScaleValue(state.autoscale);
+                    }
+                } else if (base == QStringLiteral("gfx_filter_autoscale_limit")) {
+                    state.integerLimit = value;
+                } else if (base == QStringLiteral("gfx_filter_luminance")) {
+                    state.luminance = value.toInt();
+                } else if (base == QStringLiteral("gfx_filter_contrast")) {
+                    state.contrast = value.toInt();
+                } else if (base == QStringLiteral("gfx_filter_saturation")) {
+                    state.saturation = value.toInt();
+                } else if (base == QStringLiteral("gfx_filter_gamma")) {
+                    state.gamma = value.toInt();
+                } else if (base == QStringLiteral("gfx_filter_blur")) {
+                    state.blur = value.toInt();
+                } else if (base == QStringLiteral("gfx_filter_noise")) {
+                    state.noise = value.toInt();
+                } else if (base == QStringLiteral("gfx_filter_bilinear")) {
+                    state.bilinear = value.toInt() != 0 || configBoolValue(value);
+                } else if (base == QStringLiteral("gfx_filter_scanlines")) {
+                    state.scanlines = value.toInt();
+                } else if (base == QStringLiteral("gfx_filter_scanlinelevel")) {
+                    state.scanlineLevel = value.toInt();
+                } else if (base == QStringLiteral("gfx_filter_scanlineoffset")) {
+                    state.scanlineOffset = value.toInt();
+                } else if (base == QStringLiteral("gfx_filter_enable")) {
+                    state.enable = value.toInt() != 0 || configBoolValue(value);
+                }
+                if (target == currentFilterTarget) {
+                    loadFilterStateToUi(target);
+                }
+                return true;
+            }
+        }
+        return false;
+    }
+
     void setAdvancedCheck(const QString &key, bool checked)
     {
         if (QCheckBox *box = advancedCheckBoxes.value(key, nullptr)) {
@@ -4773,6 +5318,7 @@ private:
         if (QAbstractButton *button = displayLineModeButtons->button(1)) {
             button->setChecked(true);
         }
+        resetFilterStates();
         if (QAbstractButton *button = soundOutputButtons->button(2)) {
             button->setChecked(true);
         }
@@ -6139,6 +6685,33 @@ private:
         settings.insert(QStringLiteral("gfx_center_vertical"), displayCenterVertical->isChecked() ? QStringLiteral("simple") : QStringLiteral("none"));
         settings.insert(QStringLiteral("gfx_flickerfixer"), displayFlickerFixer->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
         settings.insert(QStringLiteral("gfx_lores_mode"), displayLoresSmoothed->isChecked() ? QStringLiteral("filtered") : QStringLiteral("normal"));
+        settings.insert(QStringLiteral("gfx_ntscpixels"), filterNtscPixels->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
+        for (int i = 0; i < 3; i++) {
+            const WinUaeQtFilterState state = filterStateFromUi(i);
+            settings.insert(filterKey(QStringLiteral("gfx_filter_mode"), i), state.modeH);
+            settings.insert(filterKey(QStringLiteral("gfx_filter_mode2"), i), state.modeV);
+            settings.insert(filterKey(QStringLiteral("gfx_filter_horiz_zoomf"), i), QString::number(state.horizZoom, 'f', 1));
+            settings.insert(filterKey(QStringLiteral("gfx_filter_vert_zoomf"), i), QString::number(state.vertZoom, 'f', 1));
+            settings.insert(filterKey(QStringLiteral("gfx_filter_horiz_zoom_multf"), i), QString::number(state.horizZoomMult, 'f', 2));
+            settings.insert(filterKey(QStringLiteral("gfx_filter_vert_zoom_multf"), i), QString::number(state.vertZoomMult, 'f', 2));
+            settings.insert(filterKey(QStringLiteral("gfx_filter_horiz_offsetf"), i), QString::number(state.horizOffset, 'f', 1));
+            settings.insert(filterKey(QStringLiteral("gfx_filter_vert_offsetf"), i), QString::number(state.vertOffset, 'f', 1));
+            settings.insert(filterKey(QStringLiteral("gfx_filter_keep_aspect"), i), state.keepAspect);
+            settings.insert(filterKey(QStringLiteral("gfx_filter_keep_autoscale_aspect"), i), state.keepAutoscaleAspect ? QStringLiteral("1") : QStringLiteral("0"));
+            settings.insert(filterKey(QStringLiteral("gfx_filter_autoscale"), i), i == 1 && !isRtgAutoscaleValue(state.autoscale) ? QStringLiteral("resize") : state.autoscale);
+            settings.insert(filterKey(QStringLiteral("gfx_filter_autoscale_limit"), i), state.integerLimit);
+            settings.insert(filterKey(QStringLiteral("gfx_filter_luminance"), i), QString::number(state.luminance));
+            settings.insert(filterKey(QStringLiteral("gfx_filter_contrast"), i), QString::number(state.contrast));
+            settings.insert(filterKey(QStringLiteral("gfx_filter_saturation"), i), QString::number(state.saturation));
+            settings.insert(filterKey(QStringLiteral("gfx_filter_gamma"), i), QString::number(state.gamma));
+            settings.insert(filterKey(QStringLiteral("gfx_filter_blur"), i), QString::number(state.blur));
+            settings.insert(filterKey(QStringLiteral("gfx_filter_noise"), i), QString::number(state.noise));
+            settings.insert(filterKey(QStringLiteral("gfx_filter_bilinear"), i), state.bilinear ? QStringLiteral("1") : QStringLiteral("0"));
+            settings.insert(filterKey(QStringLiteral("gfx_filter_scanlines"), i), QString::number(state.scanlines));
+            settings.insert(filterKey(QStringLiteral("gfx_filter_scanlinelevel"), i), QString::number(state.scanlineLevel));
+            settings.insert(filterKey(QStringLiteral("gfx_filter_scanlineoffset"), i), QString::number(state.scanlineOffset));
+        }
+        settings.insert(QStringLiteral("gfx_filter_enable_lace"), filterStateFromUi(2).enable ? QStringLiteral("1") : QStringLiteral("0"));
         for (int i = 0; i < MaxCdSlots; i++) {
             const QString value = cdSlotConfigValue(cdSlotState(i));
             if (!value.isEmpty()) {
@@ -6387,6 +6960,73 @@ private:
             QStringLiteral("gfx_center_vertical"),
             QStringLiteral("gfx_flickerfixer"),
             QStringLiteral("gfx_lores_mode"),
+            QStringLiteral("gfx_ntscpixels"),
+            QStringLiteral("gfx_filter_mode"),
+            QStringLiteral("gfx_filter_mode2"),
+            QStringLiteral("gfx_filter_horiz_zoomf"),
+            QStringLiteral("gfx_filter_vert_zoomf"),
+            QStringLiteral("gfx_filter_horiz_zoom_multf"),
+            QStringLiteral("gfx_filter_vert_zoom_multf"),
+            QStringLiteral("gfx_filter_horiz_offsetf"),
+            QStringLiteral("gfx_filter_vert_offsetf"),
+            QStringLiteral("gfx_filter_keep_aspect"),
+            QStringLiteral("gfx_filter_keep_autoscale_aspect"),
+            QStringLiteral("gfx_filter_autoscale"),
+            QStringLiteral("gfx_filter_autoscale_limit"),
+            QStringLiteral("gfx_filter_luminance"),
+            QStringLiteral("gfx_filter_contrast"),
+            QStringLiteral("gfx_filter_saturation"),
+            QStringLiteral("gfx_filter_gamma"),
+            QStringLiteral("gfx_filter_blur"),
+            QStringLiteral("gfx_filter_noise"),
+            QStringLiteral("gfx_filter_bilinear"),
+            QStringLiteral("gfx_filter_scanlines"),
+            QStringLiteral("gfx_filter_scanlinelevel"),
+            QStringLiteral("gfx_filter_scanlineoffset"),
+            QStringLiteral("gfx_filter_mode_rtg"),
+            QStringLiteral("gfx_filter_mode2_rtg"),
+            QStringLiteral("gfx_filter_horiz_zoomf_rtg"),
+            QStringLiteral("gfx_filter_vert_zoomf_rtg"),
+            QStringLiteral("gfx_filter_horiz_zoom_multf_rtg"),
+            QStringLiteral("gfx_filter_vert_zoom_multf_rtg"),
+            QStringLiteral("gfx_filter_horiz_offsetf_rtg"),
+            QStringLiteral("gfx_filter_vert_offsetf_rtg"),
+            QStringLiteral("gfx_filter_keep_aspect_rtg"),
+            QStringLiteral("gfx_filter_keep_autoscale_aspect_rtg"),
+            QStringLiteral("gfx_filter_autoscale_limit_rtg"),
+            QStringLiteral("gfx_filter_luminance_rtg"),
+            QStringLiteral("gfx_filter_contrast_rtg"),
+            QStringLiteral("gfx_filter_saturation_rtg"),
+            QStringLiteral("gfx_filter_gamma_rtg"),
+            QStringLiteral("gfx_filter_blur_rtg"),
+            QStringLiteral("gfx_filter_noise_rtg"),
+            QStringLiteral("gfx_filter_bilinear_rtg"),
+            QStringLiteral("gfx_filter_scanlines_rtg"),
+            QStringLiteral("gfx_filter_scanlinelevel_rtg"),
+            QStringLiteral("gfx_filter_scanlineoffset_rtg"),
+            QStringLiteral("gfx_filter_mode_lace"),
+            QStringLiteral("gfx_filter_mode2_lace"),
+            QStringLiteral("gfx_filter_horiz_zoomf_lace"),
+            QStringLiteral("gfx_filter_vert_zoomf_lace"),
+            QStringLiteral("gfx_filter_horiz_zoom_multf_lace"),
+            QStringLiteral("gfx_filter_vert_zoom_multf_lace"),
+            QStringLiteral("gfx_filter_horiz_offsetf_lace"),
+            QStringLiteral("gfx_filter_vert_offsetf_lace"),
+            QStringLiteral("gfx_filter_keep_aspect_lace"),
+            QStringLiteral("gfx_filter_keep_autoscale_aspect_lace"),
+            QStringLiteral("gfx_filter_autoscale_lace"),
+            QStringLiteral("gfx_filter_autoscale_limit_lace"),
+            QStringLiteral("gfx_filter_luminance_lace"),
+            QStringLiteral("gfx_filter_contrast_lace"),
+            QStringLiteral("gfx_filter_saturation_lace"),
+            QStringLiteral("gfx_filter_gamma_lace"),
+            QStringLiteral("gfx_filter_blur_lace"),
+            QStringLiteral("gfx_filter_noise_lace"),
+            QStringLiteral("gfx_filter_bilinear_lace"),
+            QStringLiteral("gfx_filter_scanlines_lace"),
+            QStringLiteral("gfx_filter_scanlinelevel_lace"),
+            QStringLiteral("gfx_filter_scanlineoffset_lace"),
+            QStringLiteral("gfx_filter_enable_lace"),
             QStringLiteral("cdimage0"),
             QStringLiteral("cdimage1"),
             QStringLiteral("cdimage2"),
@@ -6907,6 +7547,10 @@ private:
             applyRtgOptionsValue(value);
         } else if (key == QStringLiteral("gfx_filter_autoscale_rtg")) {
             applyRtgScaleValue(value);
+            filterStates[1].autoscale = isRtgAutoscaleValue(value) ? value : QStringLiteral("resize");
+            if (currentFilterTarget == 1) {
+                loadFilterStateToUi(1);
+            }
         } else if (key == QStringLiteral("gfx_backbuffers_rtg")) {
             rtgBuffers->setCurrentText(rtgBufferText(value));
         } else if (key == QStringLiteral("gfx_refreshrate_rtg")) {
@@ -7155,6 +7799,9 @@ private:
             displayFlickerFixer->setChecked(configBoolValue(value));
         } else if (key == QStringLiteral("gfx_lores_mode")) {
             displayLoresSmoothed->setChecked(value.compare(QStringLiteral("filtered"), Qt::CaseInsensitive) == 0);
+        } else if (key == QStringLiteral("gfx_ntscpixels")) {
+            filterNtscPixels->setChecked(configBoolValue(value));
+        } else if (applyFilterSetting(key, value)) {
         }
     }
 
