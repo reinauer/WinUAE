@@ -1,5 +1,8 @@
 #include <QtWidgets>
 
+#include <QDesktopServices>
+#include <QUrl>
+
 #include "config.h"
 #include "launcher.h"
 #include "launcher_backend.h"
@@ -1761,6 +1764,135 @@ static int configIntegerValue(const QString &value, bool *ok)
         *ok = localOk;
     }
     return result;
+}
+
+struct WinUaeQtZipEntry {
+    QByteArray name;
+    QByteArray data;
+};
+
+struct WinUaeQtZipCentralEntry {
+    QByteArray name;
+    quint32 crc = 0;
+    quint32 size = 0;
+    quint32 offset = 0;
+    quint16 time = 0;
+    quint16 date = 0;
+};
+
+static void appendLe16(QByteArray *out, quint16 value)
+{
+    out->append(char(value & 0xff));
+    out->append(char((value >> 8) & 0xff));
+}
+
+static void appendLe32(QByteArray *out, quint32 value)
+{
+    appendLe16(out, quint16(value & 0xffff));
+    appendLe16(out, quint16((value >> 16) & 0xffff));
+}
+
+static quint32 crc32ForBytes(const QByteArray &bytes)
+{
+    quint32 crc = 0xffffffffu;
+    for (char ch : bytes) {
+        crc ^= quint8(ch);
+        for (int bit = 0; bit < 8; bit++) {
+            crc = (crc >> 1) ^ (0xedb88320u & (0u - (crc & 1u)));
+        }
+    }
+    return crc ^ 0xffffffffu;
+}
+
+static void currentDosDateTime(quint16 *dosDate, quint16 *dosTime)
+{
+    const QDateTime now = QDateTime::currentDateTime();
+    const QDate date = now.date();
+    const QTime time = now.time();
+    const int year = qBound(1980, date.year(), 2107);
+    *dosDate = quint16(((year - 1980) << 9) | (date.month() << 5) | date.day());
+    *dosTime = quint16((time.hour() << 11) | (time.minute() << 5) | (time.second() / 2));
+}
+
+static bool writeStoredZip(const QString &path, const QVector<WinUaeQtZipEntry> &entries, QString *error)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        if (error) {
+            *error = file.errorString();
+        }
+        return false;
+    }
+
+    QByteArray out;
+    QVector<WinUaeQtZipCentralEntry> centralEntries;
+    for (const WinUaeQtZipEntry &entry : entries) {
+        if (entry.name.isEmpty() || entry.data.size() > INT_MAX) {
+            continue;
+        }
+
+        WinUaeQtZipCentralEntry central;
+        central.name = entry.name;
+        central.crc = crc32ForBytes(entry.data);
+        central.size = quint32(entry.data.size());
+        central.offset = quint32(out.size());
+        currentDosDateTime(&central.date, &central.time);
+
+        appendLe32(&out, 0x04034b50u);
+        appendLe16(&out, 20);
+        appendLe16(&out, 0);
+        appendLe16(&out, 0);
+        appendLe16(&out, central.time);
+        appendLe16(&out, central.date);
+        appendLe32(&out, central.crc);
+        appendLe32(&out, central.size);
+        appendLe32(&out, central.size);
+        appendLe16(&out, quint16(central.name.size()));
+        appendLe16(&out, 0);
+        out.append(central.name);
+        out.append(entry.data);
+        centralEntries.append(central);
+    }
+
+    const quint32 centralOffset = quint32(out.size());
+    for (const WinUaeQtZipCentralEntry &central : std::as_const(centralEntries)) {
+        appendLe32(&out, 0x02014b50u);
+        appendLe16(&out, 20);
+        appendLe16(&out, 20);
+        appendLe16(&out, 0);
+        appendLe16(&out, 0);
+        appendLe16(&out, central.time);
+        appendLe16(&out, central.date);
+        appendLe32(&out, central.crc);
+        appendLe32(&out, central.size);
+        appendLe32(&out, central.size);
+        appendLe16(&out, quint16(central.name.size()));
+        appendLe16(&out, 0);
+        appendLe16(&out, 0);
+        appendLe16(&out, 0);
+        appendLe16(&out, 0);
+        appendLe32(&out, 0);
+        appendLe32(&out, central.offset);
+        out.append(central.name);
+    }
+    const quint32 centralSize = quint32(out.size()) - centralOffset;
+
+    appendLe32(&out, 0x06054b50u);
+    appendLe16(&out, 0);
+    appendLe16(&out, 0);
+    appendLe16(&out, quint16(centralEntries.size()));
+    appendLe16(&out, quint16(centralEntries.size()));
+    appendLe32(&out, centralSize);
+    appendLe32(&out, centralOffset);
+    appendLe16(&out, 0);
+
+    if (file.write(out) != out.size()) {
+        if (error) {
+            *error = file.errorString();
+        }
+        return false;
+    }
+    return true;
 }
 
 static QString chipsetRevisionText(int value)
@@ -5490,8 +5622,6 @@ private:
         logWindow = new QCheckBox(QStringLiteral("Log window"));
         QPushButton *saveAllLogs = new QPushButton(QStringLiteral("Save All"));
         QPushButton *openLog = new QPushButton(QStringLiteral("Open"));
-        saveAllLogs->setEnabled(false);
-        openLog->setEnabled(false);
         logPath = new QLineEdit;
         logPath->setReadOnly(true);
         logging->addWidget(logSelect, 0, 0);
@@ -5507,6 +5637,8 @@ private:
         connect(configsPath, &QLineEdit::textChanged, this, [this]() { updateLogPathText(); });
         connect(setPath, &QPushButton::clicked, this, [this]() { applySelectedPathDefaults(); });
         connect(logSelect, &QComboBox::currentTextChanged, this, [this](const QString &) { updateLogPathText(); });
+        connect(saveAllLogs, &QPushButton::clicked, this, [this]() { saveAllDebugLogs(); });
+        connect(openLog, &QPushButton::clicked, this, [this]() { openSelectedLog(); });
         if (configName) {
             connect(configName, &QComboBox::currentTextChanged, this, [this](const QString &) { updateLogPathText(); });
         }
@@ -5555,6 +5687,18 @@ private:
         refreshConfigList();
     }
 
+    QByteArray currentConfigText() const
+    {
+        QString text = QStringLiteral("; WinUAE Unix Qt current configuration\n");
+        const WinUaeQtConfig config = mergedConfig();
+        for (const WinUaeQtConfig::Setting &setting : config.orderedSettings()) {
+            if (!setting.value.isEmpty()) {
+                text += QStringLiteral("%1=%2\n").arg(setting.key, setting.value);
+            }
+        }
+        return text.toUtf8();
+    }
+
     void updateLogPathText()
     {
         if (!logSelect || !logPath) {
@@ -5562,9 +5706,104 @@ private:
         }
         const QString selected = logSelect->currentText();
         if (selected == QStringLiteral("Current configuration")) {
-            logPath->setText(namedConfigPath());
+            logPath->setText(currentConfigReportPath());
         } else {
-            logPath->setText(QDir::temp().filePath(selected));
+            logPath->setText(logFilePath(selected));
+        }
+    }
+
+    QString logFilePath(const QString &name) const
+    {
+        return QDir::temp().filePath(name);
+    }
+
+    QString currentConfigReportPath() const
+    {
+        return QDir::temp().filePath(QStringLiteral("winuae_config_%1.%2.%3.txt")
+            .arg(WINUAE_UNIX_VERSION_MAJOR)
+            .arg(WINUAE_UNIX_VERSION_MINOR)
+            .arg(WINUAE_UNIX_VERSION_REVISION));
+    }
+
+    QString selectedLogPath() const
+    {
+        if (!logSelect) {
+            return QString();
+        }
+        if (logSelect->currentText() == QStringLiteral("Current configuration")) {
+            return currentConfigReportPath();
+        }
+        return logPath ? logPath->text().trimmed() : QString();
+    }
+
+    bool writeCurrentConfigReport(const QString &path)
+    {
+        QFile file(path);
+        if (!file.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate)) {
+            QMessageBox::warning(this, windowTitle(), QStringLiteral("Could not write %1:\n%2").arg(path, file.errorString()));
+            return false;
+        }
+        const QByteArray text = currentConfigText();
+        if (file.write(text) != text.size()) {
+            QMessageBox::warning(this, windowTitle(), QStringLiteral("Could not write %1:\n%2").arg(path, file.errorString()));
+            return false;
+        }
+        return true;
+    }
+
+    void openSelectedLog()
+    {
+        const bool currentConfigSelected = logSelect && logSelect->currentText() == QStringLiteral("Current configuration");
+        const QString path = selectedLogPath();
+        if (path.isEmpty()) {
+            return;
+        }
+        if (currentConfigSelected) {
+            if (!writeCurrentConfigReport(path)) {
+                return;
+            }
+        } else if (!QFileInfo::exists(path)) {
+            QMessageBox::information(this, windowTitle(), QStringLiteral("The selected log file does not exist yet:\n%1").arg(path));
+            return;
+        }
+
+        if (!QDesktopServices::openUrl(QUrl::fromLocalFile(path))) {
+            QMessageBox::warning(this, windowTitle(), QStringLiteral("Could not open %1.").arg(path));
+        }
+    }
+
+    void addLogZipEntry(QVector<WinUaeQtZipEntry> *entries, const QString &entryName, const QString &path) const
+    {
+        QFile file(path);
+        if (!file.open(QIODevice::ReadOnly)) {
+            return;
+        }
+        entries->append({ entryName.toUtf8(), file.readAll() });
+    }
+
+    void saveAllDebugLogs()
+    {
+        const QString defaultName = QStringLiteral("winuae_debug_%1.%2.%3.zip")
+            .arg(WINUAE_UNIX_VERSION_MAJOR)
+            .arg(WINUAE_UNIX_VERSION_MINOR)
+            .arg(WINUAE_UNIX_VERSION_REVISION);
+        const QString path = QFileDialog::getSaveFileName(
+            this,
+            QStringLiteral("Save debug information"),
+            QDir::home().filePath(defaultName),
+            QStringLiteral("Zip files (*.zip);;All files (*)"));
+        if (path.isEmpty()) {
+            return;
+        }
+
+        QVector<WinUaeQtZipEntry> entries;
+        addLogZipEntry(&entries, QStringLiteral("winuaebootlog.txt"), logFilePath(QStringLiteral("winuaebootlog.txt")));
+        addLogZipEntry(&entries, QStringLiteral("winuaelog.txt"), logFilePath(QStringLiteral("winuaelog.txt")));
+        entries.append({ QByteArray("config.uae"), currentConfigText() });
+
+        QString error;
+        if (!writeStoredZip(path, entries, &error)) {
+            QMessageBox::warning(this, windowTitle(), QStringLiteral("Could not save %1:\n%2").arg(path, error));
         }
     }
 
