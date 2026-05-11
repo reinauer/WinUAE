@@ -1,5 +1,14 @@
 cmake_minimum_required(VERSION 3.20)
 
+if(CMAKE_HOST_APPLE)
+    set(WINUAE_UNIX_DEFAULT_MACOS_DEPLOYMENT_TARGET "14.0")
+    if(NOT DEFINED CMAKE_OSX_DEPLOYMENT_TARGET)
+        set(CMAKE_OSX_DEPLOYMENT_TARGET "${WINUAE_UNIX_DEFAULT_MACOS_DEPLOYMENT_TARGET}" CACHE STRING "Minimum macOS version for WinUAE Unix builds")
+    elseif(CMAKE_OSX_DEPLOYMENT_TARGET STREQUAL "")
+        set(CMAKE_OSX_DEPLOYMENT_TARGET "${WINUAE_UNIX_DEFAULT_MACOS_DEPLOYMENT_TARGET}" CACHE STRING "Minimum macOS version for WinUAE Unix builds" FORCE)
+    endif()
+endif()
+
 project(winuae_unix_port LANGUAGES C CXX)
 
 option(WINUAE_UNIX_BUILD_EXECUTABLE "Link the initial Unix command-line executable" ON)
@@ -328,4 +337,13 @@ if(WINUAE_UNIX_WITH_QT_UI OR WINUAE_UNIX_WITH_INTEGRATED_QT_UI)
     else()
         message(STATUS "Qt Widgets not found; skipping Unix Qt targets")
     endif()
+endif()
+
+if(APPLE AND TARGET winuae_unix)
+    add_custom_target(winuae_unix_macos_app
+        COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tools/macos-bundle.sh" "${CMAKE_BINARY_DIR}" "${CMAKE_BINARY_DIR}/package"
+        DEPENDS winuae_unix
+        COMMENT "Creating WinUAE.app"
+        VERBATIM
+    )
 endif()
