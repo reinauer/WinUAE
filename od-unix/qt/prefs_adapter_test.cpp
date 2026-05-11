@@ -48,6 +48,8 @@ void cfgfile_parse_line(struct uae_prefs *prefs, TCHAR *line, int)
     } else if (!strcmp(key, "cpu_model")) {
         prefs->cpu_model = atoi(value);
         prefs->fpu_model = 0;
+    } else if (!strcmp(key, "fpu_model")) {
+        prefs->fpu_model = atoi(value);
     } else if (!strcmp(key, "sound_output")) {
         prefs->produce_sound = !strcmp(value, "normal") ? 2 : 0;
     } else if (!strcmp(key, "gfxcard_type")) {
@@ -107,6 +109,7 @@ static bool testRepresentativeConfig()
     settings.insert(QStringLiteral("chipset"), QStringLiteral("aga"));
     settings.insert(QStringLiteral("chipset_compatible"), QStringLiteral("A1200"));
     settings.insert(QStringLiteral("cpu_model"), QStringLiteral("68020"));
+    settings.insert(QStringLiteral("fpu_model"), QStringLiteral("68882"));
     settings.insert(QStringLiteral("cpu_24bit_addressing"), QStringLiteral("false"));
     settings.insert(QStringLiteral("chipmem_size"), QStringLiteral("4"));
     settings.insert(QStringLiteral("fastmem_size"), QStringLiteral("8"));
@@ -132,6 +135,7 @@ static bool testRepresentativeConfig()
     ok = require(ok, "adapter rejected representative config") && ok;
     ok = requireInt(parsedLines.size(), settings.size(), "parsed line count") && ok;
     ok = require(parsedLines.contains(QStringLiteral("chipset_compatible=A1200")), "chipset compatibility was not delegated") && ok;
+    ok = require(parsedLines.contains(QStringLiteral("fpu_model=68882")), "fpu model was not delegated") && ok;
     ok = require(parsedLines.contains(QStringLiteral("sound_output=normal")), "sound output was not delegated") && ok;
 
     ok = requireText(prefs->romfile, "/roms/A1200.rom", "romfile") && ok;
@@ -141,7 +145,7 @@ static bool testRepresentativeConfig()
     ok = requireInt(prefs->nr_floppies, 2, "nr_floppies") && ok;
     ok = requireInt(prefs->cs_compatible, CP_A1200, "cs_compatible") && ok;
     ok = requireInt(prefs->cpu_model, 68020, "cpu_model") && ok;
-    ok = requireInt(prefs->fpu_model, 0, "fpu_model") && ok;
+    ok = requireInt(prefs->fpu_model, 68882, "fpu_model") && ok;
     ok = require(!prefs->address_space_24, "cpu_24bit_addressing") && ok;
     ok = requireUnsigned(prefs->chipmem.size, 4 * 0x80000, "chipmem.size") && ok;
     ok = requireUnsigned(prefs->fastmem[0].size, 8 * 0x100000, "fastmem[0].size") && ok;
