@@ -165,15 +165,29 @@ bool parseWinUaeQtUaehfMountValue(const QString &value, WinUaeQtMountEntry *entr
         if (!parseHardfileMountValue(rest, entry)) {
             return false;
         }
-        entry->rawConfig = value;
+        entry->rawConfig = rest;
         return true;
     }
     return false;
 }
 
-QString serializeWinUaeQtDirectoryMountValue(const WinUaeQtMountEntry &entry)
+bool parseWinUaeQtFilesystem2MountValue(const QString &value, WinUaeQtMountEntry *entry)
 {
-    return QStringLiteral("dir,%1,%2:%3:%4,%5")
+    return parseDirectoryMountValue(value, entry);
+}
+
+bool parseWinUaeQtHardfile2MountValue(const QString &value, WinUaeQtMountEntry *entry)
+{
+    if (!parseHardfileMountValue(value, entry)) {
+        return false;
+    }
+    entry->rawConfig = value;
+    return true;
+}
+
+QString serializeWinUaeQtFilesystem2MountValue(const WinUaeQtMountEntry &entry)
+{
+    return QStringLiteral("%1,%2:%3:%4,%5")
         .arg(winUaeQtConfigAccessValue(entry.readOnly),
              winUaeQtSanitizedAmigaName(entry.device, QStringLiteral("DH0"), true),
              winUaeQtSanitizedAmigaName(entry.volume, QStringLiteral("Hard Disk"), false),
@@ -181,14 +195,24 @@ QString serializeWinUaeQtDirectoryMountValue(const WinUaeQtMountEntry &entry)
              QString::number(entry.bootPri));
 }
 
-QString serializeWinUaeQtHardfileMountValue(const WinUaeQtMountEntry &entry)
+QString serializeWinUaeQtHardfile2MountValue(const WinUaeQtMountEntry &entry)
 {
     if (!entry.rawConfig.isEmpty()) {
         return entry.rawConfig;
     }
-    return QStringLiteral("hdf,%1,%2:%3,32,1,2,512,%4,,uae0")
+    return QStringLiteral("%1,%2:%3,32,1,2,512,%4,,uae0")
         .arg(winUaeQtConfigAccessValue(entry.readOnly),
              winUaeQtSanitizedAmigaName(entry.device, QStringLiteral("DH0"), true),
              winUaeQtConfigEscapeMin(entry.path),
              QString::number(entry.bootPri));
+}
+
+QString serializeWinUaeQtUaehfDirectoryMountValue(const WinUaeQtMountEntry &entry)
+{
+    return QStringLiteral("dir,%1").arg(serializeWinUaeQtFilesystem2MountValue(entry));
+}
+
+QString serializeWinUaeQtUaehfHardfileMountValue(const WinUaeQtMountEntry &entry)
+{
+    return QStringLiteral("hdf,%1").arg(serializeWinUaeQtHardfile2MountValue(entry));
 }

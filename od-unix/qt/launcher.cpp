@@ -1450,19 +1450,21 @@ private:
         return entry;
     }
 
-    void addMountSettings(WinUaeQtConfig::Settings *settings) const
+    WinUaeQtConfig::OrderedSettings currentMountSettings() const
     {
-        if (!settings || !mountedDrives) {
-            return;
+        WinUaeQtConfig::OrderedSettings settings;
+        if (!mountedDrives) {
+            return settings;
         }
         for (int i = 0; i < mountedDrives->topLevelItemCount(); i++) {
             const WinUaeQtMountEntry entry = mountEntryFromItem(mountedDrives->topLevelItem(i));
             if (entry.kind == QStringLiteral("dir")) {
-                settings->insert(QStringLiteral("uaehf%1").arg(i), serializeWinUaeQtDirectoryMountValue(entry));
+                settings.append({ QStringLiteral("filesystem2"), serializeWinUaeQtFilesystem2MountValue(entry) });
             } else if (entry.kind == QStringLiteral("hdf")) {
-                settings->insert(QStringLiteral("uaehf%1").arg(i), serializeWinUaeQtHardfileMountValue(entry));
+                settings.append({ QStringLiteral("hardfile2"), serializeWinUaeQtHardfile2MountValue(entry) });
             }
         }
+        return settings;
     }
 
     void syncQuickDriveToFloppy(int drive)
@@ -1504,7 +1506,6 @@ private:
                 settings.insert(QStringLiteral("floppy%1").arg(i), dfPath[i]->currentText());
             }
         }
-        addMountSettings(&settings);
         settings.insert(QStringLiteral("nr_floppies"), QString::number(enabledFloppyCount()));
         settings.insert(QStringLiteral("chipset"), chipset->currentText().toLower());
         settings.insert(QStringLiteral("chipset_compatible"), chipsetCompatible->currentText());
@@ -1558,14 +1559,6 @@ private:
             QStringLiteral("floppy1wp"),
             QStringLiteral("floppy2wp"),
             QStringLiteral("floppy3wp"),
-            QStringLiteral("uaehf0"),
-            QStringLiteral("uaehf1"),
-            QStringLiteral("uaehf2"),
-            QStringLiteral("uaehf3"),
-            QStringLiteral("uaehf4"),
-            QStringLiteral("uaehf5"),
-            QStringLiteral("uaehf6"),
-            QStringLiteral("uaehf7"),
             QStringLiteral("nr_floppies"),
             QStringLiteral("chipset"),
             QStringLiteral("chipset_compatible"),
@@ -1585,10 +1578,27 @@ private:
         };
     }
 
+    QStringList uiOwnedMountKeys() const
+    {
+        return {
+            QStringLiteral("filesystem2"),
+            QStringLiteral("hardfile2"),
+            QStringLiteral("uaehf0"),
+            QStringLiteral("uaehf1"),
+            QStringLiteral("uaehf2"),
+            QStringLiteral("uaehf3"),
+            QStringLiteral("uaehf4"),
+            QStringLiteral("uaehf5"),
+            QStringLiteral("uaehf6"),
+            QStringLiteral("uaehf7")
+        };
+    }
+
     WinUaeQtConfig mergedConfig() const
     {
         WinUaeQtConfig config = loadedConfig;
         config.applySettings(currentSettings(), uiOwnedKeys());
+        config.applyRepeatedSettings(currentMountSettings(), uiOwnedMountKeys());
         return config;
     }
 
@@ -1630,9 +1640,8 @@ private:
         if (mountedDrives) {
             mountedDrives->clear();
         }
-        const WinUaeQtConfig::Settings settings = config.settings();
-        for (auto it = settings.constBegin(); it != settings.constEnd(); ++it) {
-            applySetting(it.key(), it.value());
+        for (const WinUaeQtConfig::Setting &setting : config.orderedSettings()) {
+            applySetting(setting.key, setting.value);
         }
         updateMountButtons();
         loadedConfig = config;
@@ -1674,6 +1683,16 @@ private:
         } else if (key.startsWith(QStringLiteral("uaehf"))) {
             WinUaeQtMountEntry entry;
             if (parseWinUaeQtUaehfMountValue(value, &entry)) {
+                addMountEntry(entry);
+            }
+        } else if (key == QStringLiteral("filesystem2")) {
+            WinUaeQtMountEntry entry;
+            if (parseWinUaeQtFilesystem2MountValue(value, &entry)) {
+                addMountEntry(entry);
+            }
+        } else if (key == QStringLiteral("hardfile2")) {
+            WinUaeQtMountEntry entry;
+            if (parseWinUaeQtHardfile2MountValue(value, &entry)) {
                 addMountEntry(entry);
             }
         } else if (key == QStringLiteral("chipset")) {

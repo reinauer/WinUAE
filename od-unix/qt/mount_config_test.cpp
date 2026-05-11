@@ -39,21 +39,29 @@ static bool testDirectoryMount()
     ok = requireText(entry.path, QStringLiteral("/tmp/Work,Disk"), "directory path") && ok;
     ok = require(entry.readOnly, "directory read-only") && ok;
     ok = requireInt(entry.bootPri, 5, "directory boot priority") && ok;
-    ok = requireText(serializeWinUaeQtDirectoryMountValue(entry), QStringLiteral("dir,ro,DH1:Work:\"/tmp/Work,Disk\",5"), "directory serialized value") && ok;
+    ok = requireText(serializeWinUaeQtFilesystem2MountValue(entry), QStringLiteral("ro,DH1:Work:\"/tmp/Work,Disk\",5"), "filesystem2 serialized value") && ok;
+    ok = requireText(serializeWinUaeQtUaehfDirectoryMountValue(entry), QStringLiteral("dir,ro,DH1:Work:\"/tmp/Work,Disk\",5"), "uaehf directory serialized value") && ok;
+    WinUaeQtMountEntry filesystemEntry;
+    ok = require(parseWinUaeQtFilesystem2MountValue(QStringLiteral("ro,DH1:Work:\"/tmp/Work,Disk\",5"), &filesystemEntry), "filesystem2 mount did not parse") && ok;
+    ok = requireText(filesystemEntry.path, QStringLiteral("/tmp/Work,Disk"), "filesystem2 path") && ok;
     return ok;
 }
 
 static bool testHardfileMount()
 {
-    const QString config = QStringLiteral("hdf,rw,DH2:/tmp/disk.hdf,32,1,2,512,0,,uae0");
+    const QString config = QStringLiteral("rw,DH2:/tmp/disk.hdf,32,1,2,512,0,,uae0");
     WinUaeQtMountEntry entry;
-    bool ok = parseWinUaeQtUaehfMountValue(config, &entry);
+    bool ok = parseWinUaeQtHardfile2MountValue(config, &entry);
     ok = require(ok, "hardfile mount did not parse") && ok;
     ok = requireText(entry.kind, QStringLiteral("hdf"), "hardfile kind") && ok;
     ok = requireText(entry.device, QStringLiteral("DH2"), "hardfile device") && ok;
     ok = requireText(entry.path, QStringLiteral("/tmp/disk.hdf"), "hardfile path") && ok;
     ok = require(!entry.readOnly, "hardfile read/write") && ok;
-    ok = requireText(serializeWinUaeQtHardfileMountValue(entry), config, "hardfile serialized value") && ok;
+    ok = requireText(serializeWinUaeQtHardfile2MountValue(entry), config, "hardfile2 serialized value") && ok;
+    ok = requireText(serializeWinUaeQtUaehfHardfileMountValue(entry), QStringLiteral("hdf,") + config, "uaehf hardfile serialized value") && ok;
+    WinUaeQtMountEntry uaehfEntry;
+    ok = require(parseWinUaeQtUaehfMountValue(QStringLiteral("hdf,") + config, &uaehfEntry), "uaehf hardfile did not parse") && ok;
+    ok = requireText(serializeWinUaeQtHardfile2MountValue(uaehfEntry), config, "uaehf hardfile direct serialized value") && ok;
     return ok;
 }
 

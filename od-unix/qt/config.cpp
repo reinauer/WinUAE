@@ -6,8 +6,8 @@
 #include <utility>
 
 WinUaeQtConfig::WinUaeQtConfig(Settings settings)
-    : configSettings(std::move(settings))
 {
+    setSettings(std::move(settings));
 }
 
 WinUaeQtConfig::DocumentLine WinUaeQtConfig::makeSettingLine(const QString &key, const QString &value)
@@ -25,11 +25,61 @@ const WinUaeQtConfig::Settings &WinUaeQtConfig::settings() const
     return configSettings;
 }
 
+const WinUaeQtConfig::OrderedSettings &WinUaeQtConfig::orderedSettings() const
+{
+    return orderedConfigSettings;
+}
+
+QStringList WinUaeQtConfig::values(const QString &key) const
+{
+    QStringList result;
+    for (const Setting &setting : orderedConfigSettings) {
+        if (setting.key == key && !setting.value.isEmpty()) {
+            result.append(setting.value);
+        }
+    }
+    return result;
+}
+
 void WinUaeQtConfig::setSettings(Settings settings)
 {
     configSettings = std::move(settings);
+    orderedConfigSettings = orderedFromSettings(configSettings);
     documentLines.clear();
     documentLoaded = false;
+}
+
+WinUaeQtConfig::OrderedSettings WinUaeQtConfig::orderedFromSettings(const Settings &settings)
+{
+    OrderedSettings ordered;
+    for (auto it = settings.constBegin(); it != settings.constEnd(); ++it) {
+        if (!it.value().isEmpty()) {
+            ordered.append({ it.key(), it.value() });
+        }
+    }
+    return ordered;
+}
+
+void WinUaeQtConfig::rebuildSettingsFromOrderedSettings()
+{
+    configSettings.clear();
+    for (const Setting &setting : std::as_const(orderedConfigSettings)) {
+        if (!setting.value.isEmpty()) {
+            configSettings.insert(setting.key, setting.value);
+        }
+    }
+}
+
+void WinUaeQtConfig::rebuildSettingsFromDocumentLines()
+{
+    configSettings.clear();
+    orderedConfigSettings.clear();
+    for (const DocumentLine &line : std::as_const(documentLines)) {
+        if (line.setting && !line.value.isEmpty()) {
+            orderedConfigSettings.append({ line.key, line.value });
+            configSettings.insert(line.key, line.value);
+        }
+    }
 }
 
 void WinUaeQtConfig::applySettings(const Settings &settings, const QStringList &ownedKeys)
@@ -42,6 +92,20 @@ void WinUaeQtConfig::applySettings(const Settings &settings, const QStringList &
             configSettings.remove(key);
         }
     }
+
+    OrderedSettings updatedSettings;
+    for (const Setting &setting : std::as_const(orderedConfigSettings)) {
+        if (!ownedKeys.contains(setting.key)) {
+            updatedSettings.append(setting);
+        }
+    }
+    for (const QString &key : ownedKeys) {
+        const QString value = settings.value(key);
+        if (settings.contains(key) && !value.isEmpty()) {
+            updatedSettings.append({ key, value });
+        }
+    }
+    orderedConfigSettings = updatedSettings;
 
     if (!documentLoaded) {
         return;
@@ -71,6 +135,56 @@ void WinUaeQtConfig::applySettings(const Settings &settings, const QStringList &
     }
 
     documentLines = updated;
+    rebuildSettingsFromDocumentLines();
+}
+
+void WinUaeQtConfig::applyRepeatedSettings(const OrderedSettings &settings, const QStringList &ownedKeys)
+{
+    OrderedSettings updatedSettings;
+    for (const Setting &setting : std::as_const(orderedConfigSettings)) {
+        if (!ownedKeys.contains(setting.key)) {
+            updatedSettings.append(setting);
+        }
+    }
+    for (const Setting &setting : settings) {
+        if (ownedKeys.contains(setting.key) && !setting.value.isEmpty()) {
+            updatedSettings.append(setting);
+        }
+    }
+    orderedConfigSettings = updatedSettings;
+    rebuildSettingsFromOrderedSettings();
+
+    if (!documentLoaded) {
+        return;
+    }
+
+    QList<DocumentLine> updated;
+    bool inserted = false;
+    for (const DocumentLine &line : std::as_const(documentLines)) {
+        if (!line.setting || !ownedKeys.contains(line.key)) {
+            updated.append(line);
+            continue;
+        }
+        if (!inserted) {
+            for (const Setting &setting : settings) {
+                if (ownedKeys.contains(setting.key) && !setting.value.isEmpty()) {
+                    updated.append(makeSettingLine(setting.key, setting.value));
+                }
+            }
+            inserted = true;
+        }
+    }
+
+    if (!inserted) {
+        for (const Setting &setting : settings) {
+            if (ownedKeys.contains(setting.key) && !setting.value.isEmpty()) {
+                updated.append(makeSettingLine(setting.key, setting.value));
+            }
+        }
+    }
+
+    documentLines = updated;
+    rebuildSettingsFromDocumentLines();
 }
 
 QString WinUaeQtConfig::value(const QString &key, const QString &defaultValue) const
@@ -103,6 +217,7 @@ bool WinUaeQtConfig::load(const QString &path, QString *error)
     }
 
     Settings loaded;
+    OrderedSettings ordered;
     QList<DocumentLine> lines;
     while (!file.atEnd()) {
         QString text = QString::fromUtf8(file.readLine());
@@ -132,11 +247,15 @@ bool WinUaeQtConfig::load(const QString &path, QString *error)
             line.value = value;
             line.setting = true;
             loaded.insert(key, value);
+            if (!value.isEmpty()) {
+                ordered.append({ key, value });
+            }
         }
         lines.append(line);
     }
 
     configSettings = loaded;
+    orderedConfigSettings = ordered;
     documentLines = lines;
     documentLoaded = true;
     return true;
@@ -161,9 +280,9 @@ bool WinUaeQtConfig::save(const QString &path, QString *error) const
     }
 
     out << "; WinUAE Unix Qt configuration\n";
-    for (auto it = configSettings.constBegin(); it != configSettings.constEnd(); ++it) {
-        if (!it.value().isEmpty()) {
-            out << it.key() << "=" << it.value() << "\n";
+    for (const Setting &setting : orderedConfigSettings) {
+        if (!setting.value.isEmpty()) {
+            out << setting.key << "=" << setting.value << "\n";
         }
     }
     return true;
@@ -172,9 +291,9 @@ bool WinUaeQtConfig::save(const QString &path, QString *error) const
 QStringList WinUaeQtConfig::commandArguments() const
 {
     QStringList args;
-    for (auto it = configSettings.constBegin(); it != configSettings.constEnd(); ++it) {
-        if (!it.value().isEmpty()) {
-            args << QStringLiteral("-s") << QStringLiteral("%1=%2").arg(it.key(), it.value());
+    for (const Setting &setting : orderedConfigSettings) {
+        if (!setting.value.isEmpty()) {
+            args << QStringLiteral("-s") << QStringLiteral("%1=%2").arg(setting.key, setting.value);
         }
     }
     return args;
