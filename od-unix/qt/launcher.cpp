@@ -1819,6 +1819,7 @@ public:
         addPage(QStringLiteral("Expansion boards"), QStringLiteral("expansion.ico"), makeExpansionPage());
         addPage(QStringLiteral("Display"), QStringLiteral("screen.ico"), makeDisplayPage());
         addPage(QStringLiteral("Filter"), QStringLiteral("screen.ico"), makeFilterPage());
+        addPage(QStringLiteral("Output"), QStringLiteral("avioutput.ico"), makeOutputPage());
         addPage(QStringLiteral("Sound"), QStringLiteral("sound.ico"), makeSoundPage());
         addPage(QStringLiteral("Game ports"), QStringLiteral("joystick.ico"), makeGamePortsPage());
         addPage(QStringLiteral("IO ports"), QStringLiteral("port.ico"), makeIoPortsPage());
@@ -2082,6 +2083,18 @@ private:
     WinUaeQtFilterState filterStates[3];
     int currentFilterTarget = 0;
     bool filterUpdating = false;
+    QLineEdit *outputFile = nullptr;
+    QCheckBox *outputFrameLimiter = nullptr;
+    QCheckBox *outputOriginalSize = nullptr;
+    QCheckBox *outputNoSound = nullptr;
+    QCheckBox *outputNoSoundSync = nullptr;
+    QCheckBox *screenshotOriginalSize = nullptr;
+    QCheckBox *screenshotPaletted = nullptr;
+    QCheckBox *screenshotClip = nullptr;
+    QCheckBox *screenshotAuto = nullptr;
+    QCheckBox *stateReplayAutoplay = nullptr;
+    QComboBox *stateReplayRate = nullptr;
+    QComboBox *stateReplayBuffers = nullptr;
     QButtonGroup *soundOutputButtons = nullptr;
     QCheckBox *soundAutomatic = nullptr;
     QSlider *soundMasterVolume = nullptr;
@@ -3592,6 +3605,106 @@ private:
         });
 
         resetFilterStates();
+        return page;
+    }
+
+    QWidget *makeOutputPage()
+    {
+        QWidget *page = makePage();
+        QVBoxLayout *root = new QVBoxLayout(page);
+        root->setContentsMargins(4, 4, 4, 4);
+        root->setSpacing(6);
+
+        outputFile = new QLineEdit;
+        outputFile->setReadOnly(true);
+        QPushButton *browse = smallButton(QStringLiteral("..."));
+        QCheckBox *audio = new QCheckBox(QStringLiteral("Audio"));
+        QCheckBox *video = new QCheckBox(QStringLiteral("Video"));
+        QLabel *audioCodec = new QLabel(QStringLiteral("no codec selected"));
+        QLabel *videoCodec = new QLabel(QStringLiteral("no codec selected"));
+        audioCodec->setFrameShape(QFrame::StyledPanel);
+        videoCodec->setFrameShape(QFrame::StyledPanel);
+        outputFrameLimiter = new QCheckBox(QStringLiteral("Disable frame rate limit"));
+        outputOriginalSize = new QCheckBox(QStringLiteral("Capture before filtering"));
+        outputNoSound = new QCheckBox(QStringLiteral("Disable sound output"));
+        outputNoSoundSync = new QCheckBox(QStringLiteral("Disable sound sync"));
+        QCheckBox *outputEnabled = new QCheckBox(QStringLiteral("AVI output enabled"));
+        audio->setEnabled(false);
+        video->setEnabled(false);
+        outputEnabled->setEnabled(false);
+
+        QGridLayout *properties = new QGridLayout;
+        properties->setColumnStretch(1, 1);
+        properties->addWidget(outputFile, 0, 0, 1, 3);
+        properties->addWidget(browse, 0, 3);
+        properties->addWidget(audio, 1, 0);
+        properties->addWidget(audioCodec, 1, 1, 1, 3);
+        properties->addWidget(video, 2, 0);
+        properties->addWidget(videoCodec, 2, 1, 1, 3);
+        properties->addWidget(outputFrameLimiter, 3, 0, 1, 2);
+        properties->addWidget(outputOriginalSize, 3, 2, 1, 2);
+        properties->addWidget(outputNoSound, 4, 0, 1, 2);
+        properties->addWidget(outputNoSoundSync, 4, 2, 1, 2);
+        properties->addWidget(outputEnabled, 5, 0, 1, 2);
+        root->addWidget(groupBox(QStringLiteral("Output Properties"), properties));
+
+        QPushButton *saveScreenshot = new QPushButton(QStringLiteral("Save screenshot"));
+        QPushButton *proWizard = new QPushButton(QStringLiteral("Pro Wizard 1.62"));
+        QCheckBox *sampleRipper = new QCheckBox(QStringLiteral("Sample ripper"));
+        saveScreenshot->setEnabled(false);
+        proWizard->setEnabled(false);
+        sampleRipper->setEnabled(false);
+        screenshotOriginalSize = new QCheckBox(QStringLiteral("Take screenshot before filtering"));
+        screenshotPaletted = new QCheckBox(QStringLiteral("Create 256 color palette indexed screenshot if possible"));
+        screenshotClip = new QCheckBox(QStringLiteral("Autoclip screenshot"));
+        screenshotAuto = new QCheckBox(QStringLiteral("Continuous screenshots"));
+        QGridLayout *ripper = new QGridLayout;
+        ripper->setColumnStretch(3, 1);
+        ripper->addWidget(saveScreenshot, 0, 0);
+        ripper->addWidget(proWizard, 0, 1);
+        ripper->addWidget(sampleRipper, 0, 2);
+        ripper->addWidget(screenshotOriginalSize, 1, 0, 1, 2);
+        ripper->addWidget(screenshotClip, 1, 2, 1, 2);
+        ripper->addWidget(screenshotPaletted, 2, 0, 1, 2);
+        ripper->addWidget(screenshotAuto, 2, 2, 1, 2);
+        root->addWidget(groupBox(QStringLiteral("Ripper"), ripper));
+
+        QCheckBox *statePlay = new QCheckBox(QStringLiteral("Play recording"));
+        QCheckBox *stateRecord = new QCheckBox(QStringLiteral("Re-recording enabled"));
+        stateReplayAutoplay = new QCheckBox(QStringLiteral("Automatic replay"));
+        QPushButton *stateSave = new QPushButton(QStringLiteral("Save recording"));
+        stateReplayRate = combo({ QStringLiteral("-"), QStringLiteral("1"), QStringLiteral("2"), QStringLiteral("5"), QStringLiteral("10"), QStringLiteral("20"), QStringLiteral("30"), QStringLiteral("60") }, QStringLiteral("5"));
+        stateReplayRate->setEditable(true);
+        stateReplayBuffers = combo({ QStringLiteral("50"), QStringLiteral("100"), QStringLiteral("500"), QStringLiteral("1000"), QStringLiteral("10000") }, QStringLiteral("100"));
+        stateReplayBuffers->setEditable(true);
+        statePlay->setEnabled(false);
+        stateRecord->setEnabled(false);
+        stateSave->setEnabled(false);
+        QGridLayout *recorder = new QGridLayout;
+        recorder->setColumnStretch(4, 1);
+        recorder->addWidget(statePlay, 0, 0);
+        recorder->addWidget(stateRecord, 0, 2);
+        recorder->addWidget(stateReplayAutoplay, 1, 0);
+        recorder->addWidget(stateSave, 1, 2);
+        recorder->addWidget(label(QStringLiteral("Recording rate (seconds):")), 2, 0);
+        recorder->addWidget(stateReplayRate, 2, 1);
+        recorder->addWidget(label(QStringLiteral("Recording buffers:")), 2, 2);
+        recorder->addWidget(stateReplayBuffers, 2, 3);
+        root->addWidget(groupBox(QStringLiteral("Re-recorder"), recorder));
+        root->addStretch(1);
+
+        connect(browse, &QPushButton::clicked, this, [this]() {
+            const QString selected = QFileDialog::getSaveFileName(this, QStringLiteral("Select output file"), outputFile->text(), QStringLiteral("Video Clip (*.avi);;Wave Sound (*.wav);;All files (*)"));
+            if (!selected.isEmpty()) {
+                outputFile->setText(selected);
+            }
+        });
+        connect(screenshotOriginalSize, &QCheckBox::toggled, this, [this](bool checked) {
+            screenshotClip->setEnabled(checked);
+            if (!checked) {
+                screenshotClip->setChecked(false);
+            }
+        });
         return page;
     }
 
@@ -5319,6 +5432,19 @@ private:
             button->setChecked(true);
         }
         resetFilterStates();
+        outputFile->setText(QDir(QDir::homePath()).filePath(QStringLiteral("Videos/output.avi")));
+        outputFrameLimiter->setChecked(false);
+        outputOriginalSize->setChecked(false);
+        outputNoSound->setChecked(false);
+        outputNoSoundSync->setChecked(false);
+        screenshotOriginalSize->setChecked(false);
+        screenshotPaletted->setChecked(false);
+        screenshotClip->setChecked(false);
+        screenshotClip->setEnabled(false);
+        screenshotAuto->setChecked(false);
+        stateReplayAutoplay->setChecked(false);
+        stateReplayRate->setCurrentText(QStringLiteral("5"));
+        stateReplayBuffers->setCurrentText(QStringLiteral("100"));
         if (QAbstractButton *button = soundOutputButtons->button(2)) {
             button->setChecked(true);
         }
@@ -6719,6 +6845,10 @@ private:
             }
         }
         settings.insert(QStringLiteral("cd_speed"), cdSpeedTurbo->isChecked() ? QStringLiteral("0") : QStringLiteral("100"));
+        const int replaySeconds = stateReplayRate->currentText().trimmed() == QStringLiteral("-") ? -1 : stateReplayRate->currentText().toInt();
+        settings.insert(QStringLiteral("state_replay_rate"), QString::number(replaySeconds > 0 ? replaySeconds * 50 : -1));
+        settings.insert(QStringLiteral("state_replay_buffers"), QString::number(qMax(1, stateReplayBuffers->currentText().toInt())));
+        settings.insert(QStringLiteral("state_replay_autoplay"), stateReplayAutoplay->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
         for (int i = 0; i < 4; i++) {
             settings.insert(QStringLiteral("joyport%1").arg(i), joyportDeviceConfigValue(portDevice[i]->currentText()));
         }
@@ -7036,6 +7166,9 @@ private:
             QStringLiteral("cdimage6"),
             QStringLiteral("cdimage7"),
             QStringLiteral("cd_speed"),
+            QStringLiteral("state_replay_rate"),
+            QStringLiteral("state_replay_buffers"),
+            QStringLiteral("state_replay_autoplay"),
             QStringLiteral("joyport0"),
             QStringLiteral("joyport1"),
             QStringLiteral("joyport2"),
@@ -7369,6 +7502,13 @@ private:
             }
         } else if (key == QStringLiteral("cd_speed")) {
             cdSpeedTurbo->setChecked(value == QStringLiteral("0"));
+        } else if (key == QStringLiteral("state_replay_rate")) {
+            const int seconds = value.toInt() > 0 ? value.toInt() / 50 : -1;
+            stateReplayRate->setCurrentText(seconds > 0 ? QString::number(seconds) : QStringLiteral("-"));
+        } else if (key == QStringLiteral("state_replay_buffers")) {
+            stateReplayBuffers->setCurrentText(value.toInt() > 0 ? value : QStringLiteral("100"));
+        } else if (key == QStringLiteral("state_replay_autoplay")) {
+            stateReplayAutoplay->setChecked(configBoolValue(value));
         } else if (key == QStringLiteral("chipset")) {
             chipset->setCurrentText(chipsetText(value));
         } else if (key == QStringLiteral("chipset_compatible")) {
