@@ -108,6 +108,42 @@ static QComboBox *pathCombo()
     return w;
 }
 
+static int floppyTypeConfigValue(const QString &text)
+{
+    if (text == QStringLiteral("Disabled")) {
+        return -1;
+    }
+    if (text == QStringLiteral("3.5 HD")) {
+        return 1;
+    }
+    return 0;
+}
+
+static QString floppyTypeText(int value)
+{
+    if (value < 0) {
+        return QStringLiteral("Disabled");
+    }
+    if (value == 1) {
+        return QStringLiteral("3.5 HD");
+    }
+    return QStringLiteral("3.5 DD");
+}
+
+static void setComboTextIfChanged(QComboBox *combo, const QString &text)
+{
+    if (combo && combo->currentText() != text) {
+        combo->setCurrentText(text);
+    }
+}
+
+static void setCheckBoxIfChanged(QCheckBox *box, bool checked)
+{
+    if (box && box->isChecked() != checked) {
+        box->setChecked(checked);
+    }
+}
+
 static QPushButton *smallButton(const QString &text)
 {
     QPushButton *w = new QPushButton(text);
@@ -722,6 +758,18 @@ private:
             });
             connect(dfEnable[drive], &QCheckBox::toggled, quickDfEnable[drive], &QCheckBox::setChecked);
             connect(quickDfEnable[drive], &QCheckBox::toggled, dfEnable[drive], &QCheckBox::setChecked);
+            connect(dfType[drive], QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this, drive]() {
+                syncFloppyDriveToQuick(drive);
+            });
+            connect(quickDfType[drive], QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this, drive]() {
+                syncQuickDriveToFloppy(drive);
+            });
+            connect(dfWriteProtect[drive], &QCheckBox::toggled, this, [this, drive]() {
+                syncFloppyDriveToQuick(drive);
+            });
+            connect(quickDfWriteProtect[drive], &QCheckBox::toggled, this, [this, drive]() {
+                syncQuickDriveToFloppy(drive);
+            });
         }
     }
 
@@ -1208,6 +1256,28 @@ private:
         return 0;
     }
 
+    void syncQuickDriveToFloppy(int drive)
+    {
+        if (drive < 0 || drive >= 2 || !dfPath[drive] || !quickDfPath[drive]) {
+            return;
+        }
+        setCheckBoxIfChanged(dfEnable[drive], quickDfEnable[drive]->isChecked());
+        setComboTextIfChanged(dfType[drive], quickDfType[drive]->currentText());
+        setComboTextIfChanged(dfPath[drive], quickDfPath[drive]->currentText());
+        setCheckBoxIfChanged(dfWriteProtect[drive], quickDfWriteProtect[drive]->isChecked());
+    }
+
+    void syncFloppyDriveToQuick(int drive)
+    {
+        if (drive < 0 || drive >= 2 || !dfPath[drive] || !quickDfPath[drive]) {
+            return;
+        }
+        setCheckBoxIfChanged(quickDfEnable[drive], dfEnable[drive]->isChecked());
+        setComboTextIfChanged(quickDfType[drive], dfType[drive]->currentText());
+        setComboTextIfChanged(quickDfPath[drive], dfPath[drive]->currentText());
+        setCheckBoxIfChanged(quickDfWriteProtect[drive], dfWriteProtect[drive]->isChecked());
+    }
+
     WinUaeQtConfig::Settings currentSettings() const
     {
         WinUaeQtConfig::Settings settings;
@@ -1218,7 +1288,9 @@ private:
             settings.insert(QStringLiteral("kickstart_ext_rom_file"), extendedRomFile->currentText());
         }
         for (int i = 0; i < 4; i++) {
-            if (dfEnable[i]->isChecked() && !dfPath[i]->currentText().isEmpty()) {
+            const int driveType = dfEnable[i]->isChecked() ? floppyTypeConfigValue(dfType[i]->currentText()) : -1;
+            settings.insert(QStringLiteral("floppy%1type").arg(i), QString::number(driveType));
+            if (driveType >= 0 && !dfPath[i]->currentText().isEmpty()) {
                 settings.insert(QStringLiteral("floppy%1").arg(i), dfPath[i]->currentText());
             }
         }
@@ -1267,6 +1339,10 @@ private:
             QStringLiteral("floppy1"),
             QStringLiteral("floppy2"),
             QStringLiteral("floppy3"),
+            QStringLiteral("floppy0type"),
+            QStringLiteral("floppy1type"),
+            QStringLiteral("floppy2type"),
+            QStringLiteral("floppy3type"),
             QStringLiteral("nr_floppies"),
             QStringLiteral("chipset"),
             QStringLiteral("chipset_compatible"),
@@ -1297,7 +1373,7 @@ private:
     {
         int count = 0;
         for (int i = 0; i < 4; i++) {
-            if (dfEnable[i]->isChecked() && !dfPath[i]->currentText().isEmpty()) {
+            if (dfEnable[i]->isChecked() && floppyTypeConfigValue(dfType[i]->currentText()) >= 0) {
                 count = i + 1;
             }
         }
@@ -1344,12 +1420,22 @@ private:
             romFile->setCurrentText(value);
         } else if (key == QStringLiteral("kickstart_ext_rom_file")) {
             extendedRomFile->setCurrentText(value);
+        } else if (key.startsWith(QStringLiteral("floppy")) && key.endsWith(QStringLiteral("type"))) {
+            bool ok = false;
+            const int drive = key.mid(6, 1).toInt(&ok);
+            if (ok && drive >= 0 && drive < 4) {
+                const int driveType = value.toInt();
+                dfEnable[drive]->setChecked(driveType >= 0);
+                dfType[drive]->setCurrentText(floppyTypeText(driveType));
+                syncFloppyDriveToQuick(drive);
+            }
         } else if (key.startsWith(QStringLiteral("floppy"))) {
             bool ok = false;
             const int drive = key.mid(6, 1).toInt(&ok);
             if (ok && drive >= 0 && drive < 4) {
                 dfEnable[drive]->setChecked(true);
                 dfPath[drive]->setCurrentText(value);
+                syncFloppyDriveToQuick(drive);
             }
         } else if (key == QStringLiteral("chipset")) {
             chipset->setCurrentText(value.toUpper());
