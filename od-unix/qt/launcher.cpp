@@ -29,11 +29,18 @@ static constexpr int FpuInternal = -1;
 static constexpr int MaxMountEntries = 8;
 static constexpr int MaxControllerUnits = 8;
 static constexpr int MaxCdSlots = 8;
+static constexpr int MaxRomBoards = 4;
 
 struct WinUaeQtCdSlot {
     QString path;
     QString type;
     bool inUse = false;
+};
+
+struct WinUaeQtRomBoard {
+    QString start;
+    QString end;
+    QString path;
 };
 
 enum MountDataRole {
@@ -314,6 +321,86 @@ static QString cdSlotConfigValue(const WinUaeQtCdSlot &slot)
     return winUaeQtConfigEscapeMin(slot.path);
 }
 
+static QString normalizedRomAddress(QString text, bool endAddress)
+{
+    text = text.trimmed();
+    if (text.startsWith(QStringLiteral("0x"), Qt::CaseInsensitive)) {
+        text = text.mid(2);
+    }
+    bool ok = false;
+    quint32 value = text.toUInt(&ok, 16);
+    if (!ok) {
+        return QString();
+    }
+    if (endAddress && value == 0) {
+        return QString();
+    }
+    if (endAddress) {
+        value = ((value - 1) & ~quint32(0xffff)) | quint32(0xffff);
+    } else {
+        value &= ~quint32(0xffff);
+    }
+    return QStringLiteral("%1").arg(value, 8, 16, QLatin1Char('0'));
+}
+
+static WinUaeQtRomBoard romBoardFromConfigValue(const QString &value)
+{
+    WinUaeQtRomBoard board;
+    for (const QString &field : winUaeQtConfigFieldList(value)) {
+        const int equals = field.indexOf(QLatin1Char('='));
+        if (equals <= 0) {
+            continue;
+        }
+        const QString key = field.left(equals).trimmed().toLower();
+        const QString fieldValue = field.mid(equals + 1).trimmed();
+        if (key == QStringLiteral("start")) {
+            board.start = normalizedRomAddress(fieldValue, false);
+        } else if (key == QStringLiteral("end")) {
+            board.end = normalizedRomAddress(fieldValue, true);
+        } else if (key == QStringLiteral("file")) {
+            board.path = fieldValue;
+        }
+    }
+    return board;
+}
+
+static QString romBoardConfigValue(const WinUaeQtRomBoard &board)
+{
+    const QString start = normalizedRomAddress(board.start, false);
+    const QString end = normalizedRomAddress(board.end, true);
+    if (start.isEmpty() || end.isEmpty()) {
+        return QString();
+    }
+    QString value = QStringLiteral("start=%1,end=%2").arg(start, end);
+    if (!board.path.trimmed().isEmpty()) {
+        value += QStringLiteral(",file=%1").arg(winUaeQtConfigEscapeMin(board.path.trimmed()));
+    }
+    return value;
+}
+
+static int romBoardIndexFromKey(const QString &key)
+{
+    if (key == QStringLiteral("romboard_options")) {
+        return 0;
+    }
+    if (!key.startsWith(QStringLiteral("romboard")) || !key.endsWith(QStringLiteral("_options"))) {
+        return -1;
+    }
+    bool ok = false;
+    const int board = key.mid(8, key.size() - 16).toInt(&ok);
+    if (!ok) {
+        return -1;
+    }
+    return board - 1;
+}
+
+static QString romBoardKey(int index)
+{
+    return index == 0
+        ? QStringLiteral("romboard_options")
+        : QStringLiteral("romboard%1_options").arg(index + 1);
+}
+
 static int floppyKeyDrive(const QString &key, const QString &suffix = QString())
 {
     if (!key.startsWith(QStringLiteral("floppy"))) {
@@ -324,6 +411,35 @@ static int floppyKeyDrive(const QString &key, const QString &suffix = QString())
     }
     const int drive = key.at(6).digitValue();
     return drive >= 0 && drive < 4 ? drive : -1;
+}
+
+static QString uaeBoardConfigValue(const QString &text)
+{
+    if (text == QStringLiteral("New UAE (64k + F0 ROM)")) {
+        return QStringLiteral("min");
+    }
+    if (text == QStringLiteral("New UAE (128k, ROM, Direct)")) {
+        return QStringLiteral("full");
+    }
+    if (text == QStringLiteral("New UAE (128k, ROM, Indirect)")) {
+        return QStringLiteral("full+indirect");
+    }
+    return QStringLiteral("disabled");
+}
+
+static QString uaeBoardText(const QString &value)
+{
+    const QString lower = value.toLower();
+    if (lower == QStringLiteral("min") || lower == QStringLiteral("min_off")) {
+        return QStringLiteral("New UAE (64k + F0 ROM)");
+    }
+    if (lower == QStringLiteral("full") || lower == QStringLiteral("full_off")) {
+        return QStringLiteral("New UAE (128k, ROM, Direct)");
+    }
+    if (lower == QStringLiteral("full+indirect") || lower == QStringLiteral("full+indirect_off")) {
+        return QStringLiteral("New UAE (128k, ROM, Indirect)");
+    }
+    return QStringLiteral("Original UAE (FS + F0 ROM)");
 }
 
 static QString fullscreenModeConfigValue(const QString &text)
@@ -1181,6 +1297,16 @@ private:
     QComboBox *cartFile = nullptr;
     QLineEdit *flashFile = nullptr;
     QLineEdit *rtcFile = nullptr;
+    QCheckBox *mapRom = nullptr;
+    QCheckBox *kickShifter = nullptr;
+    QComboBox *customRomSelect = nullptr;
+    QLineEdit *customRomStart = nullptr;
+    QLineEdit *customRomEnd = nullptr;
+    QLineEdit *customRomFile = nullptr;
+    QComboBox *uaeBoardType = nullptr;
+    QVector<WinUaeQtRomBoard> customRomBoards;
+    int currentCustomRomBoard = 0;
+    bool customRomUpdating = false;
 
     QComboBox *cpuModel = nullptr;
     QButtonGroup *cpuButtons = nullptr;
@@ -1575,22 +1701,32 @@ private:
 
         romFile = pathCombo();
         extendedRomFile = pathCombo();
+        mapRom = new QCheckBox(QStringLiteral("MapROM emulation"));
+        kickShifter = new QCheckBox(QStringLiteral("ShapeShifter support"));
         QGridLayout *system = new QGridLayout;
         system->setColumnStretch(1, 1);
         addPathRow(system, 0, QStringLiteral("Main ROM file:"), romFile, QStringLiteral("Select main ROM file"), QStringLiteral("ROM files (*.rom *.bin);;All files (*)"));
         addPathRow(system, 1, QStringLiteral("Extended ROM file:"), extendedRomFile, QStringLiteral("Select extended ROM file"), QStringLiteral("ROM files (*.rom *.bin);;All files (*)"));
-        system->addWidget(new QCheckBox(QStringLiteral("MapROM emulation")), 4, 0);
-        system->addWidget(new QCheckBox(QStringLiteral("ShapeShifter support")), 4, 1);
+        system->addWidget(mapRom, 4, 0);
+        system->addWidget(kickShifter, 4, 1);
         root->addWidget(groupBox(QStringLiteral("System ROM Settings"), system));
 
         QGridLayout *advanced = new QGridLayout;
-        advanced->addWidget(combo({ QStringLiteral("Custom ROM") }), 0, 0);
+        customRomSelect = combo({});
+        for (int i = 0; i < MaxRomBoards; i++) {
+            customRomSelect->addItem(QStringLiteral("ROM #%1").arg(i + 1));
+        }
+        customRomStart = new QLineEdit;
+        customRomEnd = new QLineEdit;
+        customRomFile = new QLineEdit;
+        QPushButton *customRomBrowse = smallButton(QStringLiteral("..."));
+        advanced->setColumnStretch(3, 1);
+        advanced->addWidget(customRomSelect, 0, 0);
         advanced->addWidget(label(QStringLiteral("Address range")), 0, 1);
-        advanced->addWidget(new QLineEdit, 0, 2);
-        advanced->addWidget(new QLineEdit, 0, 3);
-        QLineEdit *customRom = new QLineEdit;
-        customRom->setEnabled(false);
-        advanced->addWidget(customRom, 1, 0, 1, 4);
+        advanced->addWidget(customRomStart, 0, 2);
+        advanced->addWidget(customRomEnd, 0, 3);
+        advanced->addWidget(customRomFile, 1, 0, 1, 4);
+        advanced->addWidget(customRomBrowse, 1, 4);
         root->addWidget(groupBox(QStringLiteral("Advanced Custom ROM Settings"), advanced));
 
         cartFile = pathCombo();
@@ -1602,6 +1738,53 @@ private:
         addLineBrowseRow(misc, 2, QStringLiteral("Flash RAM or A2286/A2386SX BIOS CMOS RAM file:"), flashFile);
         addLineBrowseRow(misc, 3, QStringLiteral("Real Time Clock file"), rtcFile);
         root->addWidget(groupBox(QStringLiteral("Miscellaneous"), misc), 1);
+
+        uaeBoardType = combo({
+            QStringLiteral("ROM disabled"),
+            QStringLiteral("Original UAE (FS + F0 ROM)"),
+            QStringLiteral("New UAE (64k + F0 ROM)"),
+            QStringLiteral("New UAE (128k, ROM, Direct)"),
+            QStringLiteral("New UAE (128k, ROM, Indirect)")
+        }, QStringLiteral("Original UAE (FS + F0 ROM)"));
+        QGridLayout *uaeBoard = new QGridLayout;
+        uaeBoard->setColumnStretch(1, 1);
+        uaeBoard->addWidget(label(QStringLiteral("Board type:")), 0, 0);
+        uaeBoard->addWidget(uaeBoardType, 0, 1);
+        root->addWidget(groupBox(QStringLiteral("Advanced UAE expansion board/Boot ROM Settings"), uaeBoard));
+
+        connect(customRomSelect, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index) {
+            if (customRomUpdating) {
+                return;
+            }
+            storeCurrentCustomRomBoard();
+            currentCustomRomBoard = qBound(0, index, MaxRomBoards - 1);
+            loadCurrentCustomRomBoard();
+        });
+        connect(customRomStart, &QLineEdit::textChanged, this, [this](const QString &) { storeCurrentCustomRomBoard(); });
+        connect(customRomEnd, &QLineEdit::textChanged, this, [this](const QString &) { storeCurrentCustomRomBoard(); });
+        connect(customRomFile, &QLineEdit::textChanged, this, [this](const QString &) { storeCurrentCustomRomBoard(); });
+        connect(customRomBrowse, &QPushButton::clicked, this, [this]() {
+            const QString selected = QFileDialog::getOpenFileName(this, QStringLiteral("Select custom ROM file"), customRomFile->text(), QStringLiteral("ROM files (*.rom *.bin);;All files (*)"));
+            if (selected.isEmpty()) {
+                return;
+            }
+            customRomFile->setText(selected);
+            bool ok = false;
+            QString startText = customRomStart->text().trimmed();
+            if (startText.startsWith(QStringLiteral("0x"), Qt::CaseInsensitive)) {
+                startText = startText.mid(2);
+            }
+            const quint32 start = startText.toUInt(&ok, 16);
+            if (ok && customRomEnd->text().trimmed().isEmpty()) {
+                const qint64 size = QFileInfo(selected).size();
+                if (size > 0) {
+                    const quint32 end = ((start + quint32(size) - 1) & ~quint32(0xffff)) | quint32(0xffff);
+                    customRomEnd->setText(QStringLiteral("%1").arg(end, 8, 16, QLatin1Char('0')));
+                }
+            }
+            storeCurrentCustomRomBoard();
+        });
+        clearCustomRomBoards();
         return page;
     }
 
@@ -2675,6 +2858,79 @@ private:
         cdSlotUpdating = false;
     }
 
+    void ensureCustomRomBoards()
+    {
+        if (customRomBoards.size() == MaxRomBoards) {
+            return;
+        }
+        customRomBoards.clear();
+        customRomBoards.resize(MaxRomBoards);
+        currentCustomRomBoard = 0;
+    }
+
+    void clearCustomRomBoards()
+    {
+        ensureCustomRomBoards();
+        for (WinUaeQtRomBoard &board : customRomBoards) {
+            board = WinUaeQtRomBoard();
+        }
+        currentCustomRomBoard = 0;
+        if (customRomSelect) {
+            QSignalBlocker blocker(customRomSelect);
+            customRomSelect->setCurrentIndex(0);
+        }
+        loadCurrentCustomRomBoard();
+    }
+
+    void storeCurrentCustomRomBoard()
+    {
+        if (customRomUpdating || !customRomStart || !customRomEnd || !customRomFile) {
+            return;
+        }
+        ensureCustomRomBoards();
+        if (currentCustomRomBoard < 0 || currentCustomRomBoard >= customRomBoards.size()) {
+            return;
+        }
+        WinUaeQtRomBoard &board = customRomBoards[currentCustomRomBoard];
+        board.start = normalizedRomAddress(customRomStart->text(), false);
+        board.end = normalizedRomAddress(customRomEnd->text(), true);
+        board.path = customRomFile->text().trimmed();
+    }
+
+    void loadCurrentCustomRomBoard()
+    {
+        if (!customRomStart || !customRomEnd || !customRomFile) {
+            return;
+        }
+        ensureCustomRomBoards();
+        currentCustomRomBoard = qBound(0, currentCustomRomBoard, MaxRomBoards - 1);
+        customRomUpdating = true;
+        QSignalBlocker startBlocker(customRomStart);
+        QSignalBlocker endBlocker(customRomEnd);
+        QSignalBlocker fileBlocker(customRomFile);
+        if (customRomSelect) {
+            QSignalBlocker selectBlocker(customRomSelect);
+            customRomSelect->setCurrentIndex(currentCustomRomBoard);
+        }
+        const WinUaeQtRomBoard &board = customRomBoards[currentCustomRomBoard];
+        customRomStart->setText(board.start);
+        customRomEnd->setText(board.end);
+        customRomFile->setText(board.path);
+        customRomUpdating = false;
+    }
+
+    void applyCustomRomBoard(int index, const QString &value)
+    {
+        if (index < 0 || index >= MaxRomBoards) {
+            return;
+        }
+        ensureCustomRomBoards();
+        customRomBoards[index] = romBoardFromConfigValue(value);
+        if (index == currentCustomRomBoard) {
+            loadCurrentCustomRomBoard();
+        }
+    }
+
     void resetDefaults()
     {
         loadedConfig = WinUaeQtConfig();
@@ -2731,6 +2987,10 @@ private:
         cartFile->setCurrentText(QString());
         flashFile->clear();
         rtcFile->clear();
+        mapRom->setChecked(false);
+        kickShifter->setChecked(false);
+        uaeBoardType->setCurrentText(QStringLiteral("Original UAE (FS + F0 ROM)"));
+        clearCustomRomBoards();
 
         for (int i = 0; i < 4; i++) {
             dfEnable[i]->setChecked(i == 0);
@@ -3794,6 +4054,36 @@ private:
         if (!extendedRomFile->currentText().isEmpty()) {
             settings.insert(QStringLiteral("kickstart_ext_rom_file"), extendedRomFile->currentText());
         }
+        if (!cartFile->currentText().isEmpty()) {
+            settings.insert(QStringLiteral("cart_file"), cartFile->currentText());
+        }
+        if (!flashFile->text().isEmpty()) {
+            settings.insert(QStringLiteral("flash_file"), flashFile->text());
+        }
+        if (!rtcFile->text().isEmpty()) {
+            settings.insert(QStringLiteral("rtc_file"), rtcFile->text());
+        }
+        settings.insert(QStringLiteral("maprom"), mapRom->isChecked() ? QStringLiteral("0x0f000000") : QStringLiteral("0x0"));
+        settings.insert(QStringLiteral("kickshifter"), kickShifter->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
+        if (uaeBoardType->currentText() == QStringLiteral("ROM disabled")) {
+            settings.insert(QStringLiteral("boot_rom_uae"), QStringLiteral("disabled"));
+            settings.insert(QStringLiteral("uaeboard"), QStringLiteral("disabled"));
+        } else {
+            settings.insert(QStringLiteral("boot_rom_uae"), QStringLiteral("automatic"));
+            settings.insert(QStringLiteral("uaeboard"), uaeBoardConfigValue(uaeBoardType->currentText()));
+        }
+        for (int i = 0; i < MaxRomBoards; i++) {
+            WinUaeQtRomBoard board = customRomBoards.value(i);
+            if (i == currentCustomRomBoard && customRomStart && customRomEnd && customRomFile) {
+                board.start = customRomStart->text();
+                board.end = customRomEnd->text();
+                board.path = customRomFile->text();
+            }
+            const QString value = romBoardConfigValue(board);
+            if (!value.isEmpty()) {
+                settings.insert(romBoardKey(i), value);
+            }
+        }
         for (int i = 0; i < 4; i++) {
             const int driveType = dfEnable[i]->isChecked() ? floppyTypeConfigValue(dfType[i]->currentText()) : -1;
             settings.insert(QStringLiteral("floppy%1type").arg(i), QString::number(driveType));
@@ -3937,6 +4227,17 @@ private:
         return {
             QStringLiteral("kickstart_rom_file"),
             QStringLiteral("kickstart_ext_rom_file"),
+            QStringLiteral("cart_file"),
+            QStringLiteral("flash_file"),
+            QStringLiteral("rtc_file"),
+            QStringLiteral("maprom"),
+            QStringLiteral("kickshifter"),
+            QStringLiteral("boot_rom_uae"),
+            QStringLiteral("uaeboard"),
+            QStringLiteral("romboard_options"),
+            QStringLiteral("romboard2_options"),
+            QStringLiteral("romboard3_options"),
+            QStringLiteral("romboard4_options"),
             QStringLiteral("floppy0"),
             QStringLiteral("floppy1"),
             QStringLiteral("floppy2"),
@@ -4119,6 +4420,35 @@ private:
             romFile->setCurrentText(value);
         } else if (key == QStringLiteral("kickstart_ext_rom_file")) {
             extendedRomFile->setCurrentText(value);
+        } else if (key == QStringLiteral("cart_file")) {
+            cartFile->setCurrentText(value);
+        } else if (key == QStringLiteral("flash_file")) {
+            flashFile->setText(value);
+        } else if (key == QStringLiteral("rtc_file")) {
+            rtcFile->setText(value);
+        } else if (key == QStringLiteral("maprom")) {
+            bool ok = false;
+            const uint mapValue = value.toUInt(&ok, 0);
+            mapRom->setChecked(ok && mapValue != 0);
+        } else if (key == QStringLiteral("kickshifter")) {
+            kickShifter->setChecked(configBoolValue(value));
+        } else if (key == QStringLiteral("boot_rom_uae")) {
+            if (value.compare(QStringLiteral("disabled"), Qt::CaseInsensitive) == 0) {
+                uaeBoardType->setCurrentText(QStringLiteral("ROM disabled"));
+            } else if (uaeBoardType->currentText() == QStringLiteral("ROM disabled")) {
+                uaeBoardType->setCurrentText(QStringLiteral("Original UAE (FS + F0 ROM)"));
+            }
+        } else if (key == QStringLiteral("uaeboard")) {
+            if (value.compare(QStringLiteral("disabled"), Qt::CaseInsensitive) == 0
+                || value.compare(QStringLiteral("disabled_off"), Qt::CaseInsensitive) == 0) {
+                if (uaeBoardType->currentText() != QStringLiteral("ROM disabled")) {
+                    uaeBoardType->setCurrentText(QStringLiteral("Original UAE (FS + F0 ROM)"));
+                }
+            } else {
+                uaeBoardType->setCurrentText(uaeBoardText(value));
+            }
+        } else if (romBoardIndexFromKey(key) >= 0) {
+            applyCustomRomBoard(romBoardIndexFromKey(key), value);
         } else if (const int drive = floppyKeyDrive(key, QStringLiteral("type")); drive >= 0) {
             const int driveType = value.toInt();
             dfEnable[drive]->setChecked(driveType >= 0);
