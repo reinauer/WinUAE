@@ -729,6 +729,166 @@ static int soundBufferIndexFromSize(int size)
     return index + 1;
 }
 
+static constexpr int RtgRgbClut = 1 << 1;
+static constexpr int RtgRgbR8G8B8 = 1 << 2;
+static constexpr int RtgRgbB8G8R8 = 1 << 3;
+static constexpr int RtgRgbR5G6B5Pc = 1 << 4;
+static constexpr int RtgRgbR5G5B5Pc = 1 << 5;
+static constexpr int RtgRgbA8R8G8B8 = 1 << 6;
+static constexpr int RtgRgbA8B8G8R8 = 1 << 7;
+static constexpr int RtgRgbR8G8B8A8 = 1 << 8;
+static constexpr int RtgRgbB8G8R8A8 = 1 << 9;
+static constexpr int RtgRgbR5G6B5 = 1 << 10;
+static constexpr int RtgRgbR5G5B5 = 1 << 11;
+static constexpr int RtgRgbB5G6R5Pc = 1 << 12;
+static constexpr int RtgRgbB5G5R5Pc = 1 << 13;
+static constexpr int RtgDefaultModeMask = RtgRgbClut | RtgRgbR5G6B5Pc | RtgRgbB8G8R8A8;
+
+static QString rtgScaleConfigValue(bool scale, bool center, bool integer)
+{
+    if (integer) {
+        return QStringLiteral("integer");
+    }
+    if (center) {
+        return QStringLiteral("center");
+    }
+    if (scale) {
+        return QStringLiteral("scale");
+    }
+    return QStringLiteral("resize");
+}
+
+static QString rtgBufferConfigValue(const QString &text)
+{
+    return text == QStringLiteral("Triple") ? QStringLiteral("2") : QStringLiteral("1");
+}
+
+static QString rtgBufferText(const QString &value)
+{
+    return value == QStringLiteral("2") ? QStringLiteral("Triple") : QStringLiteral("Double");
+}
+
+static int rtgColorDepthMask(const QString &text)
+{
+    if (text == QStringLiteral("8-bit (*)")) {
+        return RtgRgbClut;
+    }
+    if (text == QStringLiteral("All 15/16-bit")) {
+        return RtgRgbR5G6B5Pc | RtgRgbR5G5B5Pc | RtgRgbR5G6B5 | RtgRgbR5G5B5 | RtgRgbB5G6R5Pc | RtgRgbB5G5R5Pc;
+    }
+    if (text == QStringLiteral("R5G6B5PC (*)")) {
+        return RtgRgbR5G6B5Pc;
+    }
+    if (text == QStringLiteral("R5G5B5PC")) {
+        return RtgRgbR5G5B5Pc;
+    }
+    if (text == QStringLiteral("R5G6B5")) {
+        return RtgRgbR5G6B5;
+    }
+    if (text == QStringLiteral("R5G5B5")) {
+        return RtgRgbR5G5B5;
+    }
+    if (text == QStringLiteral("B5G6R5PC")) {
+        return RtgRgbB5G6R5Pc;
+    }
+    if (text == QStringLiteral("B5G5R5PC")) {
+        return RtgRgbB5G5R5Pc;
+    }
+    if (text == QStringLiteral("All 24-bit")) {
+        return RtgRgbR8G8B8 | RtgRgbB8G8R8;
+    }
+    if (text == QStringLiteral("R8G8B8")) {
+        return RtgRgbR8G8B8;
+    }
+    if (text == QStringLiteral("B8G8R8")) {
+        return RtgRgbB8G8R8;
+    }
+    if (text == QStringLiteral("All 32-bit")) {
+        return RtgRgbA8R8G8B8 | RtgRgbA8B8G8R8 | RtgRgbR8G8B8A8 | RtgRgbB8G8R8A8;
+    }
+    if (text == QStringLiteral("A8R8G8B8")) {
+        return RtgRgbA8R8G8B8;
+    }
+    if (text == QStringLiteral("A8B8G8R8")) {
+        return RtgRgbA8B8G8R8;
+    }
+    if (text == QStringLiteral("R8G8B8A8")) {
+        return RtgRgbR8G8B8A8;
+    }
+    if (text == QStringLiteral("B8G8R8A8 (*)")) {
+        return RtgRgbB8G8R8A8;
+    }
+    return 0;
+}
+
+static QString rtg8BitText(int mask)
+{
+    return (mask & RtgRgbClut) ? QStringLiteral("8-bit (*)") : QStringLiteral("(8bit)");
+}
+
+static QString rtg16BitText(int mask)
+{
+    const int all = RtgRgbR5G6B5Pc | RtgRgbR5G5B5Pc | RtgRgbR5G6B5 | RtgRgbR5G5B5 | RtgRgbB5G6R5Pc | RtgRgbB5G5R5Pc;
+    if ((mask & all) == all) {
+        return QStringLiteral("All 15/16-bit");
+    }
+    if (mask & RtgRgbR5G6B5Pc) {
+        return QStringLiteral("R5G6B5PC (*)");
+    }
+    if (mask & RtgRgbR5G5B5Pc) {
+        return QStringLiteral("R5G5B5PC");
+    }
+    if (mask & RtgRgbR5G6B5) {
+        return QStringLiteral("R5G6B5");
+    }
+    if (mask & RtgRgbR5G5B5) {
+        return QStringLiteral("R5G5B5");
+    }
+    if (mask & RtgRgbB5G6R5Pc) {
+        return QStringLiteral("B5G6R5PC");
+    }
+    if (mask & RtgRgbB5G5R5Pc) {
+        return QStringLiteral("B5G5R5PC");
+    }
+    return QStringLiteral("(15/16bit)");
+}
+
+static QString rtg24BitText(int mask)
+{
+    const int all = RtgRgbR8G8B8 | RtgRgbB8G8R8;
+    if ((mask & all) == all) {
+        return QStringLiteral("All 24-bit");
+    }
+    if (mask & RtgRgbR8G8B8) {
+        return QStringLiteral("R8G8B8");
+    }
+    if (mask & RtgRgbB8G8R8) {
+        return QStringLiteral("B8G8R8");
+    }
+    return QStringLiteral("(24bit)");
+}
+
+static QString rtg32BitText(int mask)
+{
+    const int all = RtgRgbA8R8G8B8 | RtgRgbA8B8G8R8 | RtgRgbR8G8B8A8 | RtgRgbB8G8R8A8;
+    if ((mask & all) == all) {
+        return QStringLiteral("All 32-bit");
+    }
+    if (mask & RtgRgbA8R8G8B8) {
+        return QStringLiteral("A8R8G8B8");
+    }
+    if (mask & RtgRgbA8B8G8R8) {
+        return QStringLiteral("A8B8G8R8");
+    }
+    if (mask & RtgRgbR8G8B8A8) {
+        return QStringLiteral("R8G8B8A8");
+    }
+    if (mask & RtgRgbB8G8R8A8) {
+        return QStringLiteral("B8G8R8A8 (*)");
+    }
+    return QStringLiteral("(32bit)");
+}
+
 static QString sourceFile(const QString &relative)
 {
     return QDir(QString::fromUtf8(WINUAE_UNIX_SOURCE_DIR)).filePath(relative);
@@ -1037,6 +1197,21 @@ private:
     QComboBox *z3Fast = nullptr;
     QComboBox *rtgMem = nullptr;
     QComboBox *rtgType = nullptr;
+    QComboBox *rtgMonitor = nullptr;
+    QCheckBox *rtgScale = nullptr;
+    QCheckBox *rtgCenter = nullptr;
+    QCheckBox *rtgIntegerScale = nullptr;
+    QCheckBox *rtgMultithread = nullptr;
+    QCheckBox *rtgHardwareSprite = nullptr;
+    QCheckBox *rtgHardwareVBlank = nullptr;
+    QCheckBox *rtgAutoswitch = nullptr;
+    QCheckBox *rtgInitialMonitor = nullptr;
+    QComboBox *rtg8Bit = nullptr;
+    QComboBox *rtg16Bit = nullptr;
+    QComboBox *rtg24Bit = nullptr;
+    QComboBox *rtg32Bit = nullptr;
+    QComboBox *rtgRefreshRate = nullptr;
+    QComboBox *rtgBuffers = nullptr;
 
     QCheckBox *dfEnable[4] = {};
     QComboBox *dfType[4] = {};
@@ -1675,19 +1850,75 @@ private:
         QVBoxLayout *root = new QVBoxLayout(page);
         root->setContentsMargins(4, 4, 4, 4);
 
-        rtgMem = combo({ QStringLiteral("None"), QStringLiteral("4 MB"), QStringLiteral("8 MB"), QStringLiteral("16 MB"), QStringLiteral("32 MB") }, QStringLiteral("None"));
+        rtgMem = combo({ QStringLiteral("None"), QStringLiteral("1 MB"), QStringLiteral("2 MB"), QStringLiteral("4 MB"), QStringLiteral("8 MB"), QStringLiteral("16 MB"), QStringLiteral("32 MB"), QStringLiteral("64 MB"), QStringLiteral("128 MB"), QStringLiteral("256 MB") }, QStringLiteral("None"));
         rtgType = combo({ QStringLiteral("ZorroII"), QStringLiteral("ZorroIII") }, QStringLiteral("ZorroIII"));
+        rtgMonitor = combo({ QStringLiteral("1"), QStringLiteral("2"), QStringLiteral("3"), QStringLiteral("4") }, QStringLiteral("1"));
+        rtgScale = new QCheckBox(QStringLiteral("Scale if smaller than display size setting"));
+        rtgCenter = new QCheckBox(QStringLiteral("Always center"));
+        rtgIntegerScale = new QCheckBox(QStringLiteral("Integer scaling"));
+        rtgMultithread = new QCheckBox(QStringLiteral("Multithreaded"));
+        rtgHardwareSprite = new QCheckBox(QStringLiteral("Hardware sprite emulation"));
+        rtgHardwareVBlank = new QCheckBox(QStringLiteral("Hardware vertical blank interrupt"));
+        rtgAutoswitch = new QCheckBox(QStringLiteral("Native/RTG autoswitch"));
+        rtgInitialMonitor = new QCheckBox(QStringLiteral("Override initial native chipset display"));
+        rtg8Bit = combo({ QStringLiteral("(8bit)"), QStringLiteral("8-bit (*)") }, QStringLiteral("8-bit (*)"));
+        rtg16Bit = combo({ QStringLiteral("(15/16bit)"), QStringLiteral("All 15/16-bit"), QStringLiteral("R5G6B5PC (*)"), QStringLiteral("R5G5B5PC"), QStringLiteral("R5G6B5"), QStringLiteral("R5G5B5"), QStringLiteral("B5G6R5PC"), QStringLiteral("B5G5R5PC") }, QStringLiteral("R5G6B5PC (*)"));
+        rtg24Bit = combo({ QStringLiteral("(24bit)"), QStringLiteral("All 24-bit"), QStringLiteral("R8G8B8"), QStringLiteral("B8G8R8") }, QStringLiteral("(24bit)"));
+        rtg32Bit = combo({ QStringLiteral("(32bit)"), QStringLiteral("All 32-bit"), QStringLiteral("A8R8G8B8"), QStringLiteral("A8B8G8R8"), QStringLiteral("R8G8B8A8"), QStringLiteral("B8G8R8A8 (*)") }, QStringLiteral("B8G8R8A8 (*)"));
+        rtgRefreshRate = combo({ QStringLiteral("Chipset"), QStringLiteral("Default"), QStringLiteral("50"), QStringLiteral("60"), QStringLiteral("70"), QStringLiteral("75") }, QStringLiteral("Chipset"));
+        rtgRefreshRate->setEditable(true);
+        rtgBuffers = combo({ QStringLiteral("Double"), QStringLiteral("Triple") }, QStringLiteral("Double"));
 
         QGridLayout *rtg = new QGridLayout;
-        rtg->setColumnStretch(1, 1);
-        rtg->addWidget(label(QStringLiteral("RTG board:")), 0, 0);
-        rtg->addWidget(combo({ QStringLiteral("UAE RTG") }), 0, 1);
-        rtg->addWidget(label(QStringLiteral("Memory:")), 1, 0);
+        rtg->setColumnStretch(1, 2);
+        rtg->setColumnStretch(3, 1);
+        rtg->addWidget(label(QStringLiteral("Board:")), 0, 0);
+        rtg->addWidget(rtgType, 0, 1);
+        rtg->addWidget(label(QStringLiteral("Monitor:")), 0, 2);
+        rtg->addWidget(rtgMonitor, 0, 3);
+        rtg->addWidget(label(QStringLiteral("VRAM size:")), 1, 0);
         rtg->addWidget(rtgMem, 1, 1);
-        rtg->addWidget(label(QStringLiteral("Type:")), 2, 0);
-        rtg->addWidget(rtgType, 2, 1);
-        root->addWidget(groupBox(QStringLiteral("Graphics board"), rtg));
+        rtg->addWidget(rtgAutoswitch, 2, 0, 1, 2);
+        rtg->addWidget(rtgScale, 3, 0, 1, 2);
+        rtg->addWidget(rtgCenter, 4, 0, 1, 2);
+        rtg->addWidget(rtgIntegerScale, 5, 0, 1, 2);
+        rtg->addWidget(rtgMultithread, 3, 2, 1, 2);
+        rtg->addWidget(rtgHardwareSprite, 4, 2, 1, 2);
+        rtg->addWidget(rtgHardwareVBlank, 5, 2, 1, 2);
+        rtg->addWidget(label(QStringLiteral("8-bit:")), 6, 0);
+        rtg->addWidget(rtg8Bit, 6, 1);
+        rtg->addWidget(label(QStringLiteral("16-bit:")), 6, 2);
+        rtg->addWidget(rtg16Bit, 6, 3);
+        rtg->addWidget(label(QStringLiteral("24-bit:")), 7, 0);
+        rtg->addWidget(rtg24Bit, 7, 1);
+        rtg->addWidget(label(QStringLiteral("32-bit:")), 7, 2);
+        rtg->addWidget(rtg32Bit, 7, 3);
+        rtg->addWidget(label(QStringLiteral("Refresh rate:")), 8, 0);
+        rtg->addWidget(rtgRefreshRate, 8, 1);
+        rtg->addWidget(label(QStringLiteral("Buffer mode:")), 8, 2);
+        rtg->addWidget(rtgBuffers, 8, 3);
+        rtg->addWidget(rtgInitialMonitor, 9, 2, 1, 2);
+        root->addWidget(groupBox(QStringLiteral("RTG Graphics Card"), rtg));
         root->addWidget(groupBox(QStringLiteral("Expansion boards"), new QVBoxLayout), 1);
+
+        connect(rtgScale, &QCheckBox::toggled, this, [this](bool checked) {
+            if (checked) {
+                rtgCenter->setChecked(false);
+                rtgIntegerScale->setChecked(false);
+            }
+        });
+        connect(rtgCenter, &QCheckBox::toggled, this, [this](bool checked) {
+            if (checked) {
+                rtgScale->setChecked(false);
+                rtgIntegerScale->setChecked(false);
+            }
+        });
+        connect(rtgIntegerScale, &QCheckBox::toggled, this, [this](bool checked) {
+            if (checked) {
+                rtgScale->setChecked(false);
+                rtgCenter->setChecked(false);
+            }
+        });
         return page;
     }
 
@@ -2479,6 +2710,21 @@ private:
         z3Fast->setCurrentText(QStringLiteral("None"));
         rtgMem->setCurrentText(QStringLiteral("None"));
         rtgType->setCurrentText(QStringLiteral("ZorroIII"));
+        rtgMonitor->setCurrentText(QStringLiteral("1"));
+        rtgScale->setChecked(true);
+        rtgCenter->setChecked(false);
+        rtgIntegerScale->setChecked(false);
+        rtgMultithread->setChecked(false);
+        rtgHardwareSprite->setChecked(true);
+        rtgHardwareVBlank->setChecked(false);
+        rtgAutoswitch->setChecked(true);
+        rtgInitialMonitor->setChecked(false);
+        rtg8Bit->setCurrentText(QStringLiteral("8-bit (*)"));
+        rtg16Bit->setCurrentText(QStringLiteral("R5G6B5PC (*)"));
+        rtg24Bit->setCurrentText(QStringLiteral("(24bit)"));
+        rtg32Bit->setCurrentText(QStringLiteral("B8G8R8A8 (*)"));
+        rtgRefreshRate->setCurrentText(QStringLiteral("Chipset"));
+        rtgBuffers->setCurrentText(QStringLiteral("Double"));
 
         romFile->setCurrentText(envString("WINUAE_KICKSTART_ROM"));
         extendedRomFile->setCurrentText(QString());
@@ -3483,6 +3729,62 @@ private:
         setCheckBoxIfChanged(quickDfWriteProtect[drive], dfWriteProtect[drive]->isChecked());
     }
 
+    int rtgModeMask() const
+    {
+        int mask = 0;
+        mask |= rtgColorDepthMask(rtg8Bit->currentText());
+        mask |= rtgColorDepthMask(rtg16Bit->currentText());
+        mask |= rtgColorDepthMask(rtg24Bit->currentText());
+        mask |= rtgColorDepthMask(rtg32Bit->currentText());
+        return mask ? mask : RtgDefaultModeMask;
+    }
+
+    QString rtgOptionsValue() const
+    {
+        QStringList parts;
+        const int monitorIndex = rtgMonitor->currentText().toInt() - 1;
+        if (monitorIndex > 0) {
+            parts.append(QStringLiteral("monitor=%1").arg(monitorIndex));
+        }
+        if (!rtgAutoswitch->isChecked()) {
+            parts.append(QStringLiteral("noautoswitch"));
+        }
+        if (rtgInitialMonitor->isChecked()) {
+            parts.append(QStringLiteral("initial"));
+        }
+        return parts.join(QLatin1Char(','));
+    }
+
+    void applyRtgScaleValue(const QString &value)
+    {
+        const QString lower = value.toLower();
+        rtgScale->setChecked(lower == QStringLiteral("scale"));
+        rtgCenter->setChecked(lower == QStringLiteral("center"));
+        rtgIntegerScale->setChecked(lower == QStringLiteral("integer"));
+    }
+
+    void applyRtgOptionsValue(const QString &value)
+    {
+        bool autoswitch = true;
+        bool initial = false;
+        int monitor = 0;
+        for (const QString &field : winUaeQtConfigFieldList(value)) {
+            const QString trimmed = field.trimmed();
+            if (trimmed.compare(QStringLiteral("noautoswitch"), Qt::CaseInsensitive) == 0) {
+                autoswitch = false;
+            } else if (trimmed.compare(QStringLiteral("autoswitch"), Qt::CaseInsensitive) == 0) {
+                autoswitch = true;
+            } else if (trimmed.compare(QStringLiteral("initial"), Qt::CaseInsensitive) == 0) {
+                initial = true;
+            } else if (trimmed.startsWith(QStringLiteral("monitor="), Qt::CaseInsensitive)) {
+                monitor = qBound(0, trimmed.mid(8).toInt(), 3);
+            }
+        }
+        rtgAutoswitch->setChecked(autoswitch);
+        rtgInitialMonitor->setChecked(initial);
+        rtgMonitor->setCurrentText(QString::number(monitor + 1));
+    }
+
     WinUaeQtConfig::Settings currentSettings() const
     {
         WinUaeQtConfig::Settings settings;
@@ -3554,7 +3856,22 @@ private:
         if (rtgMem->currentText() != QStringLiteral("None")) {
             settings.insert(QStringLiteral("gfxcard_size"), QString::number(megabytesFromText(rtgMem->currentText())));
             settings.insert(QStringLiteral("gfxcard_type"), rtgType->currentText());
+            const QString options = rtgOptionsValue();
+            if (!options.isEmpty()) {
+                settings.insert(QStringLiteral("gfxcard_options"), options);
+            }
         }
+        settings.insert(QStringLiteral("gfx_filter_autoscale_rtg"), rtgScaleConfigValue(rtgScale->isChecked(), rtgCenter->isChecked(), rtgIntegerScale->isChecked()));
+        settings.insert(QStringLiteral("gfx_backbuffers_rtg"), rtgBufferConfigValue(rtgBuffers->currentText()));
+        if (rtgRefreshRate->currentText() == QStringLiteral("Chipset")) {
+            settings.insert(QStringLiteral("gfx_refreshrate_rtg"), QStringLiteral("0"));
+        } else if (rtgRefreshRate->currentText() != QStringLiteral("Default")) {
+            settings.insert(QStringLiteral("gfx_refreshrate_rtg"), rtgRefreshRate->currentText());
+        }
+        settings.insert(QStringLiteral("gfxcard_hardware_vblank"), rtgHardwareVBlank->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
+        settings.insert(QStringLiteral("gfxcard_hardware_sprite"), rtgHardwareSprite->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
+        settings.insert(QStringLiteral("gfxcard_multithread"), rtgMultithread->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
+        settings.insert(QStringLiteral("rtg_modes"), QStringLiteral("0x%1").arg(rtgModeMask(), 0, 16));
         if (!windowWidth->text().isEmpty()) {
             settings.insert(QStringLiteral("gfx_width_windowed"), windowWidth->text());
         }
@@ -3675,6 +3992,14 @@ private:
             QStringLiteral("floppy3soundvolume_disk"),
             QStringLiteral("gfxcard_size"),
             QStringLiteral("gfxcard_type"),
+            QStringLiteral("gfxcard_options"),
+            QStringLiteral("gfx_filter_autoscale_rtg"),
+            QStringLiteral("gfx_backbuffers_rtg"),
+            QStringLiteral("gfx_refreshrate_rtg"),
+            QStringLiteral("gfxcard_hardware_vblank"),
+            QStringLiteral("gfxcard_hardware_sprite"),
+            QStringLiteral("gfxcard_multithread"),
+            QStringLiteral("rtg_modes"),
             QStringLiteral("gfx_width_windowed"),
             QStringLiteral("gfx_height_windowed"),
             QStringLiteral("gfx_width_fullscreen"),
@@ -3855,6 +4180,34 @@ private:
             rtgMem->setCurrentText(value == QStringLiteral("0") ? QStringLiteral("None") : value + QStringLiteral(" MB"));
         } else if (key == QStringLiteral("gfxcard_type")) {
             rtgType->setCurrentText(value);
+        } else if (key == QStringLiteral("gfxcard_options")) {
+            applyRtgOptionsValue(value);
+        } else if (key == QStringLiteral("gfx_filter_autoscale_rtg")) {
+            applyRtgScaleValue(value);
+        } else if (key == QStringLiteral("gfx_backbuffers_rtg")) {
+            rtgBuffers->setCurrentText(rtgBufferText(value));
+        } else if (key == QStringLiteral("gfx_refreshrate_rtg")) {
+            if (value == QStringLiteral("0")) {
+                rtgRefreshRate->setCurrentText(QStringLiteral("Chipset"));
+            } else {
+                rtgRefreshRate->setCurrentText(value);
+            }
+        } else if (key == QStringLiteral("gfxcard_hardware_vblank")) {
+            rtgHardwareVBlank->setChecked(configBoolValue(value));
+        } else if (key == QStringLiteral("gfxcard_hardware_sprite")) {
+            rtgHardwareSprite->setChecked(configBoolValue(value));
+        } else if (key == QStringLiteral("gfxcard_multithread")) {
+            rtgMultithread->setChecked(configBoolValue(value));
+        } else if (key == QStringLiteral("rtg_modes")) {
+            bool ok = false;
+            int mask = value.toInt(&ok, 0);
+            if (!ok) {
+                mask = RtgDefaultModeMask;
+            }
+            rtg8Bit->setCurrentText(rtg8BitText(mask));
+            rtg16Bit->setCurrentText(rtg16BitText(mask));
+            rtg24Bit->setCurrentText(rtg24BitText(mask));
+            rtg32Bit->setCurrentText(rtg32BitText(mask));
         } else if (key == QStringLiteral("sound_output")) {
             if (QAbstractButton *button = soundOutputButtons->button(soundOutputId(value))) {
                 button->setChecked(true);
