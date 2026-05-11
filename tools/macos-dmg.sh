@@ -166,6 +166,7 @@ hdiutil detach "${mount_dir}" -quiet
 mount_dir=""
 hdiutil convert "${rw_dmg}" -format UDZO -imagekey zlib-level=9 -o "${final_dmg}" -ov >/dev/null
 hdiutil verify "${final_dmg}" >/dev/null
+"${script_dir}/macos-verify-dmg.sh" "${final_dmg}" >/dev/null
 rm -rf "${rw_dmg}" "${staging_dir}"
 
 echo "${final_dmg}"
