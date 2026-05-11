@@ -24,6 +24,8 @@
 #define WINUAE_UNIX_VERSION_REVISION 0
 #endif
 
+static constexpr int FpuInternal = -1;
+
 static QString sourceFile(const QString &relative)
 {
     return QDir(QString::fromUtf8(WINUAE_UNIX_SOURCE_DIR)).filePath(relative);
@@ -492,6 +494,9 @@ private:
             QRadioButton *button = new QRadioButton(name);
             cpu->addWidget(button);
             cpuButtons->addButton(button, name.mid(2).toInt() + 68000);
+            connect(button, &QRadioButton::clicked, this, [this]() {
+                updateFpuControls();
+            });
             if (name == QStringLiteral("68020")) {
                 button->setChecked(true);
             }
@@ -510,11 +515,13 @@ private:
         for (int i = 0; i < fpus.size(); i++) {
             QRadioButton *button = new QRadioButton(fpus[i]);
             fpu->addWidget(button);
-            fpuButtons->addButton(button, i);
+            const int id = i == 1 ? 68881 : (i == 2 ? 68882 : (i == 3 ? FpuInternal : 0));
+            fpuButtons->addButton(button, id);
             if (i == 0) {
                 button->setChecked(true);
             }
         }
+        updateFpuControls();
         left->addWidget(groupBox(QStringLiteral("FPU"), fpu));
         left->addStretch();
 
@@ -1120,6 +1127,39 @@ private:
         if (QAbstractButton *button = cpuButtons->button(model)) {
             button->setChecked(true);
         }
+        updateFpuControls();
+    }
+
+    void setFpuButton(int model)
+    {
+        const int id = (model == 68040 || model == 68060) ? FpuInternal : model;
+        if (QAbstractButton *button = fpuButtons->button(id)) {
+            button->setChecked(true);
+        }
+        updateFpuControls();
+    }
+
+    int selectedCpuModel() const
+    {
+        const int cpu = cpuButtons->checkedId();
+        return cpu > 0 ? cpu : 68020;
+    }
+
+    int fpuModelConfigValue(int cpu) const
+    {
+        const int fpu = fpuButtons->checkedId();
+        if (fpu == FpuInternal) {
+            return cpu >= 68060 ? 68060 : (cpu >= 68040 ? 68040 : 68882);
+        }
+        return fpu > 0 ? fpu : 0;
+    }
+
+    void updateFpuControls()
+    {
+        const int cpu = selectedCpuModel();
+        if (QAbstractButton *internal = fpuButtons->button(FpuInternal)) {
+            internal->setEnabled(cpu >= 68040);
+        }
     }
 
     int chipMemConfigValue() const
@@ -1171,7 +1211,8 @@ private:
     WinUaeQtConfig::Settings currentSettings() const
     {
         WinUaeQtConfig::Settings settings;
-        const int cpu = cpuButtons->checkedId();
+        const int cpu = selectedCpuModel();
+        const int fpu = fpuModelConfigValue(cpu);
         settings.insert(QStringLiteral("kickstart_rom_file"), romFile->currentText());
         if (!extendedRomFile->currentText().isEmpty()) {
             settings.insert(QStringLiteral("kickstart_ext_rom_file"), extendedRomFile->currentText());
@@ -1184,7 +1225,10 @@ private:
         settings.insert(QStringLiteral("nr_floppies"), QString::number(enabledFloppyCount()));
         settings.insert(QStringLiteral("chipset"), chipset->currentText().toLower());
         settings.insert(QStringLiteral("chipset_compatible"), chipsetCompatible->currentText());
-        settings.insert(QStringLiteral("cpu_model"), QString::number(cpu > 0 ? cpu : 68020));
+        settings.insert(QStringLiteral("cpu_model"), QString::number(cpu));
+        if (fpu) {
+            settings.insert(QStringLiteral("fpu_model"), QString::number(fpu));
+        }
         if (cpu >= 68020) {
             settings.insert(QStringLiteral("cpu_24bit_addressing"), cpu24Bit->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
         }
@@ -1227,6 +1271,7 @@ private:
             QStringLiteral("chipset"),
             QStringLiteral("chipset_compatible"),
             QStringLiteral("cpu_model"),
+            QStringLiteral("fpu_model"),
             QStringLiteral("cpu_24bit_addressing"),
             QStringLiteral("chipmem_size"),
             QStringLiteral("fastmem_size"),
@@ -1313,6 +1358,8 @@ private:
             quickModel->setCurrentText(value);
         } else if (key == QStringLiteral("cpu_model")) {
             setCpuButton(value.toInt());
+        } else if (key == QStringLiteral("fpu_model")) {
+            setFpuButton(value.toInt());
         } else if (key == QStringLiteral("cpu_24bit_addressing")) {
             cpu24Bit->setChecked(value.compare(QStringLiteral("true"), Qt::CaseInsensitive) == 0);
         } else if (key == QStringLiteral("chipmem_size")) {
