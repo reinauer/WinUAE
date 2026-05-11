@@ -365,6 +365,198 @@ static int lineModeId(const QString &value)
     return 1;
 }
 
+static QStringList primaryPortDeviceItems()
+{
+    return {
+        QStringLiteral("Mouse"),
+        QStringLiteral("Keyboard Layout A"),
+        QStringLiteral("Keyboard Layout B"),
+        QStringLiteral("Keyboard Layout C"),
+        QStringLiteral("Joystick 1"),
+        QStringLiteral("Joystick 2"),
+        QStringLiteral("Joystick 3"),
+        QStringLiteral("Joystick 4"),
+        QStringLiteral("<None>")
+    };
+}
+
+static QStringList parallelPortDeviceItems()
+{
+    return {
+        QStringLiteral("<None>"),
+        QStringLiteral("Keyboard Layout A"),
+        QStringLiteral("Keyboard Layout B"),
+        QStringLiteral("Keyboard Layout C"),
+        QStringLiteral("Joystick 1"),
+        QStringLiteral("Joystick 2"),
+        QStringLiteral("Joystick 3"),
+        QStringLiteral("Joystick 4")
+    };
+}
+
+static QString joyportDeviceConfigValue(const QString &text)
+{
+    if (text == QStringLiteral("Mouse")) {
+        return QStringLiteral("mouse");
+    }
+    if (text == QStringLiteral("Keyboard Layout A")) {
+        return QStringLiteral("kbd1");
+    }
+    if (text == QStringLiteral("Keyboard Layout B")) {
+        return QStringLiteral("kbd2");
+    }
+    if (text == QStringLiteral("Keyboard Layout C")) {
+        return QStringLiteral("kbd3");
+    }
+    if (text.startsWith(QStringLiteral("Joystick "))) {
+        bool ok = false;
+        const int index = text.mid(9).toInt(&ok);
+        if (ok && index > 0) {
+            return QStringLiteral("joy%1").arg(index - 1);
+        }
+    }
+    return QStringLiteral("none");
+}
+
+static QString joyportDeviceText(const QString &value, bool allowMouse)
+{
+    const QString lower = value.toLower();
+    if (allowMouse && (lower == QStringLiteral("mouse") || lower == QStringLiteral("mouse0"))) {
+        return QStringLiteral("Mouse");
+    }
+    if (lower == QStringLiteral("kbd1")) {
+        return QStringLiteral("Keyboard Layout A");
+    }
+    if (lower == QStringLiteral("kbd2")) {
+        return QStringLiteral("Keyboard Layout B");
+    }
+    if (lower == QStringLiteral("kbd3")) {
+        return QStringLiteral("Keyboard Layout C");
+    }
+    if (lower.startsWith(QStringLiteral("joy"))) {
+        bool ok = false;
+        const int index = lower.mid(3).toInt(&ok);
+        if (ok && index >= 0 && index < 4) {
+            return QStringLiteral("Joystick %1").arg(index + 1);
+        }
+    }
+    return QStringLiteral("<None>");
+}
+
+static QString autofireConfigValue(const QString &text)
+{
+    if (text == QStringLiteral("Autofire")) {
+        return QStringLiteral("normal");
+    }
+    if (text == QStringLiteral("Autofire (toggle)")) {
+        return QStringLiteral("toggle");
+    }
+    if (text == QStringLiteral("Autofire (always)")) {
+        return QStringLiteral("always");
+    }
+    if (text == QStringLiteral("No autofire (toggle)")) {
+        return QStringLiteral("togglebutton");
+    }
+    return QStringLiteral("none");
+}
+
+static QString autofireText(const QString &value)
+{
+    if (value.compare(QStringLiteral("normal"), Qt::CaseInsensitive) == 0) {
+        return QStringLiteral("Autofire");
+    }
+    if (value.compare(QStringLiteral("toggle"), Qt::CaseInsensitive) == 0) {
+        return QStringLiteral("Autofire (toggle)");
+    }
+    if (value.compare(QStringLiteral("always"), Qt::CaseInsensitive) == 0) {
+        return QStringLiteral("Autofire (always)");
+    }
+    if (value.compare(QStringLiteral("togglebutton"), Qt::CaseInsensitive) == 0) {
+        return QStringLiteral("No autofire (toggle)");
+    }
+    return QStringLiteral("No autofire (normal)");
+}
+
+static QString joyportModeConfigValue(const QString &text)
+{
+    if (text == QStringLiteral("Wheel Mouse")) {
+        return QStringLiteral("mouse");
+    }
+    if (text == QStringLiteral("Mouse")) {
+        return QStringLiteral("mousenowheel");
+    }
+    if (text == QStringLiteral("Joystick")) {
+        return QStringLiteral("djoy");
+    }
+    if (text == QStringLiteral("Gamepad")) {
+        return QStringLiteral("gamepad");
+    }
+    if (text == QStringLiteral("Analog joystick")) {
+        return QStringLiteral("ajoy");
+    }
+    if (text == QStringLiteral("CDTV remote mouse")) {
+        return QStringLiteral("cdtvjoy");
+    }
+    if (text == QStringLiteral("CD32 pad")) {
+        return QStringLiteral("cd32joy");
+    }
+    if (text == QStringLiteral("Generic light pen/gun")) {
+        return QStringLiteral("lightpen");
+    }
+    return QString();
+}
+
+static QString joyportModeText(const QString &value)
+{
+    if (value.compare(QStringLiteral("mouse"), Qt::CaseInsensitive) == 0) {
+        return QStringLiteral("Wheel Mouse");
+    }
+    if (value.compare(QStringLiteral("mousenowheel"), Qt::CaseInsensitive) == 0) {
+        return QStringLiteral("Mouse");
+    }
+    if (value.compare(QStringLiteral("djoy"), Qt::CaseInsensitive) == 0) {
+        return QStringLiteral("Joystick");
+    }
+    if (value.compare(QStringLiteral("gamepad"), Qt::CaseInsensitive) == 0) {
+        return QStringLiteral("Gamepad");
+    }
+    if (value.compare(QStringLiteral("ajoy"), Qt::CaseInsensitive) == 0) {
+        return QStringLiteral("Analog joystick");
+    }
+    if (value.compare(QStringLiteral("cdtvjoy"), Qt::CaseInsensitive) == 0) {
+        return QStringLiteral("CDTV remote mouse");
+    }
+    if (value.compare(QStringLiteral("cd32joy"), Qt::CaseInsensitive) == 0) {
+        return QStringLiteral("CD32 pad");
+    }
+    if (value.compare(QStringLiteral("lightpen"), Qt::CaseInsensitive) == 0) {
+        return QStringLiteral("Generic light pen/gun");
+    }
+    return QStringLiteral("Default");
+}
+
+static QString magicMouseCursorConfigValue(const QString &text)
+{
+    if (text == QStringLiteral("Show native cursor only")) {
+        return QStringLiteral("native");
+    }
+    if (text == QStringLiteral("Show host cursor only")) {
+        return QStringLiteral("host");
+    }
+    return QStringLiteral("both");
+}
+
+static QString magicMouseCursorText(const QString &value)
+{
+    if (value.compare(QStringLiteral("native"), Qt::CaseInsensitive) == 0) {
+        return QStringLiteral("Show native cursor only");
+    }
+    if (value.compare(QStringLiteral("host"), Qt::CaseInsensitive) == 0) {
+        return QStringLiteral("Show host cursor only");
+    }
+    return QStringLiteral("Show both cursors");
+}
+
 static QString sourceFile(const QString &relative)
 {
     return QDir(QString::fromUtf8(WINUAE_UNIX_SOURCE_DIR)).filePath(relative);
@@ -707,8 +899,16 @@ private:
     QCheckBox *displayLoresSmoothed = nullptr;
     QButtonGroup *displayLineModeButtons = nullptr;
     QComboBox *soundOutput = nullptr;
-    QComboBox *port0 = nullptr;
-    QComboBox *port1 = nullptr;
+    QComboBox *portDevice[4] = {};
+    QComboBox *portAutofire[2] = {};
+    QComboBox *portMode[2] = {};
+    QCheckBox *portAutoswitch = nullptr;
+    QSpinBox *mouseSpeed = nullptr;
+    QCheckBox *virtualMouseDriver = nullptr;
+    QComboBox *mouseUntrapMode = nullptr;
+    QComboBox *magicMouseCursor = nullptr;
+    QCheckBox *tabletLibrary = nullptr;
+    QComboBox *tabletMode = nullptr;
     QLineEdit *emulatorPath = nullptr;
     QLineEdit *romsPath = nullptr;
     QLineEdit *configsPath = nullptr;
@@ -1384,25 +1584,139 @@ private:
         QWidget *page = makePage();
         QVBoxLayout *root = new QVBoxLayout(page);
         root->setContentsMargins(4, 4, 4, 4);
-        port0 = combo({ QStringLiteral("Mouse"), QStringLiteral("Keyboard Layout B"), QStringLiteral("None") }, QStringLiteral("Mouse"));
-        port1 = combo({ QStringLiteral("Keyboard Layout B"), QStringLiteral("Mouse"), QStringLiteral("None") }, QStringLiteral("Keyboard Layout B"));
+        portDevice[0] = combo(primaryPortDeviceItems(), QStringLiteral("Mouse"));
+        portDevice[1] = combo(primaryPortDeviceItems(), QStringLiteral("Keyboard Layout A"));
+        portDevice[2] = combo(parallelPortDeviceItems(), QStringLiteral("<None>"));
+        portDevice[3] = combo(parallelPortDeviceItems(), QStringLiteral("<None>"));
+        for (int i = 0; i < 2; i++) {
+            portAutofire[i] = combo({
+                QStringLiteral("No autofire (normal)"),
+                QStringLiteral("Autofire"),
+                QStringLiteral("Autofire (toggle)"),
+                QStringLiteral("Autofire (always)"),
+                QStringLiteral("No autofire (toggle)")
+            }, QStringLiteral("No autofire (normal)"));
+            portMode[i] = combo({
+                QStringLiteral("Default"),
+                QStringLiteral("Wheel Mouse"),
+                QStringLiteral("Mouse"),
+                QStringLiteral("Joystick"),
+                QStringLiteral("Gamepad"),
+                QStringLiteral("Analog joystick"),
+                QStringLiteral("CDTV remote mouse"),
+                QStringLiteral("CD32 pad"),
+                QStringLiteral("Generic light pen/gun")
+            }, QStringLiteral("Default"));
+        }
+        portAutoswitch = new QCheckBox(QStringLiteral("Mouse/Joystick autoswitching"));
+
         QGridLayout *ports = new QGridLayout;
         ports->setColumnStretch(1, 1);
         ports->addWidget(label(QStringLiteral("Port 1:")), 0, 0);
-        ports->addWidget(port0, 0, 1);
-        ports->addWidget(new QPushButton(QStringLiteral("Remap / Test")), 1, 2);
+        ports->addWidget(portDevice[0], 0, 1, 1, 3);
+        ports->addWidget(portAutofire[0], 1, 1);
+        ports->addWidget(portMode[0], 1, 2);
+        ports->addWidget(new QPushButton(QStringLiteral("Remap / Test")), 1, 3);
         ports->addWidget(label(QStringLiteral("Port 2:")), 2, 0);
-        ports->addWidget(port1, 2, 1);
-        ports->addWidget(new QPushButton(QStringLiteral("Remap / Test")), 3, 2);
-        ports->addWidget(new QPushButton(QStringLiteral("Swap ports")), 4, 1);
-        ports->addWidget(new QCheckBox(QStringLiteral("Mouse/Joystick autoswitching")), 4, 2);
+        ports->addWidget(portDevice[1], 2, 1, 1, 3);
+        ports->addWidget(portAutofire[1], 3, 1);
+        ports->addWidget(portMode[1], 3, 2);
+        ports->addWidget(new QPushButton(QStringLiteral("Remap / Test")), 3, 3);
+
+        QPushButton *swapPorts = new QPushButton(QStringLiteral("Swap ports"));
+        ports->addWidget(swapPorts, 4, 1);
+        ports->addWidget(portAutoswitch, 4, 2, 1, 2);
+        ports->addWidget(label(QStringLiteral("Emulated parallel port joystick adapter")), 5, 0, 1, 4, Qt::AlignLeft | Qt::AlignVCenter);
+        ports->addWidget(label(QStringLiteral("Port 1:")), 6, 0);
+        ports->addWidget(portDevice[2], 6, 1, 1, 3);
+        ports->addWidget(new QPushButton(QStringLiteral("Remap / Test")), 7, 3);
+        ports->addWidget(label(QStringLiteral("Port 2:")), 8, 0);
+        ports->addWidget(portDevice[3], 8, 1, 1, 3);
+        ports->addWidget(new QPushButton(QStringLiteral("Remap / Test")), 9, 3);
         root->addWidget(groupBox(QStringLiteral("Mouse and Joystick settings"), ports));
+
+        connect(swapPorts, &QPushButton::clicked, this, [this]() {
+            const QString port0Text = portDevice[0]->currentText();
+            const QString port0Autofire = portAutofire[0]->currentText();
+            const QString port0Mode = portMode[0]->currentText();
+            portDevice[0]->setCurrentText(portDevice[1]->currentText());
+            portAutofire[0]->setCurrentText(portAutofire[1]->currentText());
+            portMode[0]->setCurrentText(portMode[1]->currentText());
+            portDevice[1]->setCurrentText(port0Text);
+            portAutofire[1]->setCurrentText(port0Autofire);
+            portMode[1]->setCurrentText(port0Mode);
+        });
+
         QGridLayout *mouse = new QGridLayout;
+        mouse->setColumnStretch(1, 1);
+        mouseSpeed = new QSpinBox;
+        mouseSpeed->setRange(1, 1000);
+        mouseSpeed->setValue(100);
+        virtualMouseDriver = new QCheckBox(QStringLiteral("Install virtual mouse driver"));
+        mouseUntrapMode = combo({
+            QStringLiteral("None (Alt-Tab)"),
+            QStringLiteral("Middle button"),
+            QStringLiteral("Magic mouse"),
+            QStringLiteral("Both")
+        }, QStringLiteral("Middle button"));
+        magicMouseCursor = combo({
+            QStringLiteral("Show both cursors"),
+            QStringLiteral("Show native cursor only"),
+            QStringLiteral("Show host cursor only")
+        }, QStringLiteral("Show both cursors"));
+        tabletLibrary = new QCheckBox(QStringLiteral("Tablet.library emulation"));
+        tabletMode = combo({ QStringLiteral("-"), QStringLiteral("Tablet emulation") }, QStringLiteral("-"));
+
         mouse->addWidget(label(QStringLiteral("Mouse speed:")), 0, 0);
-        mouse->addWidget(new QLineEdit(QStringLiteral("100")), 0, 1);
-        mouse->addWidget(new QCheckBox(QStringLiteral("Install virtual mouse driver")), 1, 0, 1, 2);
+        mouse->addWidget(mouseSpeed, 0, 1);
+        mouse->addWidget(label(QStringLiteral("Mouse untrap mode:")), 0, 2);
+        mouse->addWidget(mouseUntrapMode, 0, 3);
+        mouse->addWidget(virtualMouseDriver, 1, 0, 1, 2);
+        mouse->addWidget(label(QStringLiteral("Magic Mouse cursor mode:")), 1, 2);
+        mouse->addWidget(magicMouseCursor, 1, 3);
+        mouse->addWidget(tabletLibrary, 2, 0, 1, 2);
+        mouse->addWidget(label(QStringLiteral("Tablet mode:")), 2, 2);
+        mouse->addWidget(tabletMode, 2, 3);
         root->addWidget(groupBox(QStringLiteral("Mouse extra settings"), mouse), 1);
+
+        connect(virtualMouseDriver, &QCheckBox::toggled, this, [this](bool) { updateMouseExtraState(); });
+        connect(tabletMode, &QComboBox::currentTextChanged, this, [this](const QString &) { updateMouseExtraState(); });
+        updateMouseExtraState();
         return page;
+    }
+
+    void updateMouseExtraState()
+    {
+        const bool tabletEnabled = virtualMouseDriver && (virtualMouseDriver->isChecked() || (tabletMode && tabletMode->currentText() == QStringLiteral("Tablet emulation")));
+        if (magicMouseCursor) {
+            magicMouseCursor->setEnabled(tabletEnabled);
+        }
+        if (tabletLibrary) {
+            tabletLibrary->setEnabled(tabletEnabled);
+            if (!tabletEnabled) {
+                tabletLibrary->setChecked(false);
+            }
+        }
+        if (tabletMode) {
+            tabletMode->setEnabled(tabletEnabled || (virtualMouseDriver && virtualMouseDriver->isChecked()));
+        }
+    }
+
+    void setMouseUntrapBit(bool middle, bool enabled)
+    {
+        if (!mouseUntrapMode) {
+            return;
+        }
+        const int index = mouseUntrapMode->currentIndex();
+        bool middleEnabled = index == 1 || index == 3;
+        bool magicEnabled = index == 2 || index == 3;
+        if (middle) {
+            middleEnabled = enabled;
+        } else {
+            magicEnabled = enabled;
+        }
+        const int nextIndex = (middleEnabled ? 1 : 0) + (magicEnabled ? 2 : 0);
+        mouseUntrapMode->setCurrentIndex(qBound(0, nextIndex, 3));
     }
 
     QWidget *makeInputPage()
@@ -1717,8 +2031,22 @@ private:
         }
         soundOutput->setCurrentText(QStringLiteral("normal"));
         cdSpeedTurbo->setChecked(false);
-        port0->setCurrentText(QStringLiteral("Mouse"));
-        port1->setCurrentText(QStringLiteral("Keyboard Layout B"));
+        portDevice[0]->setCurrentText(QStringLiteral("Mouse"));
+        portDevice[1]->setCurrentText(QStringLiteral("Keyboard Layout A"));
+        portDevice[2]->setCurrentText(QStringLiteral("<None>"));
+        portDevice[3]->setCurrentText(QStringLiteral("<None>"));
+        for (int i = 0; i < 2; i++) {
+            portAutofire[i]->setCurrentText(QStringLiteral("No autofire (normal)"));
+            portMode[i]->setCurrentText(QStringLiteral("Default"));
+        }
+        portAutoswitch->setChecked(true);
+        mouseSpeed->setValue(100);
+        mouseUntrapMode->setCurrentText(QStringLiteral("Middle button"));
+        magicMouseCursor->setCurrentText(QStringLiteral("Show both cursors"));
+        virtualMouseDriver->setChecked(false);
+        tabletMode->setCurrentText(QStringLiteral("-"));
+        tabletLibrary->setChecked(false);
+        updateMouseExtraState();
         romsPath->setText(QDir::homePath());
         configsPath->setText(QDir::homePath());
         status->setText(QStringLiteral("Ready"));
@@ -2714,6 +3042,30 @@ private:
             }
         }
         settings.insert(QStringLiteral("cd_speed"), cdSpeedTurbo->isChecked() ? QStringLiteral("0") : QStringLiteral("100"));
+        for (int i = 0; i < 4; i++) {
+            settings.insert(QStringLiteral("joyport%1").arg(i), joyportDeviceConfigValue(portDevice[i]->currentText()));
+        }
+        for (int i = 0; i < 2; i++) {
+            settings.insert(QStringLiteral("joyport%1autofire").arg(i), autofireConfigValue(portAutofire[i]->currentText()));
+            const QString mode = joyportModeConfigValue(portMode[i]->currentText());
+            if (!mode.isEmpty()) {
+                settings.insert(QStringLiteral("joyport%1mode").arg(i), mode);
+            }
+        }
+        settings.insert(QStringLiteral("input.mouse_speed"), QString::number(mouseSpeed->value()));
+        settings.insert(QStringLiteral("input.autoswitch"), portAutoswitch->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
+        const int untrapMode = mouseUntrapMode->currentIndex();
+        settings.insert(QStringLiteral("middle_mouse"), (untrapMode == 1 || untrapMode == 3) ? QStringLiteral("true") : QStringLiteral("false"));
+        settings.insert(QStringLiteral("magic_mouse"), (untrapMode == 2 || untrapMode == 3) ? QStringLiteral("true") : QStringLiteral("false"));
+        settings.insert(QStringLiteral("magic_mousecursor"), magicMouseCursorConfigValue(magicMouseCursor->currentText()));
+        QString absoluteMouse = QStringLiteral("none");
+        if (tabletMode->currentText() == QStringLiteral("Tablet emulation")) {
+            absoluteMouse = QStringLiteral("tablet");
+        } else if (virtualMouseDriver->isChecked()) {
+            absoluteMouse = QStringLiteral("mousehack");
+        }
+        settings.insert(QStringLiteral("absolute_mouse"), absoluteMouse);
+        settings.insert(QStringLiteral("tablet_library"), tabletLibrary->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
         return settings;
     }
 
@@ -2769,7 +3121,22 @@ private:
             QStringLiteral("cdimage5"),
             QStringLiteral("cdimage6"),
             QStringLiteral("cdimage7"),
-            QStringLiteral("cd_speed")
+            QStringLiteral("cd_speed"),
+            QStringLiteral("joyport0"),
+            QStringLiteral("joyport1"),
+            QStringLiteral("joyport2"),
+            QStringLiteral("joyport3"),
+            QStringLiteral("joyport0autofire"),
+            QStringLiteral("joyport1autofire"),
+            QStringLiteral("joyport0mode"),
+            QStringLiteral("joyport1mode"),
+            QStringLiteral("input.mouse_speed"),
+            QStringLiteral("input.autoswitch"),
+            QStringLiteral("middle_mouse"),
+            QStringLiteral("magic_mouse"),
+            QStringLiteral("magic_mousecursor"),
+            QStringLiteral("absolute_mouse"),
+            QStringLiteral("tablet_library")
         };
     }
 
@@ -2927,6 +3294,49 @@ private:
             rtgType->setCurrentText(value);
         } else if (key == QStringLiteral("sound_output")) {
             soundOutput->setCurrentText(value);
+        } else if (key.startsWith(QStringLiteral("joyport")) && key.size() == 8) {
+            bool ok = false;
+            const int port = key.mid(7, 1).toInt(&ok);
+            if (ok && port >= 0 && port < 4) {
+                portDevice[port]->setCurrentText(joyportDeviceText(value, port < 2));
+            }
+        } else if (key.startsWith(QStringLiteral("joyport")) && key.endsWith(QStringLiteral("autofire"))) {
+            bool ok = false;
+            const int port = key.mid(7, 1).toInt(&ok);
+            if (ok && port >= 0 && port < 2) {
+                portAutofire[port]->setCurrentText(autofireText(value));
+            }
+        } else if (key.startsWith(QStringLiteral("joyport")) && key.endsWith(QStringLiteral("mode"))) {
+            bool ok = false;
+            const int port = key.mid(7, 1).toInt(&ok);
+            if (ok && port >= 0 && port < 2) {
+                portMode[port]->setCurrentText(joyportModeText(value));
+            }
+        } else if (key == QStringLiteral("input.mouse_speed")) {
+            mouseSpeed->setValue(qBound(mouseSpeed->minimum(), value.toInt(), mouseSpeed->maximum()));
+        } else if (key == QStringLiteral("input.autoswitch")) {
+            portAutoswitch->setChecked(configBoolValue(value));
+        } else if (key == QStringLiteral("middle_mouse")) {
+            setMouseUntrapBit(true, configBoolValue(value));
+        } else if (key == QStringLiteral("magic_mouse")) {
+            setMouseUntrapBit(false, configBoolValue(value));
+        } else if (key == QStringLiteral("magic_mousecursor")) {
+            magicMouseCursor->setCurrentText(magicMouseCursorText(value));
+        } else if (key == QStringLiteral("absolute_mouse")) {
+            if (value.compare(QStringLiteral("tablet"), Qt::CaseInsensitive) == 0) {
+                virtualMouseDriver->setChecked(true);
+                tabletMode->setCurrentText(QStringLiteral("Tablet emulation"));
+            } else if (value.compare(QStringLiteral("mousehack"), Qt::CaseInsensitive) == 0) {
+                virtualMouseDriver->setChecked(true);
+                tabletMode->setCurrentText(QStringLiteral("-"));
+            } else {
+                virtualMouseDriver->setChecked(false);
+                tabletMode->setCurrentText(QStringLiteral("-"));
+            }
+            updateMouseExtraState();
+        } else if (key == QStringLiteral("tablet_library")) {
+            tabletLibrary->setChecked(configBoolValue(value));
+            updateMouseExtraState();
         } else if (key == QStringLiteral("gfx_width_windowed")) {
             windowWidth->setText(value);
         } else if (key == QStringLiteral("gfx_height_windowed")) {

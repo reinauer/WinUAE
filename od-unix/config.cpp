@@ -396,6 +396,14 @@ int target_cfgfile_load(struct uae_prefs *p, const TCHAR *filename, int type, in
 
 int target_parse_option(struct uae_prefs *p, const TCHAR *option, const TCHAR *value, int)
 {
+    if (!_tcsicmp(option, _T("middle_mouse"))) {
+        if (parse_bool_value(value ? value : "")) {
+            p->input_mouse_untrap |= MOUSEUNTRAP_MIDDLEBUTTON;
+        } else {
+            p->input_mouse_untrap &= ~MOUSEUNTRAP_MIDDLEBUTTON;
+        }
+        return 1;
+    }
     if (!_tcsicmp(option, _T("serial_port"))) {
         std::string port = trim_copy(value ? value : "");
         if (port.size() >= 2 &&
