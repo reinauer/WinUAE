@@ -4942,13 +4942,19 @@ private:
                 outputFile->setText(selected);
             }
         });
-        connect(screenshotOriginalSize, &QCheckBox::toggled, this, [this](bool checked) {
-            screenshotClip->setEnabled(checked);
-            if (!checked) {
-                screenshotClip->setChecked(false);
-            }
-        });
+        connect(screenshotOriginalSize, &QCheckBox::toggled, this, [this](bool) { updateOutputControlState(); });
         return page;
+    }
+
+    void updateOutputControlState()
+    {
+        if (!screenshotOriginalSize || !screenshotClip) {
+            return;
+        }
+        screenshotClip->setEnabled(screenshotOriginalSize->isChecked());
+        if (!screenshotOriginalSize->isChecked()) {
+            screenshotClip->setChecked(false);
+        }
     }
 
     QWidget *makeSoundPage()
@@ -8592,6 +8598,15 @@ private:
         insertCheckBoxSetting(settings, QStringLiteral("unix.ui.portable_mode"), portableMode);
         insertCheckBoxSetting(settings, QStringLiteral("unix.ui.full_logging"), fullLogging);
         insertCheckBoxSetting(settings, QStringLiteral("unix.ui.log_window"), logWindow);
+        insertLineEditSetting(settings, QStringLiteral("unix.ui.output_file"), outputFile);
+        insertCheckBoxSetting(settings, QStringLiteral("unix.ui.output_frame_limiter_disabled"), outputFrameLimiter);
+        insertCheckBoxSetting(settings, QStringLiteral("unix.ui.output_original_size"), outputOriginalSize);
+        insertCheckBoxSetting(settings, QStringLiteral("unix.ui.output_no_sound"), outputNoSound);
+        insertCheckBoxSetting(settings, QStringLiteral("unix.ui.output_no_sound_sync"), outputNoSoundSync);
+        insertCheckBoxSetting(settings, QStringLiteral("unix.ui.screenshot_original_size"), screenshotOriginalSize);
+        insertCheckBoxSetting(settings, QStringLiteral("unix.ui.screenshot_paletted"), screenshotPaletted);
+        insertCheckBoxSetting(settings, QStringLiteral("unix.ui.screenshot_clip"), screenshotClip);
+        insertCheckBoxSetting(settings, QStringLiteral("unix.ui.screenshot_auto"), screenshotAuto);
         settings.insert(QStringLiteral("kickstart_rom_file"), romFile->currentText());
         if (!extendedRomFile->currentText().isEmpty()) {
             settings.insert(QStringLiteral("kickstart_ext_rom_file"), extendedRomFile->currentText());
@@ -9008,6 +9023,15 @@ private:
             QStringLiteral("unix.ui.portable_mode"),
             QStringLiteral("unix.ui.full_logging"),
             QStringLiteral("unix.ui.log_window"),
+            QStringLiteral("unix.ui.output_file"),
+            QStringLiteral("unix.ui.output_frame_limiter_disabled"),
+            QStringLiteral("unix.ui.output_original_size"),
+            QStringLiteral("unix.ui.output_no_sound"),
+            QStringLiteral("unix.ui.output_no_sound_sync"),
+            QStringLiteral("unix.ui.screenshot_original_size"),
+            QStringLiteral("unix.ui.screenshot_paletted"),
+            QStringLiteral("unix.ui.screenshot_clip"),
+            QStringLiteral("unix.ui.screenshot_auto"),
             QStringLiteral("kickstart_rom_file"),
             QStringLiteral("kickstart_ext_rom_file"),
             QStringLiteral("cart_file"),
@@ -9569,6 +9593,7 @@ private:
         for (const WinUaeQtConfig::Setting &setting : config.orderedSettings()) {
             applySetting(setting.key, setting.value);
         }
+        updateOutputControlState();
         updateMountButtons();
         refreshHardwareInfoPage();
         loadedConfig = config;
@@ -9633,6 +9658,24 @@ private:
             fullLogging->setChecked(configBoolValue(value));
         } else if (key == QStringLiteral("unix.ui.log_window")) {
             logWindow->setChecked(configBoolValue(value));
+        } else if (key == QStringLiteral("unix.ui.output_file")) {
+            outputFile->setText(value);
+        } else if (key == QStringLiteral("unix.ui.output_frame_limiter_disabled")) {
+            outputFrameLimiter->setChecked(configBoolValue(value));
+        } else if (key == QStringLiteral("unix.ui.output_original_size")) {
+            outputOriginalSize->setChecked(configBoolValue(value));
+        } else if (key == QStringLiteral("unix.ui.output_no_sound")) {
+            outputNoSound->setChecked(configBoolValue(value));
+        } else if (key == QStringLiteral("unix.ui.output_no_sound_sync")) {
+            outputNoSoundSync->setChecked(configBoolValue(value));
+        } else if (key == QStringLiteral("unix.ui.screenshot_original_size")) {
+            screenshotOriginalSize->setChecked(configBoolValue(value));
+        } else if (key == QStringLiteral("unix.ui.screenshot_paletted")) {
+            screenshotPaletted->setChecked(configBoolValue(value));
+        } else if (key == QStringLiteral("unix.ui.screenshot_clip")) {
+            screenshotClip->setChecked(configBoolValue(value));
+        } else if (key == QStringLiteral("unix.ui.screenshot_auto")) {
+            screenshotAuto->setChecked(configBoolValue(value));
         } else if (key == QStringLiteral("kickstart_rom_file")) {
             setPathComboText(romFile, value);
         } else if (key == QStringLiteral("kickstart_ext_rom_file")) {
