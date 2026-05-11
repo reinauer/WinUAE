@@ -125,11 +125,13 @@ int main()
     edited.insert(QStringLiteral("kickstart_rom_file"), QStringLiteral("/new.rom"));
     edited.insert(QStringLiteral("chipset"), QStringLiteral("aga"));
     edited.insert(QStringLiteral("cpu_model"), QStringLiteral("68020"));
+    edited.insert(QStringLiteral("unix.ui.config_path"), QStringLiteral("/configs"));
     config.applySettings(edited, {
         QStringLiteral("kickstart_rom_file"),
         QStringLiteral("kickstart_ext_rom_file"),
         QStringLiteral("chipset"),
-        QStringLiteral("cpu_model")
+        QStringLiteral("cpu_model"),
+        QStringLiteral("unix.ui.config_path")
     });
     config.applyRepeatedSettings({
         { QStringLiteral("filesystem2"), QStringLiteral("rw,DH0:System:/new/System,0") },
@@ -155,6 +157,7 @@ int main()
     ok = requireContains(output, QStringLiteral("kickstart_rom_file=/new.rom\n")) && ok;
     ok = requireContains(output, QStringLiteral("chipset=aga\n")) && ok;
     ok = requireContains(output, QStringLiteral("cpu_model=68020\n")) && ok;
+    ok = requireContains(output, QStringLiteral("unix.ui.config_path=/configs\n")) && ok;
     ok = requireContains(output, QStringLiteral("filesystem2=rw,DH0:System:/new/System,0\n")) && ok;
     ok = requireContains(output, QStringLiteral("filesystem2=ro,DH1:Work:\"/new/Work,Disk\",5\n")) && ok;
     ok = requireCount(output, QStringLiteral("filesystem2="), 2) && ok;
@@ -167,6 +170,7 @@ int main()
     const QStringList args = config.commandArguments();
     ok = args.contains(QStringLiteral("unknown_setting=keep-me")) && ok;
     ok = args.contains(QStringLiteral("kickstart_rom_file=/new.rom")) && ok;
+    ok = !args.contains(QStringLiteral("unix.ui.config_path=/configs")) && ok;
     ok = args.contains(QStringLiteral("filesystem2=rw,DH0:System:/new/System,0")) && ok;
     ok = args.contains(QStringLiteral("filesystem2=ro,DH1:Work:\"/new/Work,Disk\",5")) && ok;
     ok = requireArgBefore(args, QStringLiteral("filesystem2=rw,DH0:System:/new/System,0"), QStringLiteral("filesystem2=ro,DH1:Work:\"/new/Work,Disk\",5")) && ok;
