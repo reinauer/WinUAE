@@ -805,6 +805,12 @@ private:
         mountedDrives = new QTreeWidget;
         mountedDrives->setRootIsDecorated(false);
         mountedDrives->setSelectionMode(QAbstractItemView::SingleSelection);
+        mountedDrives->setDragDropMode(QAbstractItemView::InternalMove);
+        mountedDrives->setDragEnabled(true);
+        mountedDrives->setAcceptDrops(true);
+        mountedDrives->viewport()->setAcceptDrops(true);
+        mountedDrives->setDefaultDropAction(Qt::MoveAction);
+        mountedDrives->setDropIndicatorShown(true);
         mountedDrives->setHeaderLabels({
             QStringLiteral("Device"),
             QStringLiteral("Volume"),
@@ -839,6 +845,10 @@ private:
         connect(propertiesEnterShortcut, &QShortcut::activated, this, [this]() { openSelectedMountProperties(); });
         QShortcut *removeShortcut = new QShortcut(QKeySequence::Delete, mountedDrives);
         connect(removeShortcut, &QShortcut::activated, this, [this]() { removeSelectedMount(); });
+        QShortcut *moveUpShortcut = new QShortcut(QKeySequence(Qt::SHIFT | Qt::Key_Up), mountedDrives);
+        connect(moveUpShortcut, &QShortcut::activated, this, [this]() { moveSelectedMount(-1); });
+        QShortcut *moveDownShortcut = new QShortcut(QKeySequence(Qt::SHIFT | Qt::Key_Down), mountedDrives);
+        connect(moveDownShortcut, &QShortcut::activated, this, [this]() { moveSelectedMount(1); });
         updateMountButtons();
         return page;
     }
@@ -1373,6 +1383,7 @@ private:
         if (!mountedDrives || !item) {
             return;
         }
+        item->setFlags(item->flags() & ~Qt::ItemIsDropEnabled);
         item->setText(0, winUaeQtSanitizedAmigaName(entry.device, nextMountDeviceName(), true));
         item->setText(1, entry.kind == QStringLiteral("dir") ? winUaeQtSanitizedAmigaName(entry.volume, winUaeQtDefaultVolumeName(entry.path), false) : QString());
         item->setText(2, entry.kind == QStringLiteral("hdf") ? QStringLiteral("Hardfile") : QStringLiteral("Directory"));
@@ -1397,6 +1408,30 @@ private:
             return;
         }
         qDeleteAll(mountedDrives->selectedItems());
+        updateMountButtons();
+    }
+
+    void moveSelectedMount(int delta)
+    {
+        if (!mountedDrives || delta == 0) {
+            return;
+        }
+        QTreeWidgetItem *item = mountedDrives->currentItem();
+        if (!item) {
+            return;
+        }
+        const int from = mountedDrives->indexOfTopLevelItem(item);
+        if (from < 0) {
+            return;
+        }
+        const int to = qBound(0, from + delta, mountedDrives->topLevelItemCount() - 1);
+        if (from == to) {
+            return;
+        }
+        item = mountedDrives->takeTopLevelItem(from);
+        mountedDrives->insertTopLevelItem(to, item);
+        mountedDrives->setCurrentItem(item);
+        item->setSelected(true);
         updateMountButtons();
     }
 

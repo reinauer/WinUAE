@@ -65,6 +65,28 @@ static bool requireCount(const QString &text, const QString &needle, int expecte
     return false;
 }
 
+static bool requireBefore(const QString &text, const QString &first, const QString &second)
+{
+    const int firstIndex = text.indexOf(first);
+    const int secondIndex = text.indexOf(second);
+    if (firstIndex >= 0 && secondIndex >= 0 && firstIndex < secondIndex) {
+        return true;
+    }
+    qWarning().noquote() << first << "was not before" << second;
+    return false;
+}
+
+static bool requireArgBefore(const QStringList &args, const QString &first, const QString &second)
+{
+    const int firstIndex = args.indexOf(first);
+    const int secondIndex = args.indexOf(second);
+    if (firstIndex >= 0 && secondIndex >= 0 && firstIndex < secondIndex) {
+        return true;
+    }
+    qWarning().noquote() << first << "argument was not before" << second;
+    return false;
+}
+
 int main()
 {
     QTemporaryDir tempDir;
@@ -136,6 +158,7 @@ int main()
     ok = requireContains(output, QStringLiteral("filesystem2=rw,DH0:System:/new/System,0\n")) && ok;
     ok = requireContains(output, QStringLiteral("filesystem2=ro,DH1:Work:\"/new/Work,Disk\",5\n")) && ok;
     ok = requireCount(output, QStringLiteral("filesystem2="), 2) && ok;
+    ok = requireBefore(output, QStringLiteral("filesystem2=rw,DH0:System:/new/System,0\n"), QStringLiteral("filesystem2=ro,DH1:Work:\"/new/Work,Disk\",5\n")) && ok;
     ok = requireNotContains(output, QStringLiteral("kickstart_ext_rom_file=")) && ok;
     ok = requireNotContains(output, QStringLiteral("/old.rom")) && ok;
     ok = requireNotContains(output, QStringLiteral("/old/System")) && ok;
@@ -146,6 +169,7 @@ int main()
     ok = args.contains(QStringLiteral("kickstart_rom_file=/new.rom")) && ok;
     ok = args.contains(QStringLiteral("filesystem2=rw,DH0:System:/new/System,0")) && ok;
     ok = args.contains(QStringLiteral("filesystem2=ro,DH1:Work:\"/new/Work,Disk\",5")) && ok;
+    ok = requireArgBefore(args, QStringLiteral("filesystem2=rw,DH0:System:/new/System,0"), QStringLiteral("filesystem2=ro,DH1:Work:\"/new/Work,Disk\",5")) && ok;
     ok = !args.contains(QStringLiteral("kickstart_ext_rom_file=/old-ext.rom")) && ok;
     ok = requireCount(args.join(QLatin1Char('\n')), QStringLiteral("filesystem2="), 2) && ok;
 
