@@ -2369,13 +2369,13 @@ public:
         QPushButton *help = new QPushButton(QStringLiteral("Help"));
         restart->setVisible(false);
         errorLog->setVisible(false);
-        help->setEnabled(false);
         start->setDefault(true);
 
         connect(reset, &QPushButton::clicked, this, [this]() { resetDefaults(); });
         connect(quit, &QPushButton::clicked, this, &QDialog::reject);
         connect(cancel, &QPushButton::clicked, this, &QDialog::reject);
         connect(start, &QPushButton::clicked, this, [this]() { startEmulator(); });
+        connect(help, &QPushButton::clicked, this, [this]() { openHelp(); });
 
         QHBoxLayout *buttons = new QHBoxLayout;
         buttons->setContentsMargins(0, 0, 0, 0);
@@ -2783,6 +2783,13 @@ private:
         QWidget *page = new QWidget;
         page->setObjectName(QStringLiteral("page"));
         return page;
+    }
+
+    void openHelp()
+    {
+        if (!QDesktopServices::openUrl(QUrl(QStringLiteral("https://www.winuae.net/help/")))) {
+            QMessageBox::warning(this, windowTitle(), QStringLiteral("Could not open WinUAE help."));
+        }
     }
 
     QWidget *makeConfigurationsPage()
