@@ -2283,6 +2283,25 @@ static QString envString(const char *name)
     return QString::fromLocal8Bit(qgetenv(name));
 }
 
+static QString initialConfigPathFromArguments(const QStringList &arguments)
+{
+    for (int i = 1; i < arguments.size(); i++) {
+        const QString arg = arguments[i];
+        if ((arg == QStringLiteral("-f") || arg == QStringLiteral("--config")) && i + 1 < arguments.size()) {
+            const QString path = arguments[i + 1];
+            if (path.endsWith(QStringLiteral(".uae"), Qt::CaseInsensitive)) {
+                return path;
+            }
+            i++;
+            continue;
+        }
+        if (!arg.startsWith(QLatin1Char('-')) && arg.endsWith(QStringLiteral(".uae"), Qt::CaseInsensitive)) {
+            return arg;
+        }
+    }
+    return QString();
+}
+
 class WinUaeQtDialog final : public QDialog {
 public:
     enum class StartMode {
@@ -2290,7 +2309,10 @@ public:
         ReturnConfig
     };
 
-    explicit WinUaeQtDialog(StartMode mode = StartMode::DetachedProcess, QWidget *parent = nullptr)
+    explicit WinUaeQtDialog(
+        StartMode mode = StartMode::DetachedProcess,
+        QWidget *parent = nullptr,
+        const QString &initialConfigPath = QString())
         : QDialog(parent),
           startMode(mode)
     {
@@ -2402,6 +2424,9 @@ public:
 
         resetDefaults();
         navigation->setCurrentItem(navigation->topLevelItem(1));
+        if (!initialConfigPath.isEmpty()) {
+            loadConfig(initialConfigPath);
+        }
     }
 
     const WinUaeQtLauncherResult &launcherResult() const
@@ -10166,7 +10191,10 @@ static void setupApplicationStyle(QApplication &app)
 int runWinUaeQtLauncher(QApplication &app)
 {
     setupApplicationStyle(app);
-    WinUaeQtDialog dialog;
+    WinUaeQtDialog dialog(
+        WinUaeQtDialog::StartMode::DetachedProcess,
+        nullptr,
+        initialConfigPathFromArguments(app.arguments()));
     dialog.show();
     return app.exec();
 }
@@ -10180,7 +10208,10 @@ int runWinUaeQtLauncher(int argc, char **argv)
 WinUaeQtLauncherResult runWinUaeQtLauncherForConfig(QApplication &app)
 {
     setupApplicationStyle(app);
-    WinUaeQtDialog dialog(WinUaeQtDialog::StartMode::ReturnConfig);
+    WinUaeQtDialog dialog(
+        WinUaeQtDialog::StartMode::ReturnConfig,
+        nullptr,
+        initialConfigPathFromArguments(app.arguments()));
     if (dialog.exec() == QDialog::Accepted) {
         return dialog.launcherResult();
     }
