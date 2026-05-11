@@ -5607,7 +5607,6 @@ private:
         QPushButton *rescanRoms = new QPushButton(QStringLiteral("Rescan ROMs"));
         QPushButton *clearDiskHistory = new QPushButton(QStringLiteral("Clear disk history"));
         QPushButton *clearRegistry = new QPushButton(QStringLiteral("Clear registry"));
-        rescanRoms->setEnabled(false);
         clearDiskHistory->setEnabled(false);
         clearRegistry->setEnabled(false);
         data->addWidget(rescanRoms, 1, 0);
@@ -5637,12 +5636,90 @@ private:
         connect(configsPath, &QLineEdit::textChanged, this, [this]() { updateLogPathText(); });
         connect(setPath, &QPushButton::clicked, this, [this]() { applySelectedPathDefaults(); });
         connect(logSelect, &QComboBox::currentTextChanged, this, [this](const QString &) { updateLogPathText(); });
+        connect(rescanRoms, &QPushButton::clicked, this, [this]() { rescanRomPathCandidates(true); });
         connect(saveAllLogs, &QPushButton::clicked, this, [this]() { saveAllDebugLogs(); });
         connect(openLog, &QPushButton::clicked, this, [this]() { openSelectedLog(); });
         if (configName) {
             connect(configName, &QComboBox::currentTextChanged, this, [this](const QString &) { updateLogPathText(); });
         }
         return page;
+    }
+
+    bool isRomCandidateFile(const QFileInfo &info) const
+    {
+        if (!info.isFile() || info.size() <= 0 || info.size() >= 10 * 1024 * 1024) {
+            return false;
+        }
+        const QString suffix = info.suffix().toLower();
+        return suffix == QStringLiteral("rom")
+            || suffix == QStringLiteral("bin")
+            || suffix == QStringLiteral("kick")
+            || suffix == QStringLiteral("a500")
+            || suffix == QStringLiteral("a600")
+            || suffix == QStringLiteral("a1200")
+            || suffix == QStringLiteral("a4000")
+            || suffix == QStringLiteral("cd32")
+            || suffix == QStringLiteral("cdtv");
+    }
+
+    void collectRomCandidates(const QDir &dir, int depth, QStringList *paths) const
+    {
+        if (!dir.exists() || !paths) {
+            return;
+        }
+        const QFileInfoList files = dir.entryInfoList(QDir::Files | QDir::Readable, QDir::Name | QDir::IgnoreCase);
+        for (const QFileInfo &info : files) {
+            if (isRomCandidateFile(info)) {
+                paths->append(info.absoluteFilePath());
+            }
+        }
+
+        const bool recursive = recursiveRoms && recursiveRoms->isChecked();
+        if (!recursive || depth >= 2) {
+            return;
+        }
+        const QFileInfoList dirs = dir.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot | QDir::Readable, QDir::Name | QDir::IgnoreCase);
+        for (const QFileInfo &info : dirs) {
+            collectRomCandidates(QDir(info.absoluteFilePath()), depth + 1, paths);
+        }
+    }
+
+    void replacePathComboItems(QComboBox *field, const QStringList &paths)
+    {
+        if (!field) {
+            return;
+        }
+        const QString current = field->currentText();
+        QSignalBlocker blocker(field);
+        field->clear();
+        field->addItems(paths);
+        if (!current.isEmpty() && field->findText(current) < 0) {
+            field->insertItem(0, current);
+        }
+        field->setCurrentText(current);
+    }
+
+    void rescanRomPathCandidates(bool showResult)
+    {
+        const QString root = romsPath ? romsPath->text().trimmed() : QString();
+        QStringList candidates;
+        if (!root.isEmpty()) {
+            collectRomCandidates(QDir(root), 0, &candidates);
+        }
+        candidates.removeDuplicates();
+        candidates.sort(Qt::CaseInsensitive);
+
+        replacePathComboItems(romFile, candidates);
+        replacePathComboItems(extendedRomFile, candidates);
+        replacePathComboItems(cartFile, candidates);
+
+        if (showResult) {
+            if (candidates.isEmpty()) {
+                QMessageBox::information(this, windowTitle(), QStringLiteral("No ROM files were found in the configured System ROMs path."));
+            } else {
+                status->setText(QStringLiteral("Found %1 ROM file%2").arg(candidates.size()).arg(candidates.size() == 1 ? QString() : QStringLiteral("s")));
+            }
+        }
     }
 
     void applySelectedPathDefaults()
