@@ -27,16 +27,98 @@
 
 static constexpr int FpuInternal = -1;
 static constexpr int MaxMountEntries = 8;
+static constexpr int MaxControllerUnits = 8;
 
 enum MountDataRole {
     MountKindRole = Qt::UserRole,
+    MountDeviceRole,
+    MountVolumeRole,
     MountPathRole,
     MountReadOnlyRole,
     MountBootPriRole,
+    MountEmuUnitRole,
     MountRawConfigRole,
     MountHardfileGeometryRole,
     MountHardfileTailRole
 };
+
+static QStringList mountControllerParts(QString tail)
+{
+    if (!tail.startsWith(QLatin1Char(','))) {
+        tail.prepend(QLatin1Char(','));
+    }
+    QStringList parts = tail.split(QLatin1Char(','));
+    while (parts.size() < 2) {
+        parts.append(QString());
+    }
+    return parts;
+}
+
+static QString mountControllerValue(const WinUaeQtMountEntry &entry, const QString &fallback)
+{
+    const QStringList parts = mountControllerParts(entry.hardfileTail);
+    return parts.value(1).isEmpty() ? fallback : parts.value(1);
+}
+
+static QString mountTailWithController(const WinUaeQtMountEntry &entry, const QString &controller)
+{
+    QStringList parts = mountControllerParts(entry.hardfileTail);
+    parts[1] = controller;
+    return parts.join(QLatin1Char(','));
+}
+
+static QString mountControllerFamily(const WinUaeQtMountEntry &entry, const QString &fallback)
+{
+    const QString value = mountControllerValue(entry, fallback).toLower();
+    if (value.startsWith(QStringLiteral("scsi"))) {
+        return QStringLiteral("SCSI (Auto)");
+    }
+    if (value.startsWith(QStringLiteral("ide"))) {
+        return QStringLiteral("IDE (Auto)");
+    }
+    return QStringLiteral("UAE (uaehf.device)");
+}
+
+static int mountControllerUnit(const WinUaeQtMountEntry &entry, const QString &fallback)
+{
+    const QString value = mountControllerValue(entry, fallback).toLower();
+    int index = 0;
+    while (index < value.size() && !value.at(index).isDigit()) {
+        index++;
+    }
+    if (index >= value.size()) {
+        return 0;
+    }
+    return qBound(0, value.mid(index).toInt(), MaxControllerUnits - 1);
+}
+
+static QString mountControllerConfigValue(const QString &family, int unit)
+{
+    const int clampedUnit = qBound(0, unit, MaxControllerUnits - 1);
+    if (family == QStringLiteral("SCSI (Auto)")) {
+        return QStringLiteral("scsi%1").arg(clampedUnit);
+    }
+    if (family == QStringLiteral("IDE (Auto)")) {
+        return QStringLiteral("ide%1").arg(qBound(0, clampedUnit, 3));
+    }
+    return QStringLiteral("uae%1").arg(clampedUnit);
+}
+
+static QString mountControllerDisplay(const WinUaeQtMountEntry &entry)
+{
+    const QString fallback = entry.kind == QStringLiteral("cd") ? QStringLiteral("ide0") : QStringLiteral("uae0");
+    const QString value = mountControllerValue(entry, fallback).toUpper();
+    if (value.startsWith(QStringLiteral("IDE"))) {
+        return QStringLiteral("IDE:%1").arg(mountControllerUnit(entry, fallback));
+    }
+    if (value.startsWith(QStringLiteral("SCSI"))) {
+        return QStringLiteral("SCSI:%1").arg(mountControllerUnit(entry, fallback));
+    }
+    if (value.startsWith(QStringLiteral("UAE"))) {
+        return QStringLiteral("UAE:%1").arg(mountControllerUnit(entry, fallback));
+    }
+    return value;
+}
 
 static QString sourceFile(const QString &relative)
 {
@@ -354,6 +436,9 @@ private:
     QTreeWidget *mountedDrives = nullptr;
     QPushButton *addDirectoryMountButton = nullptr;
     QPushButton *addHardfileMountButton = nullptr;
+    QPushButton *addHardDriveMountButton = nullptr;
+    QPushButton *addCdMountButton = nullptr;
+    QPushButton *addTapeMountButton = nullptr;
     QPushButton *propertiesMountButton = nullptr;
     QPushButton *removeMountButton = nullptr;
 
@@ -812,29 +897,40 @@ private:
         mountedDrives->setDefaultDropAction(Qt::MoveAction);
         mountedDrives->setDropIndicatorShown(true);
         mountedDrives->setHeaderLabels({
+            QStringLiteral("*"),
             QStringLiteral("Device"),
             QStringLiteral("Volume"),
-            QStringLiteral("Type"),
-            QStringLiteral("Access"),
-            QStringLiteral("Boot Pri"),
-            QStringLiteral("Path")
+            QStringLiteral("Path"),
+            QStringLiteral("RW"),
+            QStringLiteral("Block size"),
+            QStringLiteral("Size"),
+            QStringLiteral("BootPri")
         });
         QVBoxLayout *volumeLayout = new QVBoxLayout;
         volumeLayout->addWidget(mountedDrives);
         root->addWidget(groupBox(QStringLiteral("Mounted drives"), volumeLayout), 1);
-        QHBoxLayout *buttons = new QHBoxLayout;
+        QGridLayout *buttons = new QGridLayout;
         addDirectoryMountButton = new QPushButton(QStringLiteral("Add Directory or Archive..."));
         addHardfileMountButton = new QPushButton(QStringLiteral("Add Hardfile..."));
+        addHardDriveMountButton = new QPushButton(QStringLiteral("Add Hard Drive..."));
+        addCdMountButton = new QPushButton(QStringLiteral("Add SCSI/IDE CD Drive"));
+        addTapeMountButton = new QPushButton(QStringLiteral("Add SCSI/IDE Tape Drive"));
         propertiesMountButton = new QPushButton(QStringLiteral("Properties"));
         removeMountButton = new QPushButton(QStringLiteral("Remove"));
-        buttons->addWidget(addDirectoryMountButton);
-        buttons->addWidget(addHardfileMountButton);
-        buttons->addWidget(propertiesMountButton);
-        buttons->addWidget(removeMountButton);
-        buttons->addStretch();
+        buttons->setColumnStretch(4, 1);
+        buttons->addWidget(addDirectoryMountButton, 0, 0);
+        buttons->addWidget(addHardfileMountButton, 0, 1);
+        buttons->addWidget(addHardDriveMountButton, 0, 2);
+        buttons->addWidget(addCdMountButton, 1, 0);
+        buttons->addWidget(addTapeMountButton, 1, 1);
+        buttons->addWidget(propertiesMountButton, 1, 2);
+        buttons->addWidget(removeMountButton, 1, 3);
         root->addLayout(buttons);
         connect(addDirectoryMountButton, &QPushButton::clicked, this, [this]() { addDirectoryMountDialog(); });
         connect(addHardfileMountButton, &QPushButton::clicked, this, [this]() { addHardfileMountDialog(); });
+        connect(addHardDriveMountButton, &QPushButton::clicked, this, [this]() { addHardDriveMountDialog(); });
+        connect(addCdMountButton, &QPushButton::clicked, this, [this]() { addCdDriveMountDialog(); });
+        connect(addTapeMountButton, &QPushButton::clicked, this, [this]() { addTapeDriveMountDialog(); });
         connect(propertiesMountButton, &QPushButton::clicked, this, [this]() { openSelectedMountProperties(); });
         connect(removeMountButton, &QPushButton::clicked, this, [this]() { removeSelectedMount(); });
         connect(mountedDrives, &QTreeWidget::itemSelectionChanged, this, [this]() { updateMountButtons(); });
@@ -1326,7 +1422,11 @@ private:
         QStringList used;
         if (mountedDrives) {
             for (int i = 0; i < mountedDrives->topLevelItemCount(); i++) {
-                used.append(mountedDrives->topLevelItem(i)->text(0).toUpper());
+                const QTreeWidgetItem *item = mountedDrives->topLevelItem(i);
+                const QString kind = item->data(0, MountKindRole).toString();
+                if (kind == QStringLiteral("dir") || kind == QStringLiteral("hdf")) {
+                    used.append(item->data(0, MountDeviceRole).toString().toUpper());
+                }
             }
         }
         for (int i = 0; i < MaxMountEntries; i++) {
@@ -1368,6 +1468,61 @@ private:
         }
     }
 
+    int nextMountEmuUnit(const QString &kind) const
+    {
+        QList<int> used;
+        if (mountedDrives) {
+            for (int i = 0; i < mountedDrives->topLevelItemCount(); i++) {
+                const QTreeWidgetItem *item = mountedDrives->topLevelItem(i);
+                if (item->data(0, MountKindRole).toString() == kind) {
+                    used.append(item->data(0, MountEmuUnitRole).toInt());
+                }
+            }
+        }
+        for (int i = 0; i < MaxControllerUnits; i++) {
+            if (!used.contains(i)) {
+                return i;
+            }
+        }
+        return 0;
+    }
+
+    void addHardDriveMountDialog()
+    {
+        QMessageBox::information(
+            this,
+            QStringLiteral("Add Hard Drive"),
+            QStringLiteral("Native Unix hard drive enumeration is not implemented yet. The Windows dialog uses a Win32 physical-drive backend; Unix needs a separate block-device backend before this can safely add host disks."));
+    }
+
+    void addCdDriveMountDialog()
+    {
+        WinUaeQtMountEntry entry;
+        entry.kind = QStringLiteral("cd");
+        entry.emuUnit = nextMountEmuUnit(QStringLiteral("cd"));
+        entry.readOnly = true;
+        entry.bootPri = 0;
+        entry.hardfileGeometry = QStringLiteral("0,0,0,2048");
+        entry.hardfileTail = QStringLiteral(",ide0");
+        if (showCdDriveMountDialog(&entry, QStringLiteral("Add CD Drive"))) {
+            addMountEntry(entry);
+        }
+    }
+
+    void addTapeDriveMountDialog()
+    {
+        WinUaeQtMountEntry entry;
+        entry.kind = QStringLiteral("tape");
+        entry.emuUnit = nextMountEmuUnit(QStringLiteral("tape"));
+        entry.readOnly = false;
+        entry.bootPri = 0;
+        entry.hardfileGeometry = QStringLiteral("0,0,0,512");
+        entry.hardfileTail = QStringLiteral(",uae0");
+        if (showTapeDriveMountDialog(&entry, QStringLiteral("Add Tape Drive"))) {
+            addMountEntry(entry);
+        }
+    }
+
     void addMountEntry(const WinUaeQtMountEntry &entry)
     {
         if (!mountedDrives || mountedDrives->topLevelItemCount() >= MaxMountEntries) {
@@ -1384,19 +1539,66 @@ private:
             return;
         }
         item->setFlags(item->flags() & ~Qt::ItemIsDropEnabled);
-        item->setText(0, winUaeQtSanitizedAmigaName(entry.device, nextMountDeviceName(), true));
-        item->setText(1, entry.kind == QStringLiteral("dir") ? winUaeQtSanitizedAmigaName(entry.volume, winUaeQtDefaultVolumeName(entry.path), false) : QString());
-        item->setText(2, entry.kind == QStringLiteral("hdf") ? QStringLiteral("Hardfile") : QStringLiteral("Directory"));
-        item->setText(3, entry.readOnly ? QStringLiteral("Read-only") : QStringLiteral("Read/write"));
-        item->setText(4, QString::number(entry.bootPri));
-        item->setText(5, entry.path);
+        WinUaeQtMountEntry normalized = entry;
+        if (normalized.kind == QStringLiteral("dir")) {
+            normalized.device = winUaeQtSanitizedAmigaName(normalized.device, nextMountDeviceName(), true);
+            normalized.volume = winUaeQtSanitizedAmigaName(normalized.volume, winUaeQtDefaultVolumeName(normalized.path), false);
+        } else if (normalized.kind == QStringLiteral("hdf")) {
+            normalized.device = winUaeQtSanitizedAmigaName(normalized.device, nextMountDeviceName(), true);
+        } else if (normalized.kind == QStringLiteral("cd")) {
+            normalized.device.clear();
+            normalized.volume = QStringLiteral("CD");
+            normalized.readOnly = true;
+            normalized.bootPri = 0;
+            if (normalized.hardfileGeometry.isEmpty()) {
+                normalized.hardfileGeometry = QStringLiteral("0,0,0,2048");
+            }
+        } else if (normalized.kind == QStringLiteral("tape")) {
+            normalized.device.clear();
+            normalized.volume = QStringLiteral("TAPE");
+            normalized.bootPri = 0;
+            if (normalized.hardfileGeometry.isEmpty()) {
+                normalized.hardfileGeometry = QStringLiteral("0,0,0,512");
+            }
+        }
+
+        QString deviceText = normalized.device;
+        QString volumeText = normalized.kind == QStringLiteral("dir") ? normalized.volume : QStringLiteral("n/a");
+        QString blockSizeText = QStringLiteral("n/a");
+        QString bootPriText = QString::number(normalized.bootPri);
+        if (normalized.kind == QStringLiteral("cd")) {
+            deviceText = mountControllerDisplay(normalized);
+            volumeText = QStringLiteral("CD");
+            blockSizeText = QStringLiteral("2048");
+            bootPriText = QStringLiteral("n/a");
+        } else if (normalized.kind == QStringLiteral("tape")) {
+            deviceText = mountControllerDisplay(normalized);
+            volumeText = QStringLiteral("TAPE");
+            blockSizeText = QStringLiteral("512");
+            bootPriText = QStringLiteral("n/a");
+        } else if (normalized.kind == QStringLiteral("hdf")) {
+            const QStringList geometry = normalized.hardfileGeometry.split(QLatin1Char(','));
+            blockSizeText = geometry.value(3, QStringLiteral("512"));
+        }
+
+        item->setText(0, QString());
+        item->setText(1, deviceText);
+        item->setText(2, volumeText);
+        item->setText(3, normalized.path.isEmpty() ? QStringLiteral("-") : normalized.path);
+        item->setText(4, normalized.readOnly ? QStringLiteral("No") : QStringLiteral("Yes"));
+        item->setText(5, blockSizeText);
+        item->setText(6, QStringLiteral("n/a"));
+        item->setText(7, bootPriText);
         item->setData(0, MountKindRole, entry.kind);
-        item->setData(0, MountPathRole, entry.path);
-        item->setData(0, MountReadOnlyRole, entry.readOnly);
-        item->setData(0, MountBootPriRole, entry.bootPri);
-        item->setData(0, MountRawConfigRole, entry.rawConfig);
-        item->setData(0, MountHardfileGeometryRole, entry.hardfileGeometry);
-        item->setData(0, MountHardfileTailRole, entry.hardfileTail);
+        item->setData(0, MountDeviceRole, normalized.device);
+        item->setData(0, MountVolumeRole, normalized.volume);
+        item->setData(0, MountPathRole, normalized.path);
+        item->setData(0, MountReadOnlyRole, normalized.readOnly);
+        item->setData(0, MountBootPriRole, normalized.bootPri);
+        item->setData(0, MountEmuUnitRole, normalized.emuUnit);
+        item->setData(0, MountRawConfigRole, normalized.rawConfig);
+        item->setData(0, MountHardfileGeometryRole, normalized.hardfileGeometry);
+        item->setData(0, MountHardfileTailRole, normalized.hardfileTail);
         for (int i = 0; i < mountedDrives->columnCount(); i++) {
             mountedDrives->resizeColumnToContents(i);
         }
@@ -1447,6 +1649,15 @@ private:
         if (addHardfileMountButton) {
             addHardfileMountButton->setEnabled(canAdd);
         }
+        if (addHardDriveMountButton) {
+            addHardDriveMountButton->setEnabled(canAdd);
+        }
+        if (addCdMountButton) {
+            addCdMountButton->setEnabled(canAdd);
+        }
+        if (addTapeMountButton) {
+            addTapeMountButton->setEnabled(canAdd);
+        }
         if (propertiesMountButton) {
             propertiesMountButton->setEnabled(!mountedDrives->selectedItems().isEmpty());
         }
@@ -1459,11 +1670,12 @@ private:
     {
         WinUaeQtMountEntry entry;
         entry.kind = item->data(0, MountKindRole).toString();
-        entry.device = item->text(0);
-        entry.volume = item->text(1);
+        entry.device = item->data(0, MountDeviceRole).toString();
+        entry.volume = item->data(0, MountVolumeRole).toString();
         entry.path = item->data(0, MountPathRole).toString();
         entry.readOnly = item->data(0, MountReadOnlyRole).toBool();
         entry.bootPri = item->data(0, MountBootPriRole).toInt();
+        entry.emuUnit = item->data(0, MountEmuUnitRole).toInt();
         entry.rawConfig = item->data(0, MountRawConfigRole).toString();
         entry.hardfileGeometry = item->data(0, MountHardfileGeometryRole).toString();
         entry.hardfileTail = item->data(0, MountHardfileTailRole).toString();
@@ -1486,6 +1698,10 @@ private:
             accepted = showDirectoryMountDialog(&entry, QStringLiteral("Directory Properties"));
         } else if (entry.kind == QStringLiteral("hdf")) {
             accepted = showHardfileMountDialog(&entry, QStringLiteral("Hardfile Properties"));
+        } else if (entry.kind == QStringLiteral("cd")) {
+            accepted = showCdDriveMountDialog(&entry, QStringLiteral("CD Drive Properties"));
+        } else if (entry.kind == QStringLiteral("tape")) {
+            accepted = showTapeDriveMountDialog(&entry, QStringLiteral("Tape Drive Properties"));
         }
         if (accepted) {
             updateMountItem(item, entry);
@@ -1616,6 +1832,147 @@ private:
         return true;
     }
 
+    void updateControllerUnitRange(QSpinBox *unit, const QString &family)
+    {
+        if (!unit) {
+            return;
+        }
+        const int maximum = family == QStringLiteral("IDE (Auto)") ? 3 : MaxControllerUnits - 1;
+        unit->setMaximum(maximum);
+    }
+
+    bool showCdDriveMountDialog(WinUaeQtMountEntry *entry, const QString &title)
+    {
+        if (!entry) {
+            return false;
+        }
+
+        QDialog dialog(this);
+        dialog.setWindowTitle(title);
+
+        QSpinBox *cdUnit = new QSpinBox;
+        cdUnit->setRange(0, MaxControllerUnits - 1);
+        cdUnit->setValue(qBound(0, entry->emuUnit, MaxControllerUnits - 1));
+        QComboBox *controller = combo({ QStringLiteral("IDE (Auto)"), QStringLiteral("SCSI (Auto)") }, mountControllerFamily(*entry, QStringLiteral("ide0")));
+        QSpinBox *controllerUnit = new QSpinBox;
+        controllerUnit->setRange(0, MaxControllerUnits - 1);
+        controllerUnit->setValue(mountControllerUnit(*entry, QStringLiteral("ide0")));
+        updateControllerUnitRange(controllerUnit, controller->currentText());
+
+        QGridLayout *fields = new QGridLayout;
+        fields->setColumnStretch(1, 1);
+        fields->addWidget(label(QStringLiteral("CD unit:")), 0, 0);
+        fields->addWidget(cdUnit, 0, 1);
+        fields->addWidget(label(QStringLiteral("Controller:")), 1, 0);
+        fields->addWidget(controller, 1, 1);
+        fields->addWidget(label(QStringLiteral("Controller unit:")), 2, 0);
+        fields->addWidget(controllerUnit, 2, 1);
+
+        QDialogButtonBox *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+        QVBoxLayout *root = new QVBoxLayout(&dialog);
+        root->addLayout(fields);
+        root->addWidget(buttons);
+
+        connect(controller, &QComboBox::currentTextChanged, this, [this, controllerUnit](const QString &text) {
+            updateControllerUnitRange(controllerUnit, text);
+        });
+        connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+        connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+
+        if (dialog.exec() != QDialog::Accepted) {
+            return false;
+        }
+
+        entry->kind = QStringLiteral("cd");
+        entry->device.clear();
+        entry->volume = QStringLiteral("CD");
+        entry->emuUnit = cdUnit->value();
+        entry->readOnly = true;
+        entry->bootPri = 0;
+        entry->hardfileGeometry = QStringLiteral("0,0,0,2048");
+        entry->hardfileTail = mountTailWithController(*entry, mountControllerConfigValue(controller->currentText(), controllerUnit->value()));
+        return true;
+    }
+
+    bool showTapeDriveMountDialog(WinUaeQtMountEntry *entry, const QString &title)
+    {
+        if (!entry) {
+            return false;
+        }
+
+        QDialog dialog(this);
+        dialog.setWindowTitle(title);
+
+        QLineEdit *path = new QLineEdit(entry->path);
+        QSpinBox *tapeUnit = new QSpinBox;
+        tapeUnit->setRange(0, MaxControllerUnits - 1);
+        tapeUnit->setValue(qBound(0, entry->emuUnit, MaxControllerUnits - 1));
+        QComboBox *controller = combo({ QStringLiteral("UAE (uaehf.device)"), QStringLiteral("IDE (Auto)"), QStringLiteral("SCSI (Auto)") }, mountControllerFamily(*entry, QStringLiteral("uae0")));
+        QSpinBox *controllerUnit = new QSpinBox;
+        controllerUnit->setRange(0, MaxControllerUnits - 1);
+        controllerUnit->setValue(mountControllerUnit(*entry, QStringLiteral("uae0")));
+        updateControllerUnitRange(controllerUnit, controller->currentText());
+        QCheckBox *readWrite = new QCheckBox(QStringLiteral("Read/write"));
+        readWrite->setChecked(!entry->readOnly);
+        QPushButton *selectFile = new QPushButton(QStringLiteral("File..."));
+        QPushButton *selectDirectory = new QPushButton(QStringLiteral("Directory..."));
+        QPushButton *eject = new QPushButton(QStringLiteral("Eject"));
+
+        QGridLayout *fields = new QGridLayout;
+        fields->setColumnStretch(1, 1);
+        fields->addWidget(label(QStringLiteral("Path:")), 0, 0);
+        fields->addWidget(path, 0, 1, 1, 3);
+        fields->addWidget(selectFile, 1, 1);
+        fields->addWidget(selectDirectory, 1, 2);
+        fields->addWidget(eject, 1, 3);
+        fields->addWidget(label(QStringLiteral("Tape unit:")), 2, 0);
+        fields->addWidget(tapeUnit, 2, 1);
+        fields->addWidget(label(QStringLiteral("Controller:")), 3, 0);
+        fields->addWidget(controller, 3, 1, 1, 3);
+        fields->addWidget(label(QStringLiteral("Controller unit:")), 4, 0);
+        fields->addWidget(controllerUnit, 4, 1);
+        fields->addWidget(readWrite, 5, 1, 1, 3);
+
+        QDialogButtonBox *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+        QVBoxLayout *root = new QVBoxLayout(&dialog);
+        root->addLayout(fields);
+        root->addWidget(buttons);
+
+        connect(selectFile, &QPushButton::clicked, this, [this, path]() {
+            const QString selected = QFileDialog::getOpenFileName(this, QStringLiteral("Select tape image"), path->text().isEmpty() ? QDir::homePath() : path->text(), QStringLiteral("Tape images (*.tap *.raw);;All files (*)"));
+            if (!selected.isEmpty()) {
+                path->setText(selected);
+            }
+        });
+        connect(selectDirectory, &QPushButton::clicked, this, [this, path]() {
+            const QString selected = QFileDialog::getExistingDirectory(this, QStringLiteral("Select tape directory"), path->text().isEmpty() ? QDir::homePath() : path->text());
+            if (!selected.isEmpty()) {
+                path->setText(selected);
+            }
+        });
+        connect(eject, &QPushButton::clicked, path, &QLineEdit::clear);
+        connect(controller, &QComboBox::currentTextChanged, this, [this, controllerUnit](const QString &text) {
+            updateControllerUnitRange(controllerUnit, text);
+        });
+        connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+        connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+
+        if (dialog.exec() != QDialog::Accepted) {
+            return false;
+        }
+
+        entry->kind = QStringLiteral("tape");
+        entry->device.clear();
+        entry->volume = QStringLiteral("TAPE");
+        entry->path = path->text().trimmed();
+        entry->emuUnit = tapeUnit->value();
+        entry->readOnly = !readWrite->isChecked();
+        entry->bootPri = 0;
+        entry->hardfileGeometry = QStringLiteral("0,0,0,512");
+        entry->hardfileTail = mountTailWithController(*entry, mountControllerConfigValue(controller->currentText(), controllerUnit->value()));
+        return true;
+    }
+
     WinUaeQtConfig::OrderedSettings currentMountSettings() const
     {
         WinUaeQtConfig::OrderedSettings settings;
@@ -1628,6 +1985,10 @@ private:
                 settings.append({ QStringLiteral("filesystem2"), serializeWinUaeQtFilesystem2MountValue(entry) });
             } else if (entry.kind == QStringLiteral("hdf")) {
                 settings.append({ QStringLiteral("hardfile2"), serializeWinUaeQtHardfile2MountValue(entry) });
+            } else if (entry.kind == QStringLiteral("cd")) {
+                settings.append({ QStringLiteral("uaehf%1").arg(i), serializeWinUaeQtUaehfCdMountValue(entry) });
+            } else if (entry.kind == QStringLiteral("tape")) {
+                settings.append({ QStringLiteral("uaehf%1").arg(i), serializeWinUaeQtUaehfTapeMountValue(entry) });
             }
         }
         return settings;
