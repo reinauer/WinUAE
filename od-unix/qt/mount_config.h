@@ -12,6 +12,7 @@ struct WinUaeQtMountEntry {
     QString hardfileTail;
     bool readOnly = false;
     int bootPri = 0;
+    int emuUnit = 0;
 };
 
 QString winUaeQtConfigAccessValue(bool readOnly);
@@ -25,3 +26,5 @@ QString serializeWinUaeQtFilesystem2MountValue(const WinUaeQtMountEntry &entry);
 QString serializeWinUaeQtHardfile2MountValue(const WinUaeQtMountEntry &entry);
 QString serializeWinUaeQtUaehfDirectoryMountValue(const WinUaeQtMountEntry &entry);
 QString serializeWinUaeQtUaehfHardfileMountValue(const WinUaeQtMountEntry &entry);
+QString serializeWinUaeQtUaehfCdMountValue(const WinUaeQtMountEntry &entry);
+QString serializeWinUaeQtUaehfTapeMountValue(const WinUaeQtMountEntry &entry);

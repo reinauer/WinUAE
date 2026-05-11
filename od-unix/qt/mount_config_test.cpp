@@ -75,11 +75,41 @@ static bool testHardfileMount()
     return ok;
 }
 
+static bool testCdMount()
+{
+    WinUaeQtMountEntry entry;
+    bool ok = parseWinUaeQtUaehfMountValue(QStringLiteral("cd1,ro,:,0,0,0,2048,0,,ide1"), &entry);
+    ok = require(ok, "uaehf cd did not parse") && ok;
+    ok = requireText(entry.kind, QStringLiteral("cd"), "cd kind") && ok;
+    ok = requireInt(entry.emuUnit, 1, "cd emulation unit") && ok;
+    ok = require(entry.readOnly, "cd should be read-only") && ok;
+    ok = requireText(entry.hardfileGeometry, QStringLiteral("0,0,0,2048"), "cd geometry") && ok;
+    ok = requireText(entry.hardfileTail, QStringLiteral(",ide1"), "cd tail") && ok;
+    ok = requireText(serializeWinUaeQtUaehfCdMountValue(entry), QStringLiteral("cd1,ro,:,0,0,0,2048,0,,ide1"), "uaehf cd serialized value") && ok;
+    return ok;
+}
+
+static bool testTapeMount()
+{
+    WinUaeQtMountEntry entry;
+    bool ok = parseWinUaeQtUaehfMountValue(QStringLiteral("tape0,rw,:\"/tmp/Tape,One\",0,0,0,512,0,,uae0"), &entry);
+    ok = require(ok, "uaehf tape did not parse") && ok;
+    ok = requireText(entry.kind, QStringLiteral("tape"), "tape kind") && ok;
+    ok = requireInt(entry.emuUnit, 0, "tape emulation unit") && ok;
+    ok = requireText(entry.path, QStringLiteral("/tmp/Tape,One"), "tape path") && ok;
+    ok = requireText(entry.hardfileGeometry, QStringLiteral("0,0,0,512"), "tape geometry") && ok;
+    ok = requireText(entry.hardfileTail, QStringLiteral(",uae0"), "tape tail") && ok;
+    ok = requireText(serializeWinUaeQtUaehfTapeMountValue(entry), QStringLiteral("tape0,rw,:\"/tmp/Tape,One\",0,0,0,512,0,,uae0"), "uaehf tape serialized value") && ok;
+    return ok;
+}
+
 int main()
 {
     bool ok = true;
     ok = testDirectoryMount() && ok;
     ok = testHardfileMount() && ok;
+    ok = testCdMount() && ok;
+    ok = testTapeMount() && ok;
     ok = requireText(winUaeQtSanitizedAmigaName(QStringLiteral("dh:0, "), QStringLiteral("DH0"), true), QStringLiteral("DH_0_"), "sanitized name") && ok;
     return ok ? 0 : 1;
 }
