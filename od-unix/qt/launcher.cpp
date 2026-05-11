@@ -5002,6 +5002,14 @@ private:
             }, QStringLiteral("Default"));
         }
         portAutoswitch = new QCheckBox(QStringLiteral("Mouse/Joystick autoswitching"));
+        QPushButton *port0Remap = new QPushButton(QStringLiteral("Remap / Test"));
+        QPushButton *port1Remap = new QPushButton(QStringLiteral("Remap / Test"));
+        QPushButton *port2Remap = new QPushButton(QStringLiteral("Remap / Test"));
+        QPushButton *port3Remap = new QPushButton(QStringLiteral("Remap / Test"));
+        for (QPushButton *button : { port0Remap, port1Remap, port2Remap, port3Remap }) {
+            button->setEnabled(false);
+            button->setToolTip(QStringLiteral("Input remap/test dialog is not connected on Unix yet."));
+        }
 
         QGridLayout *ports = new QGridLayout;
         ports->setColumnStretch(1, 1);
@@ -5009,12 +5017,12 @@ private:
         ports->addWidget(portDevice[0], 0, 1, 1, 3);
         ports->addWidget(portAutofire[0], 1, 1);
         ports->addWidget(portMode[0], 1, 2);
-        ports->addWidget(new QPushButton(QStringLiteral("Remap / Test")), 1, 3);
+        ports->addWidget(port0Remap, 1, 3);
         ports->addWidget(label(QStringLiteral("Port 2:")), 2, 0);
         ports->addWidget(portDevice[1], 2, 1, 1, 3);
         ports->addWidget(portAutofire[1], 3, 1);
         ports->addWidget(portMode[1], 3, 2);
-        ports->addWidget(new QPushButton(QStringLiteral("Remap / Test")), 3, 3);
+        ports->addWidget(port1Remap, 3, 3);
 
         QPushButton *swapPorts = new QPushButton(QStringLiteral("Swap ports"));
         ports->addWidget(swapPorts, 4, 1);
@@ -5022,10 +5030,10 @@ private:
         ports->addWidget(label(QStringLiteral("Emulated parallel port joystick adapter")), 5, 0, 1, 4, Qt::AlignLeft | Qt::AlignVCenter);
         ports->addWidget(label(QStringLiteral("Port 1:")), 6, 0);
         ports->addWidget(portDevice[2], 6, 1, 1, 3);
-        ports->addWidget(new QPushButton(QStringLiteral("Remap / Test")), 7, 3);
+        ports->addWidget(port2Remap, 7, 3);
         ports->addWidget(label(QStringLiteral("Port 2:")), 8, 0);
         ports->addWidget(portDevice[3], 8, 1, 1, 3);
-        ports->addWidget(new QPushButton(QStringLiteral("Remap / Test")), 9, 3);
+        ports->addWidget(port3Remap, 9, 3);
         root->addWidget(groupBox(QStringLiteral("Mouse and Joystick settings"), ports));
 
         connect(swapPorts, &QPushButton::clicked, this, [this]() {
