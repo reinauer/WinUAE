@@ -31,6 +31,91 @@ static constexpr int MaxControllerUnits = 8;
 static constexpr int MaxCdSlots = 8;
 static constexpr int MaxRomBoards = 4;
 static constexpr int MaxDiskSwapperSlots = 20;
+static constexpr int MaxQuickstartConfigs = 6;
+
+struct QuickstartModelChoice {
+    const char *display;
+    const char *configValue;
+    const char *compatible;
+    int compatibilityLevels;
+    int configCount;
+    const char *configs[MaxQuickstartConfigs];
+};
+
+static const QuickstartModelChoice quickstartModelChoices[] = {
+    { "A500", "A500", "A500", 4, 6, {
+        "1.3 ROM, OCS, 512 KB Chip + 512 KB Slow RAM (most common)",
+        "1.3 ROM, ECS Agnus, 512 KB Chip RAM + 512 KB Slow RAM",
+        "1.3 ROM, ECS Agnus, 1 MB Chip RAM",
+        "1.3 ROM, OCS Agnus, 512 KB Chip RAM",
+        "1.2 ROM, OCS Agnus, 512 KB Chip RAM",
+        "1.2 ROM, OCS Agnus, 512 KB Chip RAM + 512 KB Slow RAM"
+    } },
+    { "A500+", "A500+", "A500+", 4, 3, {
+        "Basic non-expanded configuration",
+        "2 MB Chip RAM expanded configuration",
+        "4 MB Fast RAM expanded configuration",
+        nullptr,
+        nullptr,
+        nullptr
+    } },
+    { "A600", "A600", "A600", 4, 3, {
+        "Basic non-expanded configuration",
+        "2 MB Chip RAM expanded configuration",
+        "4 MB Fast RAM expanded configuration",
+        nullptr,
+        nullptr,
+        nullptr
+    } },
+    { "A1000", "A1000", "A1000", 4, 4, {
+        "512 KB Chip RAM",
+        "ICS Denise without EHB support",
+        "256 KB Chip RAM",
+        "A1000 Velvet Prototype",
+        nullptr,
+        nullptr
+    } },
+    { "A1200", "A1200", "A1200", 5, 6, {
+        "Basic non-expanded configuration",
+        "4 MB Fast RAM expanded configuration",
+        "Blizzard 1230 IV",
+        "Blizzard 1240",
+        "Blizzard 1260",
+        "Blizzard PPC"
+    } },
+    { "A3000", "A3000", "A3000", 2, 3, {
+        "1.4 ROM, 2MB Chip + 8MB Fast",
+        "2.04 ROM, 2MB Chip + 8MB Fast",
+        "3.1 ROM, 2MB Chip + 8MB Fast",
+        nullptr,
+        nullptr,
+        nullptr
+    } },
+    { "A4000", "A4000", "A4000", 1, 3, {
+        "68030, 3.1 ROM, 2MB Chip + 8MB Fast",
+        "68040, 3.1 ROM, 2MB Chip + 8MB Fast",
+        "CyberStorm PPC",
+        nullptr,
+        nullptr,
+        nullptr
+    } },
+    { "CD32", "CD32", "CD32", 4, 3, {
+        "CD32",
+        "CD32 with Full Motion Video cartridge",
+        "Cubo CD32",
+        nullptr,
+        nullptr,
+        nullptr
+    } },
+    { "CDTV", "CDTV", "CDTV", 4, 3, {
+        "CDTV",
+        "Floppy drive and 64KB SRAM card expanded CDTV",
+        "CDTV-CR",
+        nullptr,
+        nullptr,
+        nullptr
+    } }
+};
 
 struct WinUaeQtCdSlot {
     QString path;
@@ -1349,6 +1434,46 @@ static QComboBox *combo(const QStringList &items, const QString &current = QStri
     return w;
 }
 
+static QStringList quickstartModelItems()
+{
+    QStringList items;
+    for (const QuickstartModelChoice &choice : quickstartModelChoices) {
+        items.append(QString::fromLatin1(choice.display));
+    }
+    return items;
+}
+
+static const QuickstartModelChoice *quickstartModelChoiceByDisplay(const QString &display)
+{
+    for (const QuickstartModelChoice &choice : quickstartModelChoices) {
+        if (display == QString::fromLatin1(choice.display)) {
+            return &choice;
+        }
+    }
+    return nullptr;
+}
+
+static const QuickstartModelChoice *quickstartModelChoiceByConfigValue(const QString &value)
+{
+    for (const QuickstartModelChoice &choice : quickstartModelChoices) {
+        if (value.compare(QString::fromLatin1(choice.configValue), Qt::CaseInsensitive) == 0) {
+            return &choice;
+        }
+    }
+    return nullptr;
+}
+
+static QStringList quickstartConfigItems(const QuickstartModelChoice &choice)
+{
+    QStringList items;
+    for (int i = 0; i < choice.configCount && i < MaxQuickstartConfigs; i++) {
+        if (choice.configs[i]) {
+            items.append(QString::fromLatin1(choice.configs[i]));
+        }
+    }
+    return items;
+}
+
 static QStringList activityPriorityDisplays()
 {
     QStringList items;
@@ -1976,12 +2101,15 @@ private:
     QComboBox *quickModel = nullptr;
     QComboBox *quickConfiguration = nullptr;
     QComboBox *quickHostConfiguration = nullptr;
+    QCheckBox *quickstartMode = nullptr;
+    QPushButton *quickstartSetConfig = nullptr;
     QCheckBox *ntsc = nullptr;
     QSlider *compatibility = nullptr;
     QCheckBox *quickDfEnable[2] = {};
     QComboBox *quickDfType[2] = {};
     QComboBox *quickDfPath[2] = {};
     QCheckBox *quickDfWriteProtect[2] = {};
+    bool quickstartUpdating = false;
 
     QComboBox *romFile = nullptr;
     QComboBox *extendedRomFile = nullptr;
@@ -2378,18 +2506,8 @@ private:
         root->setContentsMargins(4, 4, 4, 4);
         root->setSpacing(6);
 
-        quickModel = combo({
-            QStringLiteral("A500"),
-            QStringLiteral("A500+"),
-            QStringLiteral("A600"),
-            QStringLiteral("A1200"),
-            QStringLiteral("A4000")
-        }, QStringLiteral("A1200"));
-        quickConfiguration = combo({
-            QStringLiteral("Basic non-expanded configuration"),
-            QStringLiteral("Expanded configuration"),
-            QStringLiteral("Cycle-exact compatible")
-        }, QStringLiteral("Expanded configuration"));
+        quickModel = combo(quickstartModelItems(), QStringLiteral("A1200"));
+        quickConfiguration = combo({});
         ntsc = new QCheckBox(QStringLiteral("NTSC"));
 
         QGridLayout *hardware = new QGridLayout;
@@ -2424,6 +2542,14 @@ private:
         host->addWidget(quickHostConfiguration, 0, 1);
         root->addWidget(groupBox(QStringLiteral("Host Configuration"), host));
 
+        quickstartSetConfig = new QPushButton(QStringLiteral("Set configuration"));
+        quickstartMode = new QCheckBox(QStringLiteral("Start in Quickstart mode"));
+        QHBoxLayout *mode = new QHBoxLayout;
+        mode->addWidget(quickstartSetConfig);
+        mode->addStretch();
+        mode->addWidget(quickstartMode);
+        root->addWidget(groupBox(QStringLiteral("Mode"), mode));
+
         QGridLayout *drives = new QGridLayout;
         drives->setColumnStretch(5, 1);
         addQuickDriveRow(drives, 0);
@@ -2431,9 +2557,187 @@ private:
         root->addWidget(groupBox(QStringLiteral("Emulated Drives"), drives), 1);
 
         connect(quickModel, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this]() {
-            applyModelPreset(quickModel->currentText());
+            refreshQuickstartConfigurationChoices();
+            applyQuickstartSelectionToUi();
         });
+        connect(quickConfiguration, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this]() { applyQuickstartSelectionToUi(); });
+        connect(compatibility, &QSlider::valueChanged, this, [this]() { applyQuickstartCompatibilityToUi(); });
+        connect(quickstartSetConfig, &QPushButton::clicked, this, [this]() { applyQuickstartSelectionToUi(); });
+        connect(quickstartMode, &QCheckBox::toggled, this, [this](bool checked) {
+            quickstartSetConfig->setVisible(!checked);
+            if (checked) {
+                applyQuickstartSelectionToUi();
+            }
+        });
+        refreshQuickstartConfigurationChoices();
         return page;
+    }
+
+    void refreshQuickstartConfigurationChoices(int requestedIndex = -1)
+    {
+        if (!quickConfiguration || !quickModel) {
+            return;
+        }
+        const QSignalBlocker blocker(quickConfiguration);
+        const int oldIndex = quickConfiguration->currentIndex();
+        quickConfiguration->clear();
+        const QuickstartModelChoice *choice = quickstartModelChoiceByDisplay(quickModel->currentText());
+        if (!choice) {
+            return;
+        }
+        quickConfiguration->addItems(quickstartConfigItems(*choice));
+        const int selected = requestedIndex >= 0 ? requestedIndex : oldIndex;
+        quickConfiguration->setCurrentIndex(qBound(0, selected, qMax(0, quickConfiguration->count() - 1)));
+        compatibility->setEnabled(choice->compatibilityLevels > 1);
+        compatibility->setRange(0, qMax(1, choice->compatibilityLevels - 1));
+        compatibility->setValue(qBound(0, compatibility->value(), compatibility->maximum()));
+    }
+
+    QString quickstartConfigValue() const
+    {
+        const QuickstartModelChoice *choice = quickstartModelChoiceByDisplay(quickModel->currentText());
+        if (!choice) {
+            return QString();
+        }
+        return QStringLiteral("%1,%2").arg(QString::fromLatin1(choice->configValue)).arg(qMax(0, quickConfiguration->currentIndex()));
+    }
+
+    void applyQuickstartSelectionToUi()
+    {
+        if (quickstartUpdating) {
+            return;
+        }
+        const QuickstartModelChoice *choice = quickstartModelChoiceByDisplay(quickModel->currentText());
+        if (!choice) {
+            return;
+        }
+
+        quickstartUpdating = true;
+        const int config = qMax(0, quickConfiguration->currentIndex());
+        QString compatible = QString::fromLatin1(choice->compatible);
+        if (quickModel->currentText() == QStringLiteral("CDTV") && config >= 2) {
+            compatible = QStringLiteral("CDTV-CR");
+        }
+        if (quickModel->currentText() == QStringLiteral("A1000") && config >= 3) {
+            compatible = QStringLiteral("Velvet");
+        }
+
+        applyModelPreset(compatible);
+        applyAdvancedChipsetPreset(compatible);
+        applyQuickstartConfigurationMemory(quickModel->currentText(), config);
+        applyQuickstartCompatibilityToUi();
+        quickstartUpdating = false;
+    }
+
+    void applyQuickstartConfigurationMemory(const QString &model, int config)
+    {
+        z2Fast->setCurrentText(QStringLiteral("None"));
+        z3Fast->setCurrentText(QStringLiteral("None"));
+        z3ChipMem->setCurrentText(QStringLiteral("None"));
+        processorSlotMem->setCurrentText(QStringLiteral("None"));
+        rtgMem->setCurrentText(QStringLiteral("None"));
+
+        if (model == QStringLiteral("A500")) {
+            setCpuButton(68000);
+            setFpuButton(0);
+            const bool oneMegChip = config == 2;
+            const bool noSlow = config == 2 || config == 3 || config == 4;
+            chipMem->setCurrentText(oneMegChip ? QStringLiteral("1 MB") : QStringLiteral("512 KB"));
+            slowMem->setCurrentText(noSlow ? QStringLiteral("None") : QStringLiteral("512 KB"));
+            chipset->setCurrentText((config == 1 || config == 2) ? QStringLiteral("ECS") : QStringLiteral("OCS"));
+        } else if (model == QStringLiteral("A500+") || model == QStringLiteral("A600")) {
+            setCpuButton(68000);
+            setFpuButton(0);
+            chipMem->setCurrentText(config == 1 ? QStringLiteral("2 MB") : QStringLiteral("1 MB"));
+            slowMem->setCurrentText(QStringLiteral("None"));
+            if (config == 2) {
+                z2Fast->setCurrentText(QStringLiteral("4 MB"));
+            }
+        } else if (model == QStringLiteral("A1200")) {
+            if (config == 2) {
+                setCpuButton(68030);
+                setFpuButton(68882);
+            } else if (config == 3) {
+                setCpuButton(68040);
+                setFpuButton(68040);
+            } else if (config >= 4) {
+                setCpuButton(68060);
+                setFpuButton(68060);
+            } else {
+                setCpuButton(68020);
+                setFpuButton(0);
+            }
+            chipMem->setCurrentText(QStringLiteral("2 MB"));
+            slowMem->setCurrentText(QStringLiteral("None"));
+            if (config == 1) {
+                z2Fast->setCurrentText(QStringLiteral("4 MB"));
+            } else if (config >= 2) {
+                processorSlotMem->setCurrentText(config >= 5 ? QStringLiteral("128 MB") : QStringLiteral("32 MB"));
+            }
+        } else if (model == QStringLiteral("A3000")) {
+            setCpuButton(68030);
+            setFpuButton(68882);
+            chipMem->setCurrentText(QStringLiteral("2 MB"));
+            slowMem->setCurrentText(QStringLiteral("None"));
+            processorSlotMem->setCurrentText(QStringLiteral("8 MB"));
+        } else if (model == QStringLiteral("A4000")) {
+            if (config == 1) {
+                setCpuButton(68040);
+                setFpuButton(68040);
+            } else if (config >= 2) {
+                setCpuButton(68060);
+                setFpuButton(68060);
+            } else {
+                setCpuButton(68030);
+                setFpuButton(68882);
+            }
+            chipMem->setCurrentText(QStringLiteral("2 MB"));
+            slowMem->setCurrentText(QStringLiteral("None"));
+            processorSlotMem->setCurrentText(QStringLiteral("8 MB"));
+        } else if (model == QStringLiteral("CD32")) {
+            setCpuButton(68020);
+            setFpuButton(0);
+            chipMem->setCurrentText(QStringLiteral("2 MB"));
+            slowMem->setCurrentText(QStringLiteral("None"));
+        } else if (model == QStringLiteral("CDTV")) {
+            setCpuButton(68000);
+            setFpuButton(0);
+            chipMem->setCurrentText(QStringLiteral("1 MB"));
+            slowMem->setCurrentText(QStringLiteral("None"));
+        }
+
+        if (model == QStringLiteral("CD32") || (model == QStringLiteral("CDTV") && config == 0)) {
+            for (int i = 0; i < 2; i++) {
+                dfEnable[i]->setChecked(false);
+                quickDfEnable[i]->setChecked(false);
+            }
+        } else {
+            dfEnable[0]->setChecked(true);
+            quickDfEnable[0]->setChecked(true);
+            dfEnable[1]->setChecked(false);
+            quickDfEnable[1]->setChecked(false);
+        }
+    }
+
+    void applyQuickstartCompatibilityToUi()
+    {
+        if (!compatibility) {
+            return;
+        }
+        const int level = compatibility->value();
+        const int cpu = selectedCpuModel();
+        const bool exact = level == 0 && cpu <= 68030;
+        const bool memoryExact = level <= 1 && cpu <= 68030;
+        if (QAbstractButton *button = cpuSpeedButtons->button(level >= 3 ? 1 : 0)) {
+            button->setChecked(true);
+        }
+        chipsetCycleExact->setChecked(exact);
+        chipsetCycleExactMemory->setChecked(memoryExact);
+        moreCompatible->setChecked(level <= 2);
+        if (cpu >= 68030) {
+            cpu24Bit->setChecked(false);
+        }
+        updateCpuControlState();
     }
 
     void addQuickDriveRow(QGridLayout *layout, int drive)
@@ -6060,9 +6364,10 @@ private:
         }
 
         quickModel->setCurrentText(QStringLiteral("A1200"));
-        quickConfiguration->setCurrentText(QStringLiteral("Expanded configuration"));
+        refreshQuickstartConfigurationChoices(1);
         quickHostConfiguration->setCurrentText(QStringLiteral("Default"));
         compatibility->setValue(1);
+        quickstartMode->setChecked(true);
         ntsc->setChecked(false);
         chipsetNtsc->setChecked(false);
         chipsetCycleExact->setChecked(false);
@@ -6074,9 +6379,7 @@ private:
             button->setChecked(true);
         }
 
-        applyModelPreset(QStringLiteral("A1200"));
-        applyAdvancedChipsetPreset(QStringLiteral("A1200"));
-        setFpuButton(0);
+        applyQuickstartSelectionToUi();
         moreCompatible->setChecked(false);
         cpuDataCache->setChecked(false);
         cpuUnimplemented->setChecked(true);
@@ -6321,34 +6624,60 @@ private:
 
     void applyModelPreset(const QString &model)
     {
-        if (model == QStringLiteral("A1200")) {
+        if (model == QStringLiteral("A1200") || model == QStringLiteral("CD32")) {
             chipset->setCurrentText(QStringLiteral("AGA"));
-            chipsetCompatible->setCurrentText(QStringLiteral("A1200"));
+            chipsetCompatible->setCurrentText(model);
             setCpuButton(68020);
+            setFpuButton(0);
             cpu24Bit->setChecked(false);
             chipMem->setCurrentText(QStringLiteral("2 MB"));
         } else if (model == QStringLiteral("A4000")) {
             chipset->setCurrentText(QStringLiteral("AGA"));
             chipsetCompatible->setCurrentText(QStringLiteral("A4000"));
-            setCpuButton(68040);
+            setCpuButton(68030);
+            setFpuButton(68882);
+            cpu24Bit->setChecked(false);
+            chipMem->setCurrentText(QStringLiteral("2 MB"));
+        } else if (model == QStringLiteral("A3000")) {
+            chipset->setCurrentText(QStringLiteral("ECS"));
+            chipsetCompatible->setCurrentText(QStringLiteral("A3000"));
+            setCpuButton(68030);
+            setFpuButton(68882);
             cpu24Bit->setChecked(false);
             chipMem->setCurrentText(QStringLiteral("2 MB"));
         } else if (model == QStringLiteral("A600")) {
             chipset->setCurrentText(QStringLiteral("ECS"));
             chipsetCompatible->setCurrentText(QStringLiteral("A600"));
             setCpuButton(68000);
+            setFpuButton(0);
             cpu24Bit->setChecked(true);
-            chipMem->setCurrentText(QStringLiteral("2 MB"));
+            chipMem->setCurrentText(QStringLiteral("1 MB"));
         } else if (model == QStringLiteral("A500+")) {
             chipset->setCurrentText(QStringLiteral("ECS"));
             chipsetCompatible->setCurrentText(QStringLiteral("A500+"));
             setCpuButton(68000);
+            setFpuButton(0);
+            cpu24Bit->setChecked(true);
+            chipMem->setCurrentText(QStringLiteral("1 MB"));
+        } else if (model == QStringLiteral("A1000") || model == QStringLiteral("Velvet")) {
+            chipset->setCurrentText(QStringLiteral("OCS"));
+            chipsetCompatible->setCurrentText(model);
+            setCpuButton(68000);
+            setFpuButton(0);
+            cpu24Bit->setChecked(true);
+            chipMem->setCurrentText(QStringLiteral("512 KB"));
+        } else if (model == QStringLiteral("CDTV") || model == QStringLiteral("CDTV-CR")) {
+            chipset->setCurrentText(QStringLiteral("ECS"));
+            chipsetCompatible->setCurrentText(model);
+            setCpuButton(68000);
+            setFpuButton(0);
             cpu24Bit->setChecked(true);
             chipMem->setCurrentText(QStringLiteral("1 MB"));
         } else {
             chipset->setCurrentText(QStringLiteral("OCS"));
             chipsetCompatible->setCurrentText(QStringLiteral("A500"));
             setCpuButton(68000);
+            setFpuButton(0);
             cpu24Bit->setChecked(true);
             chipMem->setCurrentText(QStringLiteral("512 KB"));
         }
@@ -7303,6 +7632,12 @@ private:
         if (configDescription && !configDescription->text().trimmed().isEmpty()) {
             settings.insert(QStringLiteral("config_description"), configDescription->text().trimmed());
         }
+        if (quickstartMode && quickstartMode->isChecked()) {
+            const QString quickstart = quickstartConfigValue();
+            if (!quickstart.isEmpty()) {
+                settings.insert(QStringLiteral("quickstart"), quickstart);
+            }
+        }
         if (romsPath && !romsPath->text().trimmed().isEmpty()) {
             settings.insert(QStringLiteral("unix.rom_path"), romsPath->text().trimmed());
         }
@@ -7680,6 +8015,7 @@ private:
     {
         return {
             QStringLiteral("config_description"),
+            QStringLiteral("quickstart"),
             QStringLiteral("unix.rom_path"),
             QStringLiteral("statefile_path"),
             QStringLiteral("kickstart_rom_file"),
@@ -8235,6 +8571,21 @@ private:
     {
         if (key == QStringLiteral("config_description")) {
             configDescription->setText(value);
+        } else if (key == QStringLiteral("quickstart")) {
+            const QStringList parts = value.split(QLatin1Char(','));
+            const QuickstartModelChoice *choice = quickstartModelChoiceByConfigValue(parts.value(0).trimmed());
+            if (choice) {
+                bool ok = false;
+                const int config = parts.value(1).toInt(&ok);
+                {
+                    const QSignalBlocker modelBlocker(quickModel);
+                    quickModel->setCurrentText(QString::fromLatin1(choice->display));
+                    refreshQuickstartConfigurationChoices(ok ? config : 0);
+                }
+                quickstartMode->setChecked(true);
+                quickstartSetConfig->setVisible(false);
+                applyQuickstartSelectionToUi();
+            }
         } else if (key == QStringLiteral("unix.rom_path") || key == QStringLiteral("rom_path")) {
             romsPath->setText(value);
         } else if (key == QStringLiteral("statefile_path")) {
