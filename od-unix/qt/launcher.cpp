@@ -1164,6 +1164,32 @@ static const MiscCheckChoice miscCheckChoices[] = {
     { "Warp mode reset", "warpboot", false }
 };
 
+struct ActivityPriorityChoice {
+    const char *display;
+    int value;
+};
+
+static const ActivityPriorityChoice activityPriorityChoices[] = {
+    { "Above normal", 1 },
+    { "Normal", 0 },
+    { "Below normal", -1 },
+    { "Low", -2 }
+};
+
+struct AssociationChoice {
+    const char *extension;
+};
+
+static const AssociationChoice associationChoices[] = {
+    { ".uae" },
+    { ".adf" },
+    { ".adz" },
+    { ".dms" },
+    { ".fdi" },
+    { ".ipf" },
+    { ".uss" }
+};
+
 struct AdvancedCheckChoice {
     const char *display;
     const char *key;
@@ -1321,6 +1347,35 @@ static QComboBox *combo(const QStringList &items, const QString &current = QStri
         }
     }
     return w;
+}
+
+static QStringList activityPriorityDisplays()
+{
+    QStringList items;
+    for (int i = 0; i < int(sizeof(activityPriorityChoices) / sizeof(activityPriorityChoices[0])); i++) {
+        items.append(QString::fromLatin1(activityPriorityChoices[i].display));
+    }
+    return items;
+}
+
+static QString activityPriorityText(int value)
+{
+    for (int i = 0; i < int(sizeof(activityPriorityChoices) / sizeof(activityPriorityChoices[0])); i++) {
+        if (activityPriorityChoices[i].value == value) {
+            return QString::fromLatin1(activityPriorityChoices[i].display);
+        }
+    }
+    return QStringLiteral("Normal");
+}
+
+static int activityPriorityValue(const QString &text)
+{
+    for (int i = 0; i < int(sizeof(activityPriorityChoices) / sizeof(activityPriorityChoices[0])); i++) {
+        if (text == QString::fromLatin1(activityPriorityChoices[i].display)) {
+            return activityPriorityChoices[i].value;
+        }
+    }
+    return 0;
 }
 
 static QButtonGroup *radioGroup(const ConfigChoice *choices, int count, int current, QWidget *parent, QGridLayout *layout)
@@ -1826,6 +1881,7 @@ public:
         addPage(QStringLiteral("Input"), QStringLiteral("port.ico"), makeInputPage());
         addPage(QStringLiteral("Paths"), QStringLiteral("paths.ico"), makePathsPage());
         addPage(QStringLiteral("Miscellaneous"), QStringLiteral("misc.ico"), makeMiscPage());
+        addPage(QStringLiteral("Pri. & Extensions"), QStringLiteral("misc.ico"), makeExtensionsPage());
         addPage(QStringLiteral("About"), QStringLiteral("amigainfo.ico"), makeAboutPage());
 
         connect(navigation, &QTreeWidget::currentItemChanged, this, [this](QTreeWidgetItem *item) {
@@ -2188,6 +2244,20 @@ private:
     QCheckBox *stateFileClear = nullptr;
     QComboBox *keyboardLed[3] = {};
     QCheckBox *keyboardLedUsb = nullptr;
+    QComboBox *extensionActivePriority = nullptr;
+    QCheckBox *extensionActivePause = nullptr;
+    QCheckBox *extensionActiveNoSound = nullptr;
+    QCheckBox *extensionActiveNoJoy = nullptr;
+    QCheckBox *extensionActiveNoKeyboard = nullptr;
+    QComboBox *extensionInactivePriority = nullptr;
+    QCheckBox *extensionInactivePause = nullptr;
+    QCheckBox *extensionInactiveNoSound = nullptr;
+    QCheckBox *extensionInactiveNoJoy = nullptr;
+    QComboBox *extensionMinimizedPriority = nullptr;
+    QCheckBox *extensionMinimizedPause = nullptr;
+    QCheckBox *extensionMinimizedNoSound = nullptr;
+    QCheckBox *extensionMinimizedNoJoy = nullptr;
+    QTreeWidget *extensionAssociationList = nullptr;
     WinUaeQtLauncherBackend launcherBackend;
     WinUaeQtConfig loadedConfig;
     WinUaeQtLauncherResult result;
@@ -4556,6 +4626,172 @@ private:
         }
     }
 
+    QGroupBox *makeActivityGroup(
+        const QString &title,
+        QComboBox **priority,
+        QCheckBox **pause,
+        QCheckBox **noSound,
+        QCheckBox **noJoy,
+        QCheckBox **noKeyboard = nullptr)
+    {
+        QGridLayout *layout = new QGridLayout;
+        layout->setColumnStretch(0, 1);
+        *priority = combo(activityPriorityDisplays(), QStringLiteral("Normal"));
+        *pause = new QCheckBox(QStringLiteral("Pause emulation"));
+        *noSound = new QCheckBox(QStringLiteral("Disable sound"));
+        *noJoy = new QCheckBox(QStringLiteral("Disable game controllers"));
+        layout->addWidget(label(QStringLiteral("Run at priority:")), 0, 0);
+        layout->addWidget(*priority, 1, 0);
+        layout->addWidget(*pause, 3, 0);
+        layout->addWidget(*noSound, 4, 0);
+        layout->addWidget(*noJoy, 5, 0);
+        if (noKeyboard) {
+            *noKeyboard = new QCheckBox(QStringLiteral("Disable keyboard"));
+            layout->addWidget(label(QStringLiteral("Mouse uncaptured:")), 2, 0);
+            layout->addWidget(*noKeyboard, 6, 0);
+        }
+        return groupBox(title, layout);
+    }
+
+    QWidget *makeExtensionsPage()
+    {
+        QWidget *page = makePage();
+        QVBoxLayout *root = new QVBoxLayout(page);
+        root->setContentsMargins(4, 4, 4, 4);
+        root->setSpacing(6);
+
+        QHBoxLayout *activity = new QHBoxLayout;
+        activity->setSpacing(6);
+        activity->addWidget(makeActivityGroup(
+            QStringLiteral("When Active"),
+            &extensionActivePriority,
+            &extensionActivePause,
+            &extensionActiveNoSound,
+            &extensionActiveNoJoy,
+            &extensionActiveNoKeyboard));
+        activity->addWidget(makeActivityGroup(
+            QStringLiteral("When Inactive"),
+            &extensionInactivePriority,
+            &extensionInactivePause,
+            &extensionInactiveNoSound,
+            &extensionInactiveNoJoy));
+        activity->addWidget(makeActivityGroup(
+            QStringLiteral("When Minimized"),
+            &extensionMinimizedPriority,
+            &extensionMinimizedPause,
+            &extensionMinimizedNoSound,
+            &extensionMinimizedNoJoy));
+        root->addLayout(activity);
+
+        QVBoxLayout *associations = new QVBoxLayout;
+        extensionAssociationList = new QTreeWidget;
+        extensionAssociationList->setRootIsDecorated(false);
+        extensionAssociationList->setAlternatingRowColors(true);
+        extensionAssociationList->setSelectionMode(QAbstractItemView::SingleSelection);
+        extensionAssociationList->setEditTriggers(QAbstractItemView::NoEditTriggers);
+        extensionAssociationList->setHeaderLabels({ QStringLiteral("Extension"), QStringLiteral("Associated") });
+        for (int i = 0; i < int(sizeof(associationChoices) / sizeof(associationChoices[0])); i++) {
+            QTreeWidgetItem *item = new QTreeWidgetItem(extensionAssociationList);
+            item->setText(0, QString::fromLatin1(associationChoices[i].extension));
+            item->setText(1, QString());
+        }
+        extensionAssociationList->resizeColumnToContents(0);
+        associations->addWidget(extensionAssociationList, 1);
+
+        QHBoxLayout *associationActions = new QHBoxLayout;
+        associationActions->addStretch();
+        QPushButton *associateAll = new QPushButton(QStringLiteral("Associate all"));
+        QPushButton *deassociateAll = new QPushButton(QStringLiteral("Deassociate all"));
+        associateAll->setEnabled(false);
+        deassociateAll->setEnabled(false);
+        associationActions->addWidget(associateAll);
+        associationActions->addWidget(deassociateAll);
+        associationActions->addStretch();
+        associations->addLayout(associationActions);
+        root->addWidget(groupBox(QStringLiteral("File Extension Associations"), associations), 1);
+
+        const QList<QCheckBox*> boxes = {
+            extensionActivePause,
+            extensionActiveNoSound,
+            extensionActiveNoJoy,
+            extensionActiveNoKeyboard,
+            extensionInactivePause,
+            extensionInactiveNoSound,
+            extensionInactiveNoJoy,
+            extensionMinimizedPause,
+            extensionMinimizedNoSound,
+            extensionMinimizedNoJoy
+        };
+        for (QCheckBox *box : boxes) {
+            connect(box, &QCheckBox::toggled, this, [this]() { updateExtensionActivityState(); });
+        }
+        return page;
+    }
+
+    void updateExtensionActivityState()
+    {
+        if (!extensionActivePause || !extensionInactivePause || !extensionMinimizedPause) {
+            return;
+        }
+
+        bool paused = extensionActivePause->isChecked();
+        bool noSound = extensionActiveNoSound->isChecked();
+        bool noJoy = extensionActiveNoJoy->isChecked();
+
+        if (paused) {
+            setCheckBoxIfChanged(extensionActiveNoSound, true);
+            setCheckBoxIfChanged(extensionActiveNoJoy, true);
+            setCheckBoxIfChanged(extensionActiveNoKeyboard, true);
+            noSound = true;
+            noJoy = true;
+        }
+        extensionActiveNoSound->setEnabled(!paused);
+        extensionActiveNoJoy->setEnabled(!paused);
+        extensionActiveNoKeyboard->setEnabled(!paused);
+
+        if (paused) {
+            setCheckBoxIfChanged(extensionInactivePause, true);
+        }
+        if (paused || noSound) {
+            setCheckBoxIfChanged(extensionInactiveNoSound, true);
+        }
+        if (paused || noJoy) {
+            setCheckBoxIfChanged(extensionInactiveNoJoy, true);
+        }
+        extensionInactivePause->setEnabled(!paused);
+        extensionInactiveNoSound->setEnabled(!paused && !noSound);
+        extensionInactiveNoJoy->setEnabled(!paused && !noJoy);
+
+        paused = paused || extensionInactivePause->isChecked();
+        noSound = noSound || extensionInactiveNoSound->isChecked();
+        noJoy = noJoy || extensionInactiveNoJoy->isChecked();
+
+        if (paused) {
+            setCheckBoxIfChanged(extensionMinimizedPause, true);
+        }
+        if (paused || noSound) {
+            setCheckBoxIfChanged(extensionMinimizedNoSound, true);
+        }
+        if (paused || noJoy) {
+            setCheckBoxIfChanged(extensionMinimizedNoJoy, true);
+        }
+        extensionMinimizedPause->setEnabled(!paused);
+        extensionMinimizedNoSound->setEnabled(!paused && !noSound);
+        extensionMinimizedNoJoy->setEnabled(!paused && !noJoy);
+    }
+
+    void setExtensionPriorityValue(QComboBox *box, int value)
+    {
+        if (box) {
+            box->setCurrentText(activityPriorityText(value));
+        }
+    }
+
+    int extensionPriorityValue(QComboBox *box) const
+    {
+        return box ? activityPriorityValue(box->currentText()) : 0;
+    }
+
     QWidget *makeAboutPage()
     {
         QWidget *page = makePage();
@@ -5516,6 +5752,20 @@ private:
         for (int i = 0; i < 3; i++) {
             keyboardLed[i]->setCurrentText(QStringLiteral("None"));
         }
+        setExtensionPriorityValue(extensionActivePriority, 0);
+        extensionActivePause->setChecked(false);
+        extensionActiveNoSound->setChecked(false);
+        extensionActiveNoJoy->setChecked(false);
+        extensionActiveNoKeyboard->setChecked(false);
+        setExtensionPriorityValue(extensionInactivePriority, -1);
+        extensionInactivePause->setChecked(false);
+        extensionInactiveNoSound->setChecked(false);
+        extensionInactiveNoJoy->setChecked(true);
+        setExtensionPriorityValue(extensionMinimizedPriority, -2);
+        extensionMinimizedPause->setChecked(true);
+        extensionMinimizedNoSound->setChecked(true);
+        extensionMinimizedNoJoy->setChecked(true);
+        updateExtensionActivityState();
         romsPath->setText(QDir::homePath());
         configsPath->setText(QDir::homePath());
         const QDir home(QDir::homePath());
@@ -6766,6 +7016,18 @@ private:
         if (anyKeyboardLed) {
             settings.insert(QStringLiteral("keyboard_leds"), ledValues.join(QLatin1Char(',')));
         }
+        settings.insert(QStringLiteral("active_priority"), QString::number(extensionPriorityValue(extensionActivePriority)));
+        settings.insert(QStringLiteral("active_not_captured_pause"), extensionActivePause->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
+        settings.insert(QStringLiteral("active_not_captured_nosound"), extensionActiveNoSound->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
+        settings.insert(QStringLiteral("active_input"), QString::number((extensionActiveNoJoy->isChecked() ? 0 : 4) | (extensionActiveNoKeyboard->isChecked() ? 0 : 1)));
+        settings.insert(QStringLiteral("inactive_priority"), QString::number(extensionPriorityValue(extensionInactivePriority)));
+        settings.insert(QStringLiteral("inactive_pause"), extensionInactivePause->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
+        settings.insert(QStringLiteral("inactive_nosound"), extensionInactiveNoSound->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
+        settings.insert(QStringLiteral("inactive_input"), QString::number(extensionInactiveNoJoy->isChecked() ? 0 : 4));
+        settings.insert(QStringLiteral("iconified_priority"), QString::number(extensionPriorityValue(extensionMinimizedPriority)));
+        settings.insert(QStringLiteral("iconified_pause"), extensionMinimizedPause->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
+        settings.insert(QStringLiteral("iconified_nosound"), extensionMinimizedNoSound->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
+        settings.insert(QStringLiteral("iconified_input"), QString::number(extensionMinimizedNoJoy->isChecked() ? 0 : 4));
         if (rtgMem->currentText() != QStringLiteral("None")) {
             settings.insert(QStringLiteral("gfxcard_size"), QString::number(megabytesFromText(rtgMem->currentText())));
             settings.insert(QStringLiteral("gfxcard_type"), rtgType->currentText());
@@ -7067,6 +7329,19 @@ private:
             QStringLiteral("warpboot"),
             QStringLiteral("statefile"),
             QStringLiteral("keyboard_leds"),
+            QStringLiteral("active_priority"),
+            QStringLiteral("activepriority"),
+            QStringLiteral("active_not_captured_pause"),
+            QStringLiteral("active_not_captured_nosound"),
+            QStringLiteral("active_input"),
+            QStringLiteral("inactive_priority"),
+            QStringLiteral("inactive_pause"),
+            QStringLiteral("inactive_nosound"),
+            QStringLiteral("inactive_input"),
+            QStringLiteral("iconified_priority"),
+            QStringLiteral("iconified_pause"),
+            QStringLiteral("iconified_nosound"),
+            QStringLiteral("iconified_input"),
             QStringLiteral("gfxcard_size"),
             QStringLiteral("gfxcard_type"),
             QStringLiteral("gfxcard_options"),
@@ -7854,6 +8129,41 @@ private:
                     keyboardLed[2]->setCurrentText(led);
                 }
             }
+        } else if (key == QStringLiteral("active_priority") || key == QStringLiteral("activepriority")) {
+            setExtensionPriorityValue(extensionActivePriority, value.toInt());
+        } else if (key == QStringLiteral("active_not_captured_pause")) {
+            extensionActivePause->setChecked(configBoolValue(value));
+            updateExtensionActivityState();
+        } else if (key == QStringLiteral("active_not_captured_nosound")) {
+            extensionActiveNoSound->setChecked(configBoolValue(value));
+            updateExtensionActivityState();
+        } else if (key == QStringLiteral("active_input")) {
+            const int mask = value.toInt();
+            extensionActiveNoJoy->setChecked((mask & 4) == 0);
+            extensionActiveNoKeyboard->setChecked((mask & 1) == 0);
+            updateExtensionActivityState();
+        } else if (key == QStringLiteral("inactive_priority")) {
+            setExtensionPriorityValue(extensionInactivePriority, value.toInt());
+        } else if (key == QStringLiteral("inactive_pause")) {
+            extensionInactivePause->setChecked(configBoolValue(value));
+            updateExtensionActivityState();
+        } else if (key == QStringLiteral("inactive_nosound")) {
+            extensionInactiveNoSound->setChecked(configBoolValue(value));
+            updateExtensionActivityState();
+        } else if (key == QStringLiteral("inactive_input")) {
+            extensionInactiveNoJoy->setChecked((value.toInt() & 4) == 0);
+            updateExtensionActivityState();
+        } else if (key == QStringLiteral("iconified_priority")) {
+            setExtensionPriorityValue(extensionMinimizedPriority, value.toInt());
+        } else if (key == QStringLiteral("iconified_pause")) {
+            extensionMinimizedPause->setChecked(configBoolValue(value));
+            updateExtensionActivityState();
+        } else if (key == QStringLiteral("iconified_nosound")) {
+            extensionMinimizedNoSound->setChecked(configBoolValue(value));
+            updateExtensionActivityState();
+        } else if (key == QStringLiteral("iconified_input")) {
+            extensionMinimizedNoJoy->setChecked((value.toInt() & 4) == 0);
+            updateExtensionActivityState();
         } else if (key.startsWith(QStringLiteral("joyport")) && key.size() == 8) {
             bool ok = false;
             const int port = key.mid(7, 1).toInt(&ok);
