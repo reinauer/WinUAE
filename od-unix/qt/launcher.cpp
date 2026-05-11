@@ -1504,6 +1504,9 @@ private:
     QComboBox *configName = nullptr;
     QLineEdit *configPath = nullptr;
     QLineEdit *configDescription = nullptr;
+    QTreeWidget *configTree = nullptr;
+    QLineEdit *configSearch = nullptr;
+    QComboBox *configFilter = nullptr;
 
     QComboBox *quickModel = nullptr;
     QComboBox *quickConfiguration = nullptr;
@@ -1694,24 +1697,22 @@ private:
         root->setContentsMargins(4, 4, 4, 4);
         root->setSpacing(4);
 
-        QTreeWidget *tree = new QTreeWidget;
-        tree->setHeaderHidden(true);
-        tree->setRootIsDecorated(true);
-        QTreeWidgetItem *configs = new QTreeWidgetItem(tree, QStringList(QStringLiteral("Configurations")));
-        configs->setIcon(0, resourceIcon(QStringLiteral("configfile.ico")));
-        new QTreeWidgetItem(configs, QStringList(QStringLiteral("Default")));
-        new QTreeWidgetItem(configs, QStringList(QStringLiteral("A1200 Install")));
-        configs->setExpanded(true);
-        root->addWidget(tree, 1);
+        configTree = new QTreeWidget;
+        configTree->setHeaderHidden(true);
+        configTree->setRootIsDecorated(true);
+        root->addWidget(configTree, 1);
 
         QGridLayout *search = new QGridLayout;
         search->setColumnStretch(1, 1);
         search->setColumnStretch(4, 1);
+        configSearch = new QLineEdit;
+        configFilter = combo({ QStringLiteral("All configurations"), QStringLiteral("Host"), QStringLiteral("Hardware") });
         search->addWidget(label(QStringLiteral("Search:")), 0, 0);
-        search->addWidget(new QLineEdit, 0, 1);
-        search->addWidget(smallButton(QStringLiteral("X")), 0, 2);
+        search->addWidget(configSearch, 0, 1);
+        QPushButton *clearSearch = smallButton(QStringLiteral("X"));
+        search->addWidget(clearSearch, 0, 2);
         search->addWidget(label(QStringLiteral("Filter:")), 0, 3);
-        search->addWidget(combo({ QStringLiteral("All configurations"), QStringLiteral("Host"), QStringLiteral("Hardware") }), 0, 4);
+        search->addWidget(configFilter, 0, 4);
         root->addLayout(search);
 
         configName = pathCombo();
@@ -1729,18 +1730,29 @@ private:
         root->addLayout(details);
 
         QHBoxLayout *buttons = new QHBoxLayout;
+        QPushButton *quickLoad = new QPushButton(QStringLiteral("Load"));
+        QPushButton *quickSave = new QPushButton(QStringLiteral("Save"));
         QPushButton *load = new QPushButton(QStringLiteral("Load From..."));
         QPushButton *save = new QPushButton(QStringLiteral("Save As..."));
-        buttons->addWidget(new QPushButton(QStringLiteral("Load")));
-        buttons->addWidget(new QPushButton(QStringLiteral("Save")));
+        QPushButton *deleteConfig = new QPushButton(QStringLiteral("Delete"));
+        buttons->addWidget(quickLoad);
+        buttons->addWidget(quickSave);
         buttons->addStretch();
         buttons->addWidget(load);
         buttons->addWidget(save);
-        buttons->addWidget(new QPushButton(QStringLiteral("Delete")));
+        buttons->addWidget(deleteConfig);
         root->addLayout(buttons);
 
+        connect(configTree, &QTreeWidget::itemSelectionChanged, this, [this]() { selectConfigFromTree(); });
+        connect(configTree, &QTreeWidget::itemDoubleClicked, this, [this](QTreeWidgetItem *, int) { loadSelectedConfig(); });
+        connect(configSearch, &QLineEdit::textChanged, this, [this]() { refreshConfigList(); });
+        connect(configFilter, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this]() { refreshConfigList(); });
+        connect(clearSearch, &QPushButton::clicked, configSearch, &QLineEdit::clear);
+        connect(quickLoad, &QPushButton::clicked, this, [this]() { loadSelectedConfig(); });
+        connect(quickSave, &QPushButton::clicked, this, [this]() { saveNamedConfig(); });
         connect(load, &QPushButton::clicked, this, [this]() { loadConfigDialog(); });
         connect(save, &QPushButton::clicked, this, [this]() { saveConfigDialog(); });
+        connect(deleteConfig, &QPushButton::clicked, this, [this]() { deleteSelectedConfig(); });
         return page;
     }
 
@@ -3106,6 +3118,7 @@ private:
         logging->addWidget(new QPushButton(QStringLiteral("Save All")), 0, 3);
         logging->addWidget(new QLineEdit, 1, 0, 1, 4);
         root->addWidget(groupBox(QStringLiteral("Debug logging"), logging), 1);
+        connect(configsPath, &QLineEdit::editingFinished, this, [this]() { refreshConfigList(); });
         return page;
     }
 
@@ -3628,6 +3641,7 @@ private:
         updateMouseExtraState();
         romsPath->setText(QDir::homePath());
         configsPath->setText(QDir::homePath());
+        refreshConfigList();
         status->setText(QStringLiteral("Ready"));
     }
 
@@ -4612,6 +4626,9 @@ private:
         WinUaeQtConfig::Settings settings;
         const int cpu = selectedCpuModel();
         const int fpu = fpuModelConfigValue(cpu);
+        if (configDescription && !configDescription->text().trimmed().isEmpty()) {
+            settings.insert(QStringLiteral("config_description"), configDescription->text().trimmed());
+        }
         settings.insert(QStringLiteral("kickstart_rom_file"), romFile->currentText());
         if (!extendedRomFile->currentText().isEmpty()) {
             settings.insert(QStringLiteral("kickstart_ext_rom_file"), extendedRomFile->currentText());
@@ -4847,6 +4864,7 @@ private:
     QStringList uiOwnedKeys() const
     {
         return {
+            QStringLiteral("config_description"),
             QStringLiteral("kickstart_rom_file"),
             QStringLiteral("kickstart_ext_rom_file"),
             QStringLiteral("cart_file"),
@@ -5030,6 +5048,149 @@ private:
         return qMax(1, count);
     }
 
+    QString configurationDirectory() const
+    {
+        if (configsPath && !configsPath->text().trimmed().isEmpty()) {
+            return configsPath->text().trimmed();
+        }
+        return QDir::homePath();
+    }
+
+    QString normalizedConfigName() const
+    {
+        QString name = configName ? configName->currentText().trimmed() : QString();
+        if (name.endsWith(QStringLiteral(".uae"), Qt::CaseInsensitive)) {
+            name.chop(4);
+        }
+        return name;
+    }
+
+    QString namedConfigPath() const
+    {
+        const QString name = normalizedConfigName();
+        if (name.isEmpty()) {
+            return QString();
+        }
+        return QDir(configurationDirectory()).filePath(name + QStringLiteral(".uae"));
+    }
+
+    QString selectedConfigPath() const
+    {
+        if (!configTree || !configTree->currentItem()) {
+            return QString();
+        }
+        return configTree->currentItem()->data(0, Qt::UserRole).toString();
+    }
+
+    void refreshConfigList()
+    {
+        if (!configTree) {
+            return;
+        }
+        const QString selectedPath = configPath ? configPath->text() : QString();
+        const QString search = configSearch ? configSearch->text().trimmed() : QString();
+        const QString filter = configFilter ? configFilter->currentText() : QStringLiteral("All configurations");
+        QSignalBlocker blocker(configTree);
+        configTree->clear();
+        QTreeWidgetItem *root = new QTreeWidgetItem(configTree, QStringList(QStringLiteral("Configurations")));
+        root->setIcon(0, resourceIcon(QStringLiteral("configfile.ico")));
+
+        QDir dir(configurationDirectory());
+        const QFileInfoList files = dir.entryInfoList({ QStringLiteral("*.uae") }, QDir::Files, QDir::Name | QDir::IgnoreCase);
+        QTreeWidgetItem *selected = nullptr;
+        for (const QFileInfo &info : files) {
+            WinUaeQtConfig config;
+            config.load(info.absoluteFilePath());
+            const QString description = config.value(QStringLiteral("config_description"));
+            const bool isHardware = configBoolValue(config.value(QStringLiteral("config_hardware")));
+            const bool isHost = configBoolValue(config.value(QStringLiteral("config_host")));
+            if (filter == QStringLiteral("Host") && !isHost) {
+                continue;
+            }
+            if (filter == QStringLiteral("Hardware") && !isHardware) {
+                continue;
+            }
+            if (!search.isEmpty()
+                && !info.completeBaseName().contains(search, Qt::CaseInsensitive)
+                && !description.contains(search, Qt::CaseInsensitive)) {
+                continue;
+            }
+            QTreeWidgetItem *item = new QTreeWidgetItem(root, QStringList(info.completeBaseName()));
+            item->setIcon(0, resourceIcon(QStringLiteral("configfile.ico")));
+            item->setData(0, Qt::UserRole, info.absoluteFilePath());
+            item->setData(0, Qt::UserRole + 1, description);
+            item->setToolTip(0, description.isEmpty() ? info.absoluteFilePath() : description);
+            if (info.absoluteFilePath() == selectedPath) {
+                selected = item;
+            }
+        }
+        root->setExpanded(true);
+        if (selected) {
+            configTree->setCurrentItem(selected);
+        }
+    }
+
+    void selectConfigFromTree()
+    {
+        const QString path = selectedConfigPath();
+        if (path.isEmpty()) {
+            return;
+        }
+        configPath->setText(path);
+        configName->setCurrentText(QFileInfo(path).completeBaseName());
+        configDescription->setText(configTree->currentItem()->data(0, Qt::UserRole + 1).toString());
+    }
+
+    void loadSelectedConfig()
+    {
+        QString path = selectedConfigPath();
+        if (path.isEmpty()) {
+            path = !configPath->text().trimmed().isEmpty() ? configPath->text().trimmed() : namedConfigPath();
+        }
+        if (path.isEmpty() || !QFileInfo::exists(path)) {
+            QMessageBox::warning(this, windowTitle(), QStringLiteral("Select a configuration to load."));
+            return;
+        }
+        loadConfig(path);
+    }
+
+    void saveNamedConfig()
+    {
+        QString path = !configPath->text().trimmed().isEmpty() ? configPath->text().trimmed() : namedConfigPath();
+        if (path.isEmpty()) {
+            QMessageBox::warning(this, windowTitle(), QStringLiteral("Enter a configuration name before saving."));
+            return;
+        }
+        QDir().mkpath(QFileInfo(path).absolutePath());
+        saveConfig(path);
+        refreshConfigList();
+    }
+
+    void deleteSelectedConfig()
+    {
+        QString path = selectedConfigPath();
+        if (path.isEmpty()) {
+            path = configPath->text().trimmed();
+        }
+        if (path.isEmpty() || !QFileInfo::exists(path)) {
+            QMessageBox::warning(this, windowTitle(), QStringLiteral("Select a configuration to delete."));
+            return;
+        }
+        const QString name = QFileInfo(path).fileName();
+        if (QMessageBox::question(this, windowTitle(), QStringLiteral("Delete configuration %1?").arg(name)) != QMessageBox::Yes) {
+            return;
+        }
+        if (!QFile::remove(path)) {
+            QMessageBox::warning(this, windowTitle(), QStringLiteral("Could not delete %1").arg(path));
+            return;
+        }
+        if (configPath->text() == path) {
+            configPath->clear();
+        }
+        refreshConfigList();
+        status->setText(QStringLiteral("Deleted %1").arg(path));
+    }
+
     void loadConfigDialog()
     {
         const QString path = QFileDialog::getOpenFileName(this, QStringLiteral("Load configuration"), configsPath->text(), QStringLiteral("WinUAE configuration (*.uae);;All files (*)"));
@@ -5057,6 +5218,9 @@ private:
         if (mountedDrives) {
             mountedDrives->clear();
         }
+        if (configDescription) {
+            configDescription->clear();
+        }
         clearCdSlots();
         for (const WinUaeQtConfig::Setting &setting : config.orderedSettings()) {
             applySetting(setting.key, setting.value);
@@ -5065,12 +5229,15 @@ private:
         loadedConfig = config;
         configPath->setText(path);
         configName->setCurrentText(QFileInfo(path).completeBaseName());
+        refreshConfigList();
         status->setText(QStringLiteral("Loaded %1").arg(path));
     }
 
     void applySetting(const QString &key, const QString &value)
     {
-        if (key == QStringLiteral("kickstart_rom_file")) {
+        if (key == QStringLiteral("config_description")) {
+            configDescription->setText(value);
+        } else if (key == QStringLiteral("kickstart_rom_file")) {
             romFile->setCurrentText(value);
         } else if (key == QStringLiteral("kickstart_ext_rom_file")) {
             extendedRomFile->setCurrentText(value);
@@ -5476,6 +5643,7 @@ private:
         loadedConfig = config;
         configPath->setText(path);
         configName->setCurrentText(QFileInfo(path).completeBaseName());
+        refreshConfigList();
         status->setText(QStringLiteral("Saved %1").arg(path));
     }
 
