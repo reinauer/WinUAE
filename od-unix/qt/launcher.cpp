@@ -1670,6 +1670,24 @@ private:
     QLineEdit *emulatorPath = nullptr;
     QLineEdit *romsPath = nullptr;
     QLineEdit *configsPath = nullptr;
+    QLineEdit *nvramPath = nullptr;
+    QLineEdit *screenshotsPath = nullptr;
+    QLineEdit *stateFilesPath = nullptr;
+    QLineEdit *videosPath = nullptr;
+    QLineEdit *saveImagesPath = nullptr;
+    QLineEdit *ripsPath = nullptr;
+    QLineEdit *dataPath = nullptr;
+    QLineEdit *logPath = nullptr;
+    QCheckBox *recursiveRoms = nullptr;
+    QCheckBox *cacheConfigurations = nullptr;
+    QCheckBox *cacheBoxArt = nullptr;
+    QCheckBox *saveImageOriginalPath = nullptr;
+    QCheckBox *relativePaths = nullptr;
+    QCheckBox *portableMode = nullptr;
+    QCheckBox *fullLogging = nullptr;
+    QCheckBox *logWindow = nullptr;
+    QComboBox *pathDefaultType = nullptr;
+    QComboBox *logSelect = nullptr;
     WinUaeQtLauncherBackend launcherBackend;
     WinUaeQtConfig loadedConfig;
     WinUaeQtLauncherResult result;
@@ -3094,32 +3112,144 @@ private:
         emulatorPath = new QLineEdit;
         romsPath = new QLineEdit;
         configsPath = new QLineEdit;
+        nvramPath = new QLineEdit;
+        screenshotsPath = new QLineEdit;
+        stateFilesPath = new QLineEdit;
+        videosPath = new QLineEdit;
+        saveImagesPath = new QLineEdit;
+        ripsPath = new QLineEdit;
+        recursiveRoms = new QCheckBox(QStringLiteral("Scan subfolders"));
+        cacheConfigurations = new QCheckBox(QStringLiteral("Cache Configuration files"));
+        cacheBoxArt = new QCheckBox(QStringLiteral("Cache Boxart files"));
+        saveImageOriginalPath = new QCheckBox(QStringLiteral("Use original image's path"));
         addLineBrowseRow(paths, 0, QStringLiteral("Emulator executable:"), emulatorPath);
-        addLineBrowseRow(paths, 1, QStringLiteral("System ROMs:"), romsPath, true);
-        addLineBrowseRow(paths, 2, QStringLiteral("Configuration files:"), configsPath, true);
-        addLineBrowseRow(paths, 3, QStringLiteral("NVRAM files:"), new QLineEdit, true);
-        addLineBrowseRow(paths, 4, QStringLiteral("Screenshots:"), new QLineEdit, true);
-        addLineBrowseRow(paths, 5, QStringLiteral("State files:"), new QLineEdit, true);
-        addLineBrowseRow(paths, 6, QStringLiteral("Videos:"), new QLineEdit, true);
+        paths->addWidget(recursiveRoms, 1, 1);
+        addLineBrowseRow(paths, 2, QStringLiteral("System ROMs:"), romsPath, true);
+        QHBoxLayout *cacheOptions = new QHBoxLayout;
+        cacheOptions->setContentsMargins(0, 0, 0, 0);
+        cacheOptions->addWidget(cacheConfigurations);
+        cacheOptions->addWidget(cacheBoxArt);
+        cacheOptions->addStretch();
+        paths->addLayout(cacheOptions, 3, 1, 1, 2);
+        addLineBrowseRow(paths, 4, QStringLiteral("Configuration files:"), configsPath, true);
+        addLineBrowseRow(paths, 5, QStringLiteral("NVRAM files:"), nvramPath, true);
+        addLineBrowseRow(paths, 6, QStringLiteral("Screenshots:"), screenshotsPath, true);
+        addLineBrowseRow(paths, 7, QStringLiteral("State files:"), stateFilesPath, true);
+        addLineBrowseRow(paths, 8, QStringLiteral("Videos:"), videosPath, true);
+        paths->addWidget(saveImageOriginalPath, 9, 1);
+        addLineBrowseRow(paths, 10, QStringLiteral("Saveimages:"), saveImagesPath, true);
+        addLineBrowseRow(paths, 11, QStringLiteral("Rips:"), ripsPath, true);
         root->addLayout(paths);
 
         QHBoxLayout *actions = new QHBoxLayout;
-        actions->addWidget(new QPushButton(QStringLiteral("Set Path")));
-        actions->addWidget(combo({ QStringLiteral("System ROMs"), QStringLiteral("Configuration files"), QStringLiteral("State files") }));
+        QPushButton *setPath = new QPushButton(QStringLiteral("Set Path"));
+        pathDefaultType = combo({ QStringLiteral("Application directory"), QStringLiteral("User data directory"), QStringLiteral("Custom data directory") }, QStringLiteral("User data directory"));
+        actions->addWidget(setPath);
+        actions->addWidget(pathDefaultType);
         actions->addStretch();
-        actions->addWidget(new QCheckBox(QStringLiteral("Use relative paths")));
-        actions->addWidget(new QCheckBox(QStringLiteral("Portable mode")));
+        relativePaths = new QCheckBox(QStringLiteral("Use relative paths"));
+        portableMode = new QCheckBox(QStringLiteral("Portable mode"));
+        actions->addWidget(relativePaths);
+        actions->addWidget(portableMode);
         root->addLayout(actions);
 
+        QGridLayout *data = new QGridLayout;
+        data->setColumnStretch(1, 1);
+        dataPath = new QLineEdit;
+        addLineBrowseRow(data, 0, QStringLiteral("Data path:"), dataPath, true);
+        QPushButton *rescanRoms = new QPushButton(QStringLiteral("Rescan ROMs"));
+        QPushButton *clearDiskHistory = new QPushButton(QStringLiteral("Clear disk history"));
+        QPushButton *clearRegistry = new QPushButton(QStringLiteral("Clear registry"));
+        rescanRoms->setEnabled(false);
+        clearDiskHistory->setEnabled(false);
+        clearRegistry->setEnabled(false);
+        data->addWidget(rescanRoms, 1, 0);
+        data->addWidget(clearDiskHistory, 1, 1);
+        data->addWidget(clearRegistry, 1, 2);
+        root->addLayout(data);
+
         QGridLayout *logging = new QGridLayout;
-        logging->addWidget(combo({ QStringLiteral("winuaelog.txt"), QStringLiteral("config.log") }), 0, 0);
-        logging->addWidget(new QCheckBox(QStringLiteral("Enable full logging")), 0, 1);
-        logging->addWidget(new QCheckBox(QStringLiteral("Log window")), 0, 2);
-        logging->addWidget(new QPushButton(QStringLiteral("Save All")), 0, 3);
-        logging->addWidget(new QLineEdit, 1, 0, 1, 4);
-        root->addWidget(groupBox(QStringLiteral("Debug logging"), logging), 1);
-        connect(configsPath, &QLineEdit::editingFinished, this, [this]() { refreshConfigList(); });
+        logging->setColumnStretch(0, 1);
+        logSelect = combo({ QStringLiteral("winuaebootlog.txt"), QStringLiteral("winuaelog.txt"), QStringLiteral("Current configuration") });
+        fullLogging = new QCheckBox(QStringLiteral("Enable full logging"));
+        logWindow = new QCheckBox(QStringLiteral("Log window"));
+        QPushButton *saveAllLogs = new QPushButton(QStringLiteral("Save All"));
+        QPushButton *openLog = new QPushButton(QStringLiteral("Open"));
+        saveAllLogs->setEnabled(false);
+        openLog->setEnabled(false);
+        logPath = new QLineEdit;
+        logPath->setReadOnly(true);
+        logging->addWidget(logSelect, 0, 0);
+        logging->addWidget(fullLogging, 0, 1);
+        logging->addWidget(logWindow, 0, 2);
+        logging->addWidget(saveAllLogs, 0, 3);
+        logging->addWidget(openLog, 1, 3);
+        logging->addWidget(logPath, 1, 0, 1, 3);
+        root->addWidget(groupBox(QStringLiteral("Debug logging"), logging));
+        root->addStretch(1);
+        connect(configsPath, &QLineEdit::textChanged, this, [this]() { refreshConfigList(); });
+        connect(configsPath, &QLineEdit::textChanged, this, [this]() { updateLogPathText(); });
+        connect(setPath, &QPushButton::clicked, this, [this]() { applySelectedPathDefaults(); });
+        connect(logSelect, &QComboBox::currentTextChanged, this, [this](const QString &) { updateLogPathText(); });
+        if (configName) {
+            connect(configName, &QComboBox::currentTextChanged, this, [this](const QString &) { updateLogPathText(); });
+        }
         return page;
+    }
+
+    void applySelectedPathDefaults()
+    {
+        QString base;
+        if (pathDefaultType && pathDefaultType->currentText() == QStringLiteral("Application directory")) {
+            base = QCoreApplication::applicationDirPath();
+        } else if (pathDefaultType && pathDefaultType->currentText() == QStringLiteral("Custom data directory")) {
+            base = dataPath ? dataPath->text().trimmed() : QString();
+        }
+        if (base.isEmpty()) {
+            base = QDir::homePath();
+        }
+        if (dataPath) {
+            dataPath->setText(base);
+        }
+        const QDir dir(base);
+        if (romsPath) {
+            romsPath->setText(dir.filePath(QStringLiteral("ROMs")));
+        }
+        if (configsPath) {
+            configsPath->setText(dir.filePath(QStringLiteral("Configurations")));
+        }
+        if (nvramPath) {
+            nvramPath->setText(dir.filePath(QStringLiteral("NVRAMs")));
+        }
+        if (screenshotsPath) {
+            screenshotsPath->setText(dir.filePath(QStringLiteral("ScreenShots")));
+        }
+        if (stateFilesPath) {
+            stateFilesPath->setText(dir.filePath(QStringLiteral("Savestates")));
+        }
+        if (videosPath) {
+            videosPath->setText(dir.filePath(QStringLiteral("Videos")));
+        }
+        if (saveImagesPath) {
+            saveImagesPath->setText(dir.filePath(QStringLiteral("SaveImages")));
+        }
+        if (ripsPath) {
+            ripsPath->setText(dir.filePath(QStringLiteral("Rips")));
+        }
+        refreshConfigList();
+    }
+
+    void updateLogPathText()
+    {
+        if (!logSelect || !logPath) {
+            return;
+        }
+        const QString selected = logSelect->currentText();
+        if (selected == QStringLiteral("Current configuration")) {
+            logPath->setText(namedConfigPath());
+        } else {
+            logPath->setText(QDir::temp().filePath(selected));
+        }
     }
 
     QWidget *makeMiscPage()
@@ -3641,6 +3771,25 @@ private:
         updateMouseExtraState();
         romsPath->setText(QDir::homePath());
         configsPath->setText(QDir::homePath());
+        const QDir home(QDir::homePath());
+        nvramPath->setText(home.filePath(QStringLiteral("NVRAMs")));
+        screenshotsPath->setText(home.filePath(QStringLiteral("ScreenShots")));
+        stateFilesPath->setText(home.filePath(QStringLiteral("Savestates")));
+        videosPath->setText(home.filePath(QStringLiteral("Videos")));
+        saveImagesPath->setText(home.filePath(QStringLiteral("SaveImages")));
+        ripsPath->setText(home.filePath(QStringLiteral("Rips")));
+        dataPath->setText(QDir::homePath());
+        recursiveRoms->setChecked(false);
+        cacheConfigurations->setChecked(true);
+        cacheBoxArt->setChecked(false);
+        saveImageOriginalPath->setChecked(false);
+        relativePaths->setChecked(false);
+        portableMode->setChecked(false);
+        pathDefaultType->setCurrentText(QStringLiteral("User data directory"));
+        logSelect->setCurrentText(QStringLiteral("winuaebootlog.txt"));
+        fullLogging->setChecked(false);
+        logWindow->setChecked(false);
+        updateLogPathText();
         refreshConfigList();
         status->setText(QStringLiteral("Ready"));
     }
@@ -4629,6 +4778,12 @@ private:
         if (configDescription && !configDescription->text().trimmed().isEmpty()) {
             settings.insert(QStringLiteral("config_description"), configDescription->text().trimmed());
         }
+        if (romsPath && !romsPath->text().trimmed().isEmpty()) {
+            settings.insert(QStringLiteral("unix.rom_path"), romsPath->text().trimmed());
+        }
+        if (stateFilesPath && !stateFilesPath->text().trimmed().isEmpty()) {
+            settings.insert(QStringLiteral("statefile_path"), stateFilesPath->text().trimmed());
+        }
         settings.insert(QStringLiteral("kickstart_rom_file"), romFile->currentText());
         if (!extendedRomFile->currentText().isEmpty()) {
             settings.insert(QStringLiteral("kickstart_ext_rom_file"), extendedRomFile->currentText());
@@ -4865,6 +5020,8 @@ private:
     {
         return {
             QStringLiteral("config_description"),
+            QStringLiteral("unix.rom_path"),
+            QStringLiteral("statefile_path"),
             QStringLiteral("kickstart_rom_file"),
             QStringLiteral("kickstart_ext_rom_file"),
             QStringLiteral("cart_file"),
@@ -5237,6 +5394,10 @@ private:
     {
         if (key == QStringLiteral("config_description")) {
             configDescription->setText(value);
+        } else if (key == QStringLiteral("unix.rom_path") || key == QStringLiteral("rom_path")) {
+            romsPath->setText(value);
+        } else if (key == QStringLiteral("statefile_path")) {
+            stateFilesPath->setText(value);
         } else if (key == QStringLiteral("kickstart_rom_file")) {
             romFile->setCurrentText(value);
         } else if (key == QStringLiteral("kickstart_ext_rom_file")) {
