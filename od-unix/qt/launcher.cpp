@@ -1137,6 +1137,80 @@ static const MiscCheckChoice miscCheckChoices[] = {
     { "Warp mode reset", "warpboot", false }
 };
 
+struct AdvancedCheckChoice {
+    const char *display;
+    const char *key;
+    bool defaultChecked;
+};
+
+static const ConfigChoice rtcChoices[] = {
+    { "None", "none" },
+    { "MSM6242B", "MSM6242B" },
+    { "RF5C01A", "RP5C01A" },
+    { "A2000 MSM6242B", "MSM6242B_A2000" }
+};
+
+static const ConfigChoice ciaTodChoices[] = {
+    { "Vertical Sync", "vblank" },
+    { "Power Supply 50Hz", "50hz" },
+    { "Power Supply 60Hz", "60hz" }
+};
+
+static const ConfigChoice unmappedAddressChoices[] = {
+    { "Floating", "floating" },
+    { "All zeros", "zero" },
+    { "All ones", "one" }
+};
+
+static const ConfigChoice ciaSyncChoices[] = {
+    { "Autoselect", "default" },
+    { "68000", "68000" },
+    { "Gayle", "Gayle" },
+    { "68000 Alternate", "68000_opt" }
+};
+
+static const ConfigChoice agnusModelChoices[] = {
+    { "Auto", "default" },
+    { "Velvet", "velvet" },
+    { "A1000", "a1000" }
+};
+
+static const ConfigChoice agnusSizeChoices[] = {
+    { "Auto", "default" },
+    { "512k", "512k" },
+    { "1M", "1m" },
+    { "2M", "2m" }
+};
+
+static const ConfigChoice deniseModelChoices[] = {
+    { "Auto", "default" },
+    { "Velvet", "velvet" },
+    { "A1000 No-EHB", "a1000_noehb" },
+    { "A1000", "a1000" }
+};
+
+static const AdvancedCheckChoice advancedCheckChoices[] = {
+    { "CIA ROM Overlay", "cia_overlay", true },
+    { "CD32 CD", "cd32cd", false },
+    { "CDTV CD", "cdtvcd", false },
+    { "ROM Mirror (E0)", "ksmirror_e0", true },
+    { "KB Reset Warning", "resetwarning", true },
+    { "CIA TOD bug", "cia_todbug", false },
+    { "1M Chip / 0.5M+0.5M", "1mchipjumper", false },
+    { "Toshiba Gary", "toshiba_gary", false },
+    { "A1000 Boot RAM/ROM", "a1000ram", false },
+    { "CD32 C2P", "cd32c2p", false },
+    { "CDTV SRAM", "cdtvram", false },
+    { "ROM Mirror (A8)", "ksmirror_a8", false },
+    { "Z3 Autoconfig", "z3_autoconfig", false },
+    { "KS ROM has Chip RAM speed", "rom_is_slow", false },
+    { "CD32 NVRAM", "cd32nvram", false },
+    { "CDTV-CR", "cdtv-cr", false },
+    { "PCMCIA", "pcmcia", false },
+    { "Composite color burst", "color_burst", false },
+    { "Power up memory pattern", "memory_pattern", false }
+};
+
 static QIcon resourceIcon(const QString &name)
 {
     const QString path = sourceFile(QStringLiteral("od-win32/resources/") + name);
@@ -1162,6 +1236,20 @@ static QComboBox *combo(const QStringList &items, const QString &current = QStri
         }
     }
     return w;
+}
+
+static QButtonGroup *radioGroup(const ConfigChoice *choices, int count, int current, QWidget *parent, QGridLayout *layout)
+{
+    QButtonGroup *group = new QButtonGroup(parent);
+    for (int i = 0; i < count; i++) {
+        QRadioButton *button = new QRadioButton(QString::fromLatin1(choices[i].display));
+        group->addButton(button, i);
+        layout->addWidget(button, i / 4, i % 4);
+        if (i == current) {
+            button->setChecked(true);
+        }
+    }
+    return group;
 }
 
 static QComboBox *pathCombo()
@@ -1200,6 +1288,55 @@ static QString configChoiceDisplay(const ConfigChoice *choices, int count, const
         }
     }
     return QString::fromLatin1(choices[0].display);
+}
+
+static QString configChoiceValueAt(const ConfigChoice *choices, int count, int index)
+{
+    return QString::fromLatin1(choices[qBound(0, index, count - 1)].value);
+}
+
+static int configChoiceIndex(const ConfigChoice *choices, int count, const QString &value)
+{
+    for (int i = 0; i < count; i++) {
+        if (value.compare(QString::fromLatin1(choices[i].value), Qt::CaseInsensitive) == 0) {
+            return i;
+        }
+    }
+    return 0;
+}
+
+static int configIntegerValue(const QString &value, bool *ok)
+{
+    bool localOk = false;
+    int result = value.trimmed().toInt(&localOk, 0);
+    if (!localOk) {
+        result = value.trimmed().toInt(&localOk, 16);
+    }
+    if (ok) {
+        *ok = localOk;
+    }
+    return result;
+}
+
+static QString chipsetRevisionText(int value)
+{
+    if (value < 0) {
+        return QString();
+    }
+    return QStringLiteral("%1").arg(qBound(0, value, 255), 2, 16, QLatin1Char('0')).toUpper();
+}
+
+static QString chipsetRevisionConfigValue(QCheckBox *enabled, QLineEdit *field, int defaultValue)
+{
+    if (!enabled || !enabled->isChecked()) {
+        return QStringLiteral("-1");
+    }
+    bool ok = false;
+    int value = field ? field->text().trimmed().toInt(&ok, 16) : defaultValue;
+    if (!ok) {
+        value = defaultValue;
+    }
+    return QString::number(qBound(0, value, 255));
 }
 
 static QStringList unixSerialPortItems()
@@ -1548,6 +1685,7 @@ public:
         addPage(QStringLiteral("Quickstart"), QStringLiteral("quickstart.ico"), makeQuickstartPage());
         addPage(QStringLiteral("CPU and FPU"), QStringLiteral("cpu.ico"), makeCpuPage());
         addPage(QStringLiteral("Chipset"), QStringLiteral("chip.ico"), makeChipsetPage());
+        addPage(QStringLiteral("Adv. Chipset"), QStringLiteral("chip.ico"), makeAdvancedChipsetPage());
         addPage(QStringLiteral("ROM"), QStringLiteral("chip.ico"), makeRomPage());
         addPage(QStringLiteral("RAM"), QStringLiteral("chip.ico"), makeMemoryPage());
         addPage(QStringLiteral("Floppy drives"), QStringLiteral("35floppy.ico"), makeFloppyPage());
@@ -1705,6 +1843,25 @@ private:
     QCheckBox *waitingBlits = nullptr;
     QComboBox *displayOptimization = nullptr;
     QButtonGroup *collisionButtons = nullptr;
+    QCheckBox *advancedCompatible = nullptr;
+    QButtonGroup *advancedRtcButtons = nullptr;
+    QLineEdit *advancedRtcAdjust = nullptr;
+    QButtonGroup *advancedCiaTodButtons = nullptr;
+    QMap<QString, QCheckBox*> advancedCheckBoxes;
+    QCheckBox *advancedIdeA600A1200 = nullptr;
+    QCheckBox *advancedIdeA4000 = nullptr;
+    QCheckBox *advancedScsiA3000 = nullptr;
+    QCheckBox *advancedScsiA4000T = nullptr;
+    QCheckBox *advancedCia391078 = nullptr;
+    QComboBox *advancedUnmappedAddress = nullptr;
+    QComboBox *advancedCiaSync = nullptr;
+    QCheckBox *advancedRamsey = nullptr;
+    QLineEdit *advancedRamseyRevision = nullptr;
+    QCheckBox *advancedFatGary = nullptr;
+    QLineEdit *advancedFatGaryRevision = nullptr;
+    QComboBox *advancedAgnusModel = nullptr;
+    QComboBox *advancedAgnusSize = nullptr;
+    QComboBox *advancedDeniseModel = nullptr;
 
     QComboBox *chipMem = nullptr;
     QComboBox *z2Fast = nullptr;
@@ -2312,6 +2469,161 @@ private:
                 immediateBlits->setChecked(false);
             }
         });
+        return page;
+    }
+
+    QWidget *makeAdvancedChipsetPage()
+    {
+        QWidget *page = makePage();
+        QVBoxLayout *outer = new QVBoxLayout(page);
+        outer->setContentsMargins(0, 0, 0, 0);
+
+        QWidget *content = new QWidget;
+        QVBoxLayout *root = new QVBoxLayout(content);
+        root->setContentsMargins(4, 4, 4, 4);
+        root->setSpacing(6);
+
+        advancedCompatible = new QCheckBox(QStringLiteral("Compatible Settings"));
+        root->addWidget(advancedCompatible);
+
+        advancedRtcAdjust = new QLineEdit;
+        advancedRtcAdjust->setFixedWidth(64);
+        advancedRtcAdjust->setValidator(new QIntValidator(-100000, 100000, this));
+        QGridLayout *rtc = new QGridLayout;
+        advancedRtcButtons = radioGroup(rtcChoices, int(sizeof(rtcChoices) / sizeof(rtcChoices[0])), 0, this, rtc);
+        rtc->addWidget(label(QStringLiteral("Adjust:")), 0, 4);
+        rtc->addWidget(advancedRtcAdjust, 0, 5);
+        rtc->setColumnStretch(6, 1);
+        root->addWidget(groupBox(QStringLiteral("RTC"), rtc));
+
+        QGridLayout *tod = new QGridLayout;
+        advancedCiaTodButtons = radioGroup(ciaTodChoices, int(sizeof(ciaTodChoices) / sizeof(ciaTodChoices[0])), 0, this, tod);
+        tod->setColumnStretch(3, 1);
+        root->addWidget(groupBox(QStringLiteral("CIA-A TOD"), tod));
+
+        advancedCheckBoxes.clear();
+        auto featureCheck = [this](const QString &text, const QString &key) {
+            QCheckBox *box = new QCheckBox(text);
+            advancedCheckBoxes.insert(key, box);
+            return box;
+        };
+        auto disabledFeature = [](const QString &text) {
+            QCheckBox *box = new QCheckBox(text);
+            box->setEnabled(false);
+            return box;
+        };
+
+        advancedIdeA600A1200 = new QCheckBox(QStringLiteral("A600/A1200 IDE"));
+        advancedIdeA4000 = new QCheckBox(QStringLiteral("A4000/A4000T IDE"));
+        advancedCia391078 = new QCheckBox(QStringLiteral("CIA 391078-01"));
+        QGridLayout *features = new QGridLayout;
+        features->setColumnStretch(0, 1);
+        features->setColumnStretch(1, 1);
+        features->setColumnStretch(2, 1);
+        features->addWidget(featureCheck(QStringLiteral("CIA ROM Overlay"), QStringLiteral("cia_overlay")), 0, 0);
+        features->addWidget(featureCheck(QStringLiteral("CD32 CD"), QStringLiteral("cd32cd")), 1, 0);
+        features->addWidget(featureCheck(QStringLiteral("CDTV CD"), QStringLiteral("cdtvcd")), 2, 0);
+        features->addWidget(advancedIdeA600A1200, 3, 0);
+        features->addWidget(featureCheck(QStringLiteral("ROM Mirror (E0)"), QStringLiteral("ksmirror_e0")), 4, 0);
+        features->addWidget(featureCheck(QStringLiteral("KB Reset Warning"), QStringLiteral("resetwarning")), 5, 0);
+        features->addWidget(featureCheck(QStringLiteral("CIA TOD bug"), QStringLiteral("cia_todbug")), 6, 0);
+        features->addWidget(featureCheck(QStringLiteral("1M Chip / 0.5M+0.5M"), QStringLiteral("1mchipjumper")), 7, 0);
+        features->addWidget(featureCheck(QStringLiteral("Toshiba Gary"), QStringLiteral("toshiba_gary")), 8, 0);
+        features->addWidget(featureCheck(QStringLiteral("A1000 Boot RAM/ROM"), QStringLiteral("a1000ram")), 0, 1);
+        features->addWidget(featureCheck(QStringLiteral("CD32 C2P"), QStringLiteral("cd32c2p")), 1, 1);
+        features->addWidget(featureCheck(QStringLiteral("CDTV SRAM"), QStringLiteral("cdtvram")), 2, 1);
+        features->addWidget(advancedIdeA4000, 3, 1);
+        features->addWidget(featureCheck(QStringLiteral("ROM Mirror (A8)"), QStringLiteral("ksmirror_a8")), 4, 1);
+        features->addWidget(featureCheck(QStringLiteral("Z3 Autoconfig"), QStringLiteral("z3_autoconfig")), 5, 1);
+        features->addWidget(disabledFeature(QStringLiteral("Custom register byte write bug")), 6, 1);
+        features->addWidget(featureCheck(QStringLiteral("KS ROM has Chip RAM speed"), QStringLiteral("rom_is_slow")), 7, 1);
+        features->addWidget(disabledFeature(QStringLiteral("DF0: ID Hardware")), 0, 2);
+        features->addWidget(featureCheck(QStringLiteral("CD32 NVRAM"), QStringLiteral("cd32nvram")), 1, 2);
+        features->addWidget(featureCheck(QStringLiteral("CDTV-CR"), QStringLiteral("cdtv-cr")), 2, 2);
+        features->addWidget(featureCheck(QStringLiteral("PCMCIA"), QStringLiteral("pcmcia")), 3, 2);
+        features->addWidget(featureCheck(QStringLiteral("Composite color burst"), QStringLiteral("color_burst")), 4, 2);
+        features->addWidget(advancedCia391078, 5, 2);
+        features->addWidget(featureCheck(QStringLiteral("Power up memory pattern"), QStringLiteral("memory_pattern")), 6, 2);
+        root->addWidget(groupBox(QStringLiteral("Chipset Features"), features));
+
+        advancedUnmappedAddress = combo(configChoiceDisplays(unmappedAddressChoices, int(sizeof(unmappedAddressChoices) / sizeof(unmappedAddressChoices[0]))), QStringLiteral("Floating"));
+        advancedCiaSync = combo(configChoiceDisplays(ciaSyncChoices, int(sizeof(ciaSyncChoices) / sizeof(ciaSyncChoices[0]))), QStringLiteral("Autoselect"));
+        advancedScsiA3000 = new QCheckBox(QStringLiteral("A3000 WD33C93 SCSI"));
+        advancedScsiA4000T = new QCheckBox(QStringLiteral("A4000T NCR53C710 SCSI"));
+        QGridLayout *lowLevel = new QGridLayout;
+        lowLevel->setColumnStretch(1, 1);
+        lowLevel->setColumnStretch(3, 1);
+        lowLevel->addWidget(label(QStringLiteral("Unmapped address space:")), 0, 0);
+        lowLevel->addWidget(advancedUnmappedAddress, 0, 1);
+        lowLevel->addWidget(label(QStringLiteral("CIA E-Clock Sync:")), 0, 2);
+        lowLevel->addWidget(advancedCiaSync, 0, 3);
+        lowLevel->addWidget(label(QStringLiteral("Internal SCSI Hardware:")), 1, 0);
+        lowLevel->addWidget(advancedScsiA3000, 1, 1);
+        lowLevel->addWidget(advancedScsiA4000T, 1, 2, 1, 2);
+        root->addWidget(groupBox(QStringLiteral("Low Level"), lowLevel));
+
+        advancedRamsey = new QCheckBox(QStringLiteral("Ramsey revision:"));
+        advancedRamseyRevision = new QLineEdit;
+        advancedRamseyRevision->setFixedWidth(45);
+        advancedFatGary = new QCheckBox(QStringLiteral("Fat Gary revision:"));
+        advancedFatGaryRevision = new QLineEdit;
+        advancedFatGaryRevision->setFixedWidth(45);
+        QRegularExpressionValidator *hexByte = new QRegularExpressionValidator(QRegularExpression(QStringLiteral("[0-9A-Fa-f]{0,2}")), this);
+        advancedRamseyRevision->setValidator(hexByte);
+        advancedFatGaryRevision->setValidator(hexByte);
+        advancedAgnusModel = combo(configChoiceDisplays(agnusModelChoices, int(sizeof(agnusModelChoices) / sizeof(agnusModelChoices[0]))), QStringLiteral("Auto"));
+        advancedAgnusSize = combo(configChoiceDisplays(agnusSizeChoices, int(sizeof(agnusSizeChoices) / sizeof(agnusSizeChoices[0]))), QStringLiteral("Auto"));
+        advancedDeniseModel = combo(configChoiceDisplays(deniseModelChoices, int(sizeof(deniseModelChoices) / sizeof(deniseModelChoices[0]))), QStringLiteral("Auto"));
+        QGridLayout *revision = new QGridLayout;
+        revision->setColumnStretch(5, 1);
+        revision->addWidget(advancedRamsey, 0, 0);
+        revision->addWidget(advancedRamseyRevision, 0, 1);
+        revision->addWidget(label(QStringLiteral("Agnus/Alice model:")), 0, 2);
+        revision->addWidget(advancedAgnusModel, 0, 3);
+        revision->addWidget(advancedAgnusSize, 0, 4);
+        revision->addWidget(advancedFatGary, 1, 0);
+        revision->addWidget(advancedFatGaryRevision, 1, 1);
+        revision->addWidget(label(QStringLiteral("Denise/Lisa model:")), 1, 2);
+        revision->addWidget(advancedDeniseModel, 1, 3, 1, 2);
+        root->addWidget(groupBox(QStringLiteral("Chipset Revision"), revision));
+        root->addStretch(1);
+
+        QScrollArea *scroll = new QScrollArea;
+        scroll->setFrameShape(QFrame::NoFrame);
+        scroll->setWidgetResizable(true);
+        scroll->setWidget(content);
+        outer->addWidget(scroll);
+
+        connect(advancedCompatible, &QCheckBox::toggled, this, [this](bool checked) {
+            if (checked && chipsetCompatible->currentText() == QStringLiteral("-")) {
+                chipsetCompatible->setCurrentText(QStringLiteral("Generic"));
+            } else if (!checked && chipsetCompatible->currentText() != QStringLiteral("-")) {
+                chipsetCompatible->setCurrentText(QStringLiteral("-"));
+            }
+        });
+        connect(chipsetCompatible, &QComboBox::currentTextChanged, this, [this](const QString &text) {
+            setCheckBoxIfChanged(advancedCompatible, text != QStringLiteral("-"));
+            applyAdvancedChipsetPreset(text);
+        });
+        connect(advancedIdeA600A1200, &QCheckBox::toggled, this, [this](bool checked) {
+            if (checked) {
+                advancedIdeA4000->setChecked(false);
+            }
+        });
+        connect(advancedIdeA4000, &QCheckBox::toggled, this, [this](bool checked) {
+            if (checked) {
+                advancedIdeA600A1200->setChecked(false);
+            }
+        });
+        auto updateRevisionState = [this]() {
+            advancedRamseyRevision->setEnabled(advancedRamsey->isChecked());
+            advancedFatGaryRevision->setEnabled(advancedFatGary->isChecked());
+        };
+        connect(advancedRamsey, &QCheckBox::toggled, this, updateRevisionState);
+        connect(advancedFatGary, &QCheckBox::toggled, this, updateRevisionState);
+
+        applyAdvancedChipsetPreset(chipsetCompatible->currentText());
+        updateRevisionState();
         return page;
     }
 
@@ -4144,6 +4456,180 @@ private:
         updateJitCacheLabel();
     }
 
+    void setAdvancedCheck(const QString &key, bool checked)
+    {
+        if (QCheckBox *box = advancedCheckBoxes.value(key, nullptr)) {
+            setCheckBoxIfChanged(box, checked);
+        }
+    }
+
+    bool advancedCheck(const QString &key) const
+    {
+        if (QCheckBox *box = advancedCheckBoxes.value(key, nullptr)) {
+            return box->isChecked();
+        }
+        return false;
+    }
+
+    void setAdvancedRadioValue(QButtonGroup *group, const ConfigChoice *choices, int count, const QString &value)
+    {
+        if (!group) {
+            return;
+        }
+        if (QAbstractButton *button = group->button(configChoiceIndex(choices, count, value))) {
+            button->setChecked(true);
+        }
+    }
+
+    QString advancedRadioValue(QButtonGroup *group, const ConfigChoice *choices, int count) const
+    {
+        return configChoiceValueAt(choices, count, group ? group->checkedId() : 0);
+    }
+
+    void setAdvancedRevision(QCheckBox *enabled, QLineEdit *field, int value, int defaultValue)
+    {
+        if (!enabled || !field) {
+            return;
+        }
+        enabled->setChecked(value >= 0);
+        field->setText(chipsetRevisionText(value >= 0 ? value : defaultValue));
+        field->setEnabled(value >= 0);
+    }
+
+    void resetAdvancedChipsetBase()
+    {
+        if (!advancedRtcButtons) {
+            return;
+        }
+        for (const AdvancedCheckChoice &choice : advancedCheckChoices) {
+            setAdvancedCheck(QString::fromLatin1(choice.key), choice.defaultChecked);
+        }
+        setAdvancedRadioValue(advancedRtcButtons, rtcChoices, int(sizeof(rtcChoices) / sizeof(rtcChoices[0])), QStringLiteral("none"));
+        setAdvancedRadioValue(advancedCiaTodButtons, ciaTodChoices, int(sizeof(ciaTodChoices) / sizeof(ciaTodChoices[0])), QStringLiteral("vblank"));
+        advancedRtcAdjust->setText(QStringLiteral("0"));
+        advancedIdeA600A1200->setChecked(false);
+        advancedIdeA4000->setChecked(false);
+        advancedScsiA3000->setChecked(false);
+        advancedScsiA4000T->setChecked(false);
+        advancedCia391078->setChecked(false);
+        advancedUnmappedAddress->setCurrentText(QStringLiteral("Floating"));
+        advancedCiaSync->setCurrentText(QStringLiteral("Autoselect"));
+        setAdvancedRevision(advancedRamsey, advancedRamseyRevision, -1, 0x0f);
+        setAdvancedRevision(advancedFatGary, advancedFatGaryRevision, -1, 0x00);
+        advancedAgnusModel->setCurrentText(QStringLiteral("Auto"));
+        advancedAgnusSize->setCurrentText(QStringLiteral("Auto"));
+        advancedDeniseModel->setCurrentText(QStringLiteral("Auto"));
+    }
+
+    void setAdvancedCiaTodForPowerSupply()
+    {
+        setAdvancedRadioValue(advancedCiaTodButtons, ciaTodChoices, int(sizeof(ciaTodChoices) / sizeof(ciaTodChoices[0])),
+            (ntsc && ntsc->isChecked()) ? QStringLiteral("60hz") : QStringLiteral("50hz"));
+    }
+
+    void applyAdvancedChipsetPreset(const QString &compatible)
+    {
+        if (!advancedRtcButtons) {
+            return;
+        }
+
+        resetAdvancedChipsetBase();
+        const QString value = compatible.trimmed();
+        setCheckBoxIfChanged(advancedCompatible, value != QStringLiteral("-"));
+        if (value == QStringLiteral("-")) {
+            return;
+        }
+        if (value == QStringLiteral("CDTV")) {
+            setAdvancedRadioValue(advancedRtcButtons, rtcChoices, int(sizeof(rtcChoices) / sizeof(rtcChoices[0])), QStringLiteral("MSM6242B"));
+            setAdvancedCheck(QStringLiteral("cdtvcd"), true);
+            setAdvancedCheck(QStringLiteral("cdtvram"), true);
+            setAdvancedCheck(QStringLiteral("ksmirror_e0"), false);
+        } else if (value == QStringLiteral("CDTV-CR")) {
+            setAdvancedRadioValue(advancedRtcButtons, rtcChoices, int(sizeof(rtcChoices) / sizeof(rtcChoices[0])), QStringLiteral("MSM6242B"));
+            setAdvancedCheck(QStringLiteral("cdtvcd"), true);
+            setAdvancedCheck(QStringLiteral("cdtvram"), true);
+            setAdvancedCheck(QStringLiteral("cdtv-cr"), true);
+            setAdvancedCheck(QStringLiteral("ksmirror_e0"), false);
+            setAdvancedCheck(QStringLiteral("ksmirror_a8"), true);
+            setAdvancedCheck(QStringLiteral("cia_overlay"), false);
+            setAdvancedCheck(QStringLiteral("resetwarning"), false);
+            setAdvancedCheck(QStringLiteral("cia_todbug"), true);
+            setAdvancedCheck(QStringLiteral("pcmcia"), true);
+            advancedIdeA600A1200->setChecked(true);
+        } else if (value == QStringLiteral("CD32")) {
+            setAdvancedCheck(QStringLiteral("cd32cd"), true);
+            setAdvancedCheck(QStringLiteral("cd32c2p"), true);
+            setAdvancedCheck(QStringLiteral("cd32nvram"), true);
+            setAdvancedCheck(QStringLiteral("ksmirror_e0"), false);
+            setAdvancedCheck(QStringLiteral("ksmirror_a8"), true);
+            setAdvancedCheck(QStringLiteral("cia_overlay"), false);
+            setAdvancedCheck(QStringLiteral("resetwarning"), false);
+            advancedUnmappedAddress->setCurrentText(QStringLiteral("All zeros"));
+            advancedCiaSync->setCurrentText(QStringLiteral("Gayle"));
+        } else if (value == QStringLiteral("A500")) {
+            setAdvancedCheck(QStringLiteral("resetwarning"), false);
+            setAdvancedCheck(QStringLiteral("cia_todbug"), true);
+        } else if (value == QStringLiteral("A500+")) {
+            setAdvancedRadioValue(advancedRtcButtons, rtcChoices, int(sizeof(rtcChoices) / sizeof(rtcChoices[0])), QStringLiteral("MSM6242B"));
+            setAdvancedCheck(QStringLiteral("resetwarning"), false);
+            setAdvancedCheck(QStringLiteral("cia_todbug"), true);
+        } else if (value == QStringLiteral("A600")) {
+            advancedIdeA600A1200->setChecked(true);
+            setAdvancedCheck(QStringLiteral("pcmcia"), true);
+            setAdvancedCheck(QStringLiteral("ksmirror_a8"), true);
+            setAdvancedCheck(QStringLiteral("cia_overlay"), false);
+            setAdvancedCheck(QStringLiteral("resetwarning"), false);
+            setAdvancedCheck(QStringLiteral("cia_todbug"), true);
+            advancedCia391078->setChecked(true);
+            advancedCiaSync->setCurrentText(QStringLiteral("Gayle"));
+        } else if (value == QStringLiteral("A1000")) {
+            setAdvancedCheck(QStringLiteral("a1000ram"), true);
+            setAdvancedCiaTodForPowerSupply();
+            setAdvancedCheck(QStringLiteral("ksmirror_e0"), false);
+            setAdvancedCheck(QStringLiteral("cia_todbug"), true);
+            advancedAgnusModel->setCurrentText(QStringLiteral("A1000"));
+            advancedDeniseModel->setCurrentText(QStringLiteral("A1000"));
+        } else if (value == QStringLiteral("A1200")) {
+            advancedIdeA600A1200->setChecked(true);
+            setAdvancedCheck(QStringLiteral("pcmcia"), true);
+            setAdvancedCheck(QStringLiteral("ksmirror_a8"), true);
+            setAdvancedCheck(QStringLiteral("cia_overlay"), false);
+            advancedCiaSync->setCurrentText(QStringLiteral("Gayle"));
+        } else if (value == QStringLiteral("A2000")) {
+            setAdvancedRadioValue(advancedRtcButtons, rtcChoices, int(sizeof(rtcChoices) / sizeof(rtcChoices[0])), QStringLiteral("MSM6242B"));
+            setAdvancedCiaTodForPowerSupply();
+            setAdvancedCheck(QStringLiteral("cia_todbug"), true);
+            advancedUnmappedAddress->setCurrentText(QStringLiteral("All zeros"));
+        } else if (value == QStringLiteral("A3000") || value == QStringLiteral("A3000T")) {
+            setAdvancedRadioValue(advancedRtcButtons, rtcChoices, int(sizeof(rtcChoices) / sizeof(rtcChoices[0])), QStringLiteral("RP5C01A"));
+            setAdvancedRevision(advancedFatGary, advancedFatGaryRevision, 0x00, 0x00);
+            setAdvancedRevision(advancedRamsey, advancedRamseyRevision, 0x0d, 0x0f);
+            advancedScsiA3000->setChecked(true);
+            setAdvancedCheck(QStringLiteral("ksmirror_e0"), false);
+            setAdvancedCiaTodForPowerSupply();
+            setAdvancedCheck(QStringLiteral("z3_autoconfig"), true);
+            advancedUnmappedAddress->setCurrentText(QStringLiteral("All zeros"));
+        } else if (value == QStringLiteral("A4000") || value == QStringLiteral("A4000T")) {
+            setAdvancedRadioValue(advancedRtcButtons, rtcChoices, int(sizeof(rtcChoices) / sizeof(rtcChoices[0])), QStringLiteral("RP5C01A"));
+            setAdvancedRevision(advancedFatGary, advancedFatGaryRevision, 0x00, 0x00);
+            setAdvancedRevision(advancedRamsey, advancedRamseyRevision, 0x0f, 0x0f);
+            advancedIdeA4000->setChecked(true);
+            setAdvancedCheck(QStringLiteral("ksmirror_e0"), false);
+            setAdvancedCheck(QStringLiteral("ksmirror_a8"), false);
+            setAdvancedCheck(QStringLiteral("z3_autoconfig"), true);
+            advancedUnmappedAddress->setCurrentText(QStringLiteral("All zeros"));
+            advancedCiaSync->setCurrentText(QStringLiteral("Gayle"));
+            if (value == QStringLiteral("A4000T")) {
+                advancedScsiA4000T->setChecked(true);
+            }
+        } else if (value == QStringLiteral("Velvet")) {
+            setAdvancedCiaTodForPowerSupply();
+            setAdvancedCheck(QStringLiteral("ksmirror_e0"), false);
+            advancedAgnusModel->setCurrentText(QStringLiteral("A1000"));
+            advancedDeniseModel->setCurrentText(QStringLiteral("A1000 No-EHB"));
+        }
+    }
+
     void resetDefaults()
     {
         loadedConfig = WinUaeQtConfig();
@@ -4182,6 +4668,7 @@ private:
         }
 
         applyModelPreset(QStringLiteral("A1200"));
+        applyAdvancedChipsetPreset(QStringLiteral("A1200"));
         setFpuButton(0);
         moreCompatible->setChecked(false);
         cpuDataCache->setChecked(false);
@@ -5429,6 +5916,32 @@ private:
         settings.insert(QStringLiteral("waiting_blits"), waitingBlits->isChecked() ? QStringLiteral("automatic") : QStringLiteral("disabled"));
         settings.insert(QStringLiteral("collision_level"), QStringList({ QStringLiteral("none"), QStringLiteral("sprites"), QStringLiteral("playfields"), QStringLiteral("full") }).value(collisionButtons->checkedId(), QStringLiteral("full")));
         settings.insert(QStringLiteral("display_optimizations"), displayOptimizationConfigValue(displayOptimization->currentText()));
+        settings.insert(QStringLiteral("ciaatod"), advancedRadioValue(advancedCiaTodButtons, ciaTodChoices, int(sizeof(ciaTodChoices) / sizeof(ciaTodChoices[0]))));
+        settings.insert(QStringLiteral("rtc"), advancedRadioValue(advancedRtcButtons, rtcChoices, int(sizeof(rtcChoices) / sizeof(rtcChoices[0]))));
+        settings.insert(QStringLiteral("chipset_rtc_adjust"), advancedRtcAdjust->text().trimmed().isEmpty() ? QStringLiteral("0") : advancedRtcAdjust->text().trimmed());
+        for (const AdvancedCheckChoice &choice : advancedCheckChoices) {
+            const QString key = QString::fromLatin1(choice.key);
+            settings.insert(key, advancedCheck(key) ? QStringLiteral("true") : QStringLiteral("false"));
+        }
+        settings.insert(QStringLiteral("ide"), advancedIdeA600A1200->isChecked()
+            ? QStringLiteral("a600/a1200")
+            : (advancedIdeA4000->isChecked() ? QStringLiteral("a4000") : QStringLiteral("none")));
+        settings.insert(QStringLiteral("scsi_a3000"), advancedScsiA3000->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
+        settings.insert(QStringLiteral("scsi_a4000t"), advancedScsiA4000T->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
+        settings.insert(QStringLiteral("ciaa_type"), advancedCia391078->isChecked() ? QStringLiteral("391078-01") : QStringLiteral("default"));
+        settings.insert(QStringLiteral("ciab_type"), advancedCia391078->isChecked() ? QStringLiteral("391078-01") : QStringLiteral("default"));
+        settings.insert(QStringLiteral("unmapped_address_space"),
+            configChoiceValue(unmappedAddressChoices, int(sizeof(unmappedAddressChoices) / sizeof(unmappedAddressChoices[0])), advancedUnmappedAddress->currentText()));
+        settings.insert(QStringLiteral("eclocksync"),
+            configChoiceValue(ciaSyncChoices, int(sizeof(ciaSyncChoices) / sizeof(ciaSyncChoices[0])), advancedCiaSync->currentText()));
+        settings.insert(QStringLiteral("fatgary"), chipsetRevisionConfigValue(advancedFatGary, advancedFatGaryRevision, 0x00));
+        settings.insert(QStringLiteral("ramsey"), chipsetRevisionConfigValue(advancedRamsey, advancedRamseyRevision, 0x0f));
+        settings.insert(QStringLiteral("agnusmodel"),
+            configChoiceValue(agnusModelChoices, int(sizeof(agnusModelChoices) / sizeof(agnusModelChoices[0])), advancedAgnusModel->currentText()));
+        settings.insert(QStringLiteral("agnussize"),
+            configChoiceValue(agnusSizeChoices, int(sizeof(agnusSizeChoices) / sizeof(agnusSizeChoices[0])), advancedAgnusSize->currentText()));
+        settings.insert(QStringLiteral("denisemodel"),
+            configChoiceValue(deniseModelChoices, int(sizeof(deniseModelChoices) / sizeof(deniseModelChoices[0])), advancedDeniseModel->currentText()));
         if (chipsetCycleExact->isChecked()) {
             settings.insert(QStringLiteral("cycle_exact"), QStringLiteral("true"));
             settings.insert(QStringLiteral("cpu_cycle_exact"), QStringLiteral("true"));
@@ -5720,6 +6233,40 @@ private:
             QStringLiteral("waiting_blits"),
             QStringLiteral("collision_level"),
             QStringLiteral("display_optimizations"),
+            QStringLiteral("ciaatod"),
+            QStringLiteral("rtc"),
+            QStringLiteral("chipset_rtc_adjust"),
+            QStringLiteral("cia_overlay"),
+            QStringLiteral("cd32cd"),
+            QStringLiteral("cdtvcd"),
+            QStringLiteral("ksmirror_e0"),
+            QStringLiteral("resetwarning"),
+            QStringLiteral("cia_todbug"),
+            QStringLiteral("1mchipjumper"),
+            QStringLiteral("toshiba_gary"),
+            QStringLiteral("a1000ram"),
+            QStringLiteral("cd32c2p"),
+            QStringLiteral("cdtvram"),
+            QStringLiteral("ksmirror_a8"),
+            QStringLiteral("z3_autoconfig"),
+            QStringLiteral("rom_is_slow"),
+            QStringLiteral("cd32nvram"),
+            QStringLiteral("cdtv-cr"),
+            QStringLiteral("pcmcia"),
+            QStringLiteral("color_burst"),
+            QStringLiteral("memory_pattern"),
+            QStringLiteral("ide"),
+            QStringLiteral("scsi_a3000"),
+            QStringLiteral("scsi_a4000t"),
+            QStringLiteral("ciaa_type"),
+            QStringLiteral("ciab_type"),
+            QStringLiteral("unmapped_address_space"),
+            QStringLiteral("eclocksync"),
+            QStringLiteral("fatgary"),
+            QStringLiteral("ramsey"),
+            QStringLiteral("agnusmodel"),
+            QStringLiteral("agnussize"),
+            QStringLiteral("denisemodel"),
             QStringLiteral("cycle_exact"),
             QStringLiteral("cpu_cycle_exact"),
             QStringLiteral("cpu_memory_cycle_exact"),
@@ -6205,6 +6752,46 @@ private:
             }
         } else if (key == QStringLiteral("display_optimizations")) {
             displayOptimization->setCurrentText(displayOptimizationText(value));
+        } else if (key == QStringLiteral("ciaatod")) {
+            setAdvancedRadioValue(advancedCiaTodButtons, ciaTodChoices, int(sizeof(ciaTodChoices) / sizeof(ciaTodChoices[0])), value);
+        } else if (key == QStringLiteral("rtc")) {
+            setAdvancedRadioValue(advancedRtcButtons, rtcChoices, int(sizeof(rtcChoices) / sizeof(rtcChoices[0])), value);
+        } else if (key == QStringLiteral("chipset_rtc_adjust")) {
+            advancedRtcAdjust->setText(value);
+        } else if (advancedCheckBoxes.contains(key)) {
+            setAdvancedCheck(key, configBoolValue(value));
+        } else if (key == QStringLiteral("ide")) {
+            const QString lower = value.toLower();
+            advancedIdeA600A1200->setChecked(lower == QStringLiteral("a600/a1200"));
+            advancedIdeA4000->setChecked(lower == QStringLiteral("a4000"));
+        } else if (key == QStringLiteral("scsi_a3000")) {
+            advancedScsiA3000->setChecked(configBoolValue(value));
+        } else if (key == QStringLiteral("scsi_a4000t")) {
+            advancedScsiA4000T->setChecked(configBoolValue(value));
+        } else if (key == QStringLiteral("ciaa_type")) {
+            advancedCia391078->setChecked(value.compare(QStringLiteral("391078-01"), Qt::CaseInsensitive) == 0);
+        } else if (key == QStringLiteral("ciab_type")) {
+            if (value.compare(QStringLiteral("391078-01"), Qt::CaseInsensitive) == 0) {
+                advancedCia391078->setChecked(true);
+            }
+        } else if (key == QStringLiteral("unmapped_address_space")) {
+            advancedUnmappedAddress->setCurrentText(configChoiceDisplay(unmappedAddressChoices, int(sizeof(unmappedAddressChoices) / sizeof(unmappedAddressChoices[0])), value));
+        } else if (key == QStringLiteral("eclocksync")) {
+            advancedCiaSync->setCurrentText(configChoiceDisplay(ciaSyncChoices, int(sizeof(ciaSyncChoices) / sizeof(ciaSyncChoices[0])), value));
+        } else if (key == QStringLiteral("fatgary") || key == QStringLiteral("ramsey")) {
+            bool ok = false;
+            const int revision = configIntegerValue(value, &ok);
+            if (key == QStringLiteral("fatgary")) {
+                setAdvancedRevision(advancedFatGary, advancedFatGaryRevision, ok ? revision : -1, 0x00);
+            } else {
+                setAdvancedRevision(advancedRamsey, advancedRamseyRevision, ok ? revision : -1, 0x0f);
+            }
+        } else if (key == QStringLiteral("agnusmodel")) {
+            advancedAgnusModel->setCurrentText(configChoiceDisplay(agnusModelChoices, int(sizeof(agnusModelChoices) / sizeof(agnusModelChoices[0])), value));
+        } else if (key == QStringLiteral("agnussize")) {
+            advancedAgnusSize->setCurrentText(configChoiceDisplay(agnusSizeChoices, int(sizeof(agnusSizeChoices) / sizeof(agnusSizeChoices[0])), value));
+        } else if (key == QStringLiteral("denisemodel")) {
+            advancedDeniseModel->setCurrentText(configChoiceDisplay(deniseModelChoices, int(sizeof(deniseModelChoices) / sizeof(deniseModelChoices[0])), value));
         } else if (key == QStringLiteral("cycle_exact")) {
             const QString lower = value.toLower();
             chipsetCycleExact->setChecked(lower == QStringLiteral("true"));
