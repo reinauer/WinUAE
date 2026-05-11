@@ -30,7 +30,6 @@
 #include "gui.h"
 #ifdef UAE_TARGET_UNIX
 #include "gui_unix.h"
-#include "startup_config.h"
 #endif
 #include "zfile.h"
 #include "autoconf.h"
@@ -1114,9 +1113,6 @@ static void parse_cmdline_and_init_file(int argc, TCHAR **argv)
 	}
 
 	parse_cmdline(argc, argv);
-#ifdef UAE_TARGET_UNIX
-	unix_startup_config_apply(&currprefs);
-#endif
 
 	fixup_prefs(&currprefs, false);
 }
