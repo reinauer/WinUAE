@@ -1,0 +1,194 @@
+#include "mount_config.h"
+
+#include <QFileInfo>
+
+QString winUaeQtConfigAccessValue(bool readOnly)
+{
+    return readOnly ? QStringLiteral("ro") : QStringLiteral("rw");
+}
+
+QString winUaeQtConfigEscapeMin(QString value)
+{
+    const bool needsQuote = value.contains(QLatin1Char(','))
+        || value.contains(QLatin1Char('"'))
+        || value.startsWith(QLatin1Char(' '))
+        || value.endsWith(QLatin1Char(' '));
+    if (!needsQuote) {
+        return value;
+    }
+    value.replace(QStringLiteral("\""), QStringLiteral("\\\""));
+    return QStringLiteral("\"%1\"").arg(value);
+}
+
+QString winUaeQtSanitizedAmigaName(QString value, const QString &fallback, bool uppercase)
+{
+    value = value.trimmed();
+    if (value.isEmpty()) {
+        value = fallback;
+    }
+    value.replace(QLatin1Char(':'), QLatin1Char('_'));
+    value.replace(QLatin1Char(','), QLatin1Char('_'));
+    if (uppercase) {
+        value = value.toUpper();
+    }
+    return value.left(30);
+}
+
+QString winUaeQtDefaultVolumeName(const QString &path)
+{
+    const QString baseName = QFileInfo(path).completeBaseName();
+    return winUaeQtSanitizedAmigaName(baseName, QStringLiteral("Hard Disk"), false);
+}
+
+static bool takeConfigField(QString *input, QChar delimiter, QString *field, bool requireDelimiter)
+{
+    if (!input || !field) {
+        return false;
+    }
+
+    if (input->startsWith(QLatin1Char('"'))) {
+        QString output;
+        bool escaped = false;
+        bool closed = false;
+        int index = 1;
+        for (; index < input->size(); index++) {
+            const QChar c = input->at(index);
+            if (escaped) {
+                output.append(c);
+                escaped = false;
+            } else if (c == QLatin1Char('\\')) {
+                escaped = true;
+            } else if (c == QLatin1Char('"')) {
+                index++;
+                closed = true;
+                break;
+            } else {
+                output.append(c);
+            }
+        }
+        if (!closed) {
+            return false;
+        }
+        if (index < input->size()) {
+            if (input->at(index) != delimiter) {
+                return false;
+            }
+            *input = input->mid(index + 1);
+        } else if (requireDelimiter) {
+            return false;
+        } else {
+            input->clear();
+        }
+        *field = output;
+        return true;
+    }
+
+    const int delimiterIndex = input->indexOf(delimiter);
+    if (delimiterIndex < 0) {
+        if (requireDelimiter) {
+            return false;
+        }
+        *field = *input;
+        input->clear();
+        return true;
+    }
+
+    *field = input->left(delimiterIndex);
+    *input = input->mid(delimiterIndex + 1);
+    return true;
+}
+
+static bool parseAccessValue(const QString &value, bool *readOnly)
+{
+    if (value.compare(QStringLiteral("ro"), Qt::CaseInsensitive) == 0) {
+        *readOnly = true;
+        return true;
+    }
+    if (value.compare(QStringLiteral("rw"), Qt::CaseInsensitive) == 0) {
+        *readOnly = false;
+        return true;
+    }
+    return false;
+}
+
+static bool parseDirectoryMountValue(QString value, WinUaeQtMountEntry *entry)
+{
+    QString access;
+    QString device;
+    QString volume;
+    QString path;
+    QString bootPri;
+    if (!takeConfigField(&value, QLatin1Char(','), &access, true)
+        || !takeConfigField(&value, QLatin1Char(':'), &device, true)
+        || !takeConfigField(&value, QLatin1Char(':'), &volume, true)
+        || !takeConfigField(&value, QLatin1Char(','), &path, true)
+        || !takeConfigField(&value, QLatin1Char(','), &bootPri, false)
+        || !parseAccessValue(access, &entry->readOnly)) {
+        return false;
+    }
+    entry->kind = QStringLiteral("dir");
+    entry->device = device;
+    entry->volume = volume;
+    entry->path = path;
+    entry->bootPri = bootPri.toInt();
+    return true;
+}
+
+static bool parseHardfileMountValue(QString value, WinUaeQtMountEntry *entry)
+{
+    QString access;
+    QString device;
+    QString path;
+    if (!takeConfigField(&value, QLatin1Char(','), &access, true)
+        || !takeConfigField(&value, QLatin1Char(':'), &device, true)
+        || !takeConfigField(&value, QLatin1Char(','), &path, true)
+        || !parseAccessValue(access, &entry->readOnly)) {
+        return false;
+    }
+    entry->kind = QStringLiteral("hdf");
+    entry->device = device;
+    entry->path = path;
+    return true;
+}
+
+bool parseWinUaeQtUaehfMountValue(const QString &value, WinUaeQtMountEntry *entry)
+{
+    QString rest = value;
+    QString kind;
+    if (!takeConfigField(&rest, QLatin1Char(','), &kind, true)) {
+        return false;
+    }
+    if (kind.compare(QStringLiteral("dir"), Qt::CaseInsensitive) == 0) {
+        return parseDirectoryMountValue(rest, entry);
+    }
+    if (kind.compare(QStringLiteral("hdf"), Qt::CaseInsensitive) == 0) {
+        if (!parseHardfileMountValue(rest, entry)) {
+            return false;
+        }
+        entry->rawConfig = value;
+        return true;
+    }
+    return false;
+}
+
+QString serializeWinUaeQtDirectoryMountValue(const WinUaeQtMountEntry &entry)
+{
+    return QStringLiteral("dir,%1,%2:%3:%4,%5")
+        .arg(winUaeQtConfigAccessValue(entry.readOnly),
+             winUaeQtSanitizedAmigaName(entry.device, QStringLiteral("DH0"), true),
+             winUaeQtSanitizedAmigaName(entry.volume, QStringLiteral("Hard Disk"), false),
+             winUaeQtConfigEscapeMin(entry.path),
+             QString::number(entry.bootPri));
+}
+
+QString serializeWinUaeQtHardfileMountValue(const WinUaeQtMountEntry &entry)
+{
+    if (!entry.rawConfig.isEmpty()) {
+        return entry.rawConfig;
+    }
+    return QStringLiteral("hdf,%1,%2:%3,32,1,2,512,%4,,uae0")
+        .arg(winUaeQtConfigAccessValue(entry.readOnly),
+             winUaeQtSanitizedAmigaName(entry.device, QStringLiteral("DH0"), true),
+             winUaeQtConfigEscapeMin(entry.path),
+             QString::number(entry.bootPri));
+}
