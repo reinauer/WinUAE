@@ -130,6 +130,13 @@ static QString floppyTypeText(int value)
     return QStringLiteral("3.5 DD");
 }
 
+static bool configBoolValue(const QString &value)
+{
+    return value.compare(QStringLiteral("true"), Qt::CaseInsensitive) == 0
+        || value.compare(QStringLiteral("yes"), Qt::CaseInsensitive) == 0
+        || value == QStringLiteral("1");
+}
+
 static void setComboTextIfChanged(QComboBox *combo, const QString &text)
 {
     if (combo && combo->currentText() != text) {
@@ -1290,6 +1297,7 @@ private:
         for (int i = 0; i < 4; i++) {
             const int driveType = dfEnable[i]->isChecked() ? floppyTypeConfigValue(dfType[i]->currentText()) : -1;
             settings.insert(QStringLiteral("floppy%1type").arg(i), QString::number(driveType));
+            settings.insert(QStringLiteral("floppy%1wp").arg(i), dfWriteProtect[i]->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
             if (driveType >= 0 && !dfPath[i]->currentText().isEmpty()) {
                 settings.insert(QStringLiteral("floppy%1").arg(i), dfPath[i]->currentText());
             }
@@ -1343,6 +1351,10 @@ private:
             QStringLiteral("floppy1type"),
             QStringLiteral("floppy2type"),
             QStringLiteral("floppy3type"),
+            QStringLiteral("floppy0wp"),
+            QStringLiteral("floppy1wp"),
+            QStringLiteral("floppy2wp"),
+            QStringLiteral("floppy3wp"),
             QStringLiteral("nr_floppies"),
             QStringLiteral("chipset"),
             QStringLiteral("chipset_compatible"),
@@ -1427,6 +1439,13 @@ private:
                 const int driveType = value.toInt();
                 dfEnable[drive]->setChecked(driveType >= 0);
                 dfType[drive]->setCurrentText(floppyTypeText(driveType));
+                syncFloppyDriveToQuick(drive);
+            }
+        } else if (key.startsWith(QStringLiteral("floppy")) && key.endsWith(QStringLiteral("wp"))) {
+            bool ok = false;
+            const int drive = key.mid(6, 1).toInt(&ok);
+            if (ok && drive >= 0 && drive < 4) {
+                dfWriteProtect[drive]->setChecked(configBoolValue(value));
                 syncFloppyDriveToQuick(drive);
             }
         } else if (key.startsWith(QStringLiteral("floppy"))) {

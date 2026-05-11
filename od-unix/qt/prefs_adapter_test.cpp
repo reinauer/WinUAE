@@ -14,6 +14,11 @@
 
 static QStringList parsedLines;
 
+static bool configBoolValue(const char *value)
+{
+    return !strcmp(value, "true") || !strcmp(value, "yes") || !strcmp(value, "1");
+}
+
 static void copyText(TCHAR *dst, size_t dstSize, const char *src)
 {
     if (!dst || !dstSize) {
@@ -48,6 +53,12 @@ void cfgfile_parse_line(struct uae_prefs *prefs, TCHAR *line, int)
         prefs->floppyslots[1].dfxtype = atoi(value);
     } else if (!strcmp(key, "floppy2type")) {
         prefs->floppyslots[2].dfxtype = atoi(value);
+    } else if (!strcmp(key, "floppy0wp")) {
+        prefs->floppyslots[0].forcedwriteprotect = configBoolValue(value);
+    } else if (!strcmp(key, "floppy1wp")) {
+        prefs->floppyslots[1].forcedwriteprotect = configBoolValue(value);
+    } else if (!strcmp(key, "floppy2wp")) {
+        prefs->floppyslots[2].forcedwriteprotect = configBoolValue(value);
     } else if (!strcmp(key, "chipset")) {
         prefs->chipset_mask = !strcmp(value, "aga") ? 0x0707 : 0x0101;
     } else if (!strcmp(key, "chipset_compatible")) {
@@ -115,6 +126,9 @@ static bool testRepresentativeConfig()
     settings.insert(QStringLiteral("floppy0type"), QStringLiteral("0"));
     settings.insert(QStringLiteral("floppy1type"), QStringLiteral("1"));
     settings.insert(QStringLiteral("floppy2type"), QStringLiteral("-1"));
+    settings.insert(QStringLiteral("floppy0wp"), QStringLiteral("true"));
+    settings.insert(QStringLiteral("floppy1wp"), QStringLiteral("false"));
+    settings.insert(QStringLiteral("floppy2wp"), QStringLiteral("yes"));
     settings.insert(QStringLiteral("nr_floppies"), QStringLiteral("2"));
     settings.insert(QStringLiteral("chipset"), QStringLiteral("aga"));
     settings.insert(QStringLiteral("chipset_compatible"), QStringLiteral("A1200"));
@@ -146,6 +160,7 @@ static bool testRepresentativeConfig()
     ok = requireInt(parsedLines.size(), settings.size(), "parsed line count") && ok;
     ok = require(parsedLines.contains(QStringLiteral("chipset_compatible=A1200")), "chipset compatibility was not delegated") && ok;
     ok = require(parsedLines.contains(QStringLiteral("floppy1type=1")), "floppy drive type was not delegated") && ok;
+    ok = require(parsedLines.contains(QStringLiteral("floppy0wp=true")), "floppy write protect was not delegated") && ok;
     ok = require(parsedLines.contains(QStringLiteral("fpu_model=68882")), "fpu model was not delegated") && ok;
     ok = require(parsedLines.contains(QStringLiteral("sound_output=normal")), "sound output was not delegated") && ok;
 
@@ -156,6 +171,9 @@ static bool testRepresentativeConfig()
     ok = requireInt(prefs->floppyslots[0].dfxtype, DRV_35_DD, "floppy0type") && ok;
     ok = requireInt(prefs->floppyslots[1].dfxtype, DRV_35_HD, "floppy1type") && ok;
     ok = requireInt(prefs->floppyslots[2].dfxtype, DRV_NONE, "floppy2type") && ok;
+    ok = require(prefs->floppyslots[0].forcedwriteprotect, "floppy0wp") && ok;
+    ok = require(!prefs->floppyslots[1].forcedwriteprotect, "floppy1wp") && ok;
+    ok = require(prefs->floppyslots[2].forcedwriteprotect, "floppy2wp") && ok;
     ok = requireInt(prefs->nr_floppies, 2, "nr_floppies") && ok;
     ok = requireInt(prefs->cs_compatible, CP_A1200, "cs_compatible") && ok;
     ok = requireInt(prefs->cpu_model, 68020, "cpu_model") && ok;
