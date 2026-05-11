@@ -8,6 +8,8 @@ struct WinUaeQtMountEntry {
     QString volume;
     QString path;
     QString rawConfig;
+    QString hardfileGeometry;
+    QString hardfileTail;
     bool readOnly = false;
     int bootPri = 0;
 };

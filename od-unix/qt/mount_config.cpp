@@ -145,6 +145,20 @@ static bool parseHardfileMountValue(QString value, WinUaeQtMountEntry *entry)
         || !parseAccessValue(access, &entry->readOnly)) {
         return false;
     }
+    QString sectors;
+    QString surfaces;
+    QString reserved;
+    QString blocksize;
+    QString bootPri;
+    if (takeConfigField(&value, QLatin1Char(','), &sectors, true)
+        && takeConfigField(&value, QLatin1Char(','), &surfaces, true)
+        && takeConfigField(&value, QLatin1Char(','), &reserved, true)
+        && takeConfigField(&value, QLatin1Char(','), &blocksize, true)
+        && takeConfigField(&value, QLatin1Char(','), &bootPri, false)) {
+        entry->hardfileGeometry = QStringLiteral("%1,%2,%3,%4").arg(sectors, surfaces, reserved, blocksize);
+        entry->bootPri = bootPri.toInt();
+        entry->hardfileTail = value;
+    }
     entry->kind = QStringLiteral("hdf");
     entry->device = device;
     entry->path = path;
@@ -197,14 +211,18 @@ QString serializeWinUaeQtFilesystem2MountValue(const WinUaeQtMountEntry &entry)
 
 QString serializeWinUaeQtHardfile2MountValue(const WinUaeQtMountEntry &entry)
 {
-    if (!entry.rawConfig.isEmpty()) {
-        return entry.rawConfig;
-    }
-    return QStringLiteral("%1,%2:%3,32,1,2,512,%4,,uae0")
+    const QString geometry = entry.hardfileGeometry.isEmpty() ? QStringLiteral("32,1,2,512") : entry.hardfileGeometry;
+    const QString tail = entry.hardfileGeometry.isEmpty() && entry.hardfileTail.isEmpty() ? QStringLiteral(",uae0") : entry.hardfileTail;
+    QString value = QStringLiteral("%1,%2:%3,%4,%5")
         .arg(winUaeQtConfigAccessValue(entry.readOnly),
              winUaeQtSanitizedAmigaName(entry.device, QStringLiteral("DH0"), true),
              winUaeQtConfigEscapeMin(entry.path),
+             geometry,
              QString::number(entry.bootPri));
+    if (!tail.isEmpty()) {
+        value += QStringLiteral(",") + tail;
+    }
+    return value;
 }
 
 QString serializeWinUaeQtUaehfDirectoryMountValue(const WinUaeQtMountEntry &entry)
