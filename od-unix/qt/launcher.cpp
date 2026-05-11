@@ -2259,11 +2259,22 @@ static QGroupBox *groupBox(const QString &title, QLayout *layout)
     return box;
 }
 
+static void setPathComboText(QComboBox *field, const QString &path)
+{
+    if (!field) {
+        return;
+    }
+    if (!path.isEmpty() && field->findText(path) < 0) {
+        field->insertItem(0, path);
+    }
+    field->setCurrentText(path);
+}
+
 static void addBrowse(QComboBox *field, QWidget *parent, const QString &caption, const QString &filter)
 {
     const QString path = QFileDialog::getOpenFileName(parent, caption, field->currentText(), filter);
     if (!path.isEmpty()) {
-        field->setCurrentText(path);
+        setPathComboText(field, path);
     }
 }
 
@@ -3737,12 +3748,12 @@ private:
         if (drive < 2 && quickDfPath[drive]) {
             connect(dfPath[drive], &QComboBox::currentTextChanged, this, [this, drive](const QString &text) {
                 if (quickDfPath[drive]->currentText() != text) {
-                    quickDfPath[drive]->setCurrentText(text);
+                    setPathComboText(quickDfPath[drive], text);
                 }
             });
             connect(quickDfPath[drive], &QComboBox::currentTextChanged, this, [this, drive](const QString &text) {
                 if (dfPath[drive]->currentText() != text) {
-                    dfPath[drive]->setCurrentText(text);
+                    setPathComboText(dfPath[drive], text);
                 }
             });
             connect(dfEnable[drive], &QCheckBox::toggled, quickDfEnable[drive], &QCheckBox::setChecked);
@@ -3907,7 +3918,7 @@ private:
     {
         const QString selected = QFileDialog::getOpenFileName(this, QStringLiteral("Select floppy image"), diskSwapperPathAt(slot), QStringLiteral("Amiga disk images (*.adf *.adz *.ipf *.dms);;All files (*)"));
         if (!selected.isEmpty()) {
-            diskSwapperPath->setCurrentText(selected);
+            setPathComboText(diskSwapperPath, selected);
             setDiskSwapperPath(slot, selected);
         }
     }
@@ -4037,7 +4048,7 @@ private:
         connect(selectCdImage, &QPushButton::clicked, this, [this]() {
             const QString selected = QFileDialog::getOpenFileName(this, QStringLiteral("Select CD image"), cdSlotPath->currentText().isEmpty() ? QDir::homePath() : cdSlotPath->currentText(), QStringLiteral("CD images (*.iso *.cue *.ccd *.mds *.chd);;All files (*)"));
             if (!selected.isEmpty()) {
-                cdSlotPath->setCurrentText(selected);
+                setPathComboText(cdSlotPath, selected);
                 setComboTextIfChanged(cdSlotType, QStringLiteral("Image file"));
                 setCurrentCdSlotInUse(true);
             }
@@ -5607,7 +5618,6 @@ private:
         QPushButton *rescanRoms = new QPushButton(QStringLiteral("Rescan ROMs"));
         QPushButton *clearDiskHistory = new QPushButton(QStringLiteral("Clear disk history"));
         QPushButton *clearRegistry = new QPushButton(QStringLiteral("Clear registry"));
-        clearDiskHistory->setEnabled(false);
         clearRegistry->setEnabled(false);
         data->addWidget(rescanRoms, 1, 0);
         data->addWidget(clearDiskHistory, 1, 1);
@@ -5637,6 +5647,7 @@ private:
         connect(setPath, &QPushButton::clicked, this, [this]() { applySelectedPathDefaults(); });
         connect(logSelect, &QComboBox::currentTextChanged, this, [this](const QString &) { updateLogPathText(); });
         connect(rescanRoms, &QPushButton::clicked, this, [this]() { rescanRomPathCandidates(true); });
+        connect(clearDiskHistory, &QPushButton::clicked, this, [this]() { clearDiskHistoryCombos(); });
         connect(saveAllLogs, &QPushButton::clicked, this, [this]() { saveAllDebugLogs(); });
         connect(openLog, &QPushButton::clicked, this, [this]() { openSelectedLog(); });
         if (configName) {
@@ -5697,6 +5708,34 @@ private:
             field->insertItem(0, current);
         }
         field->setCurrentText(current);
+    }
+
+    void clearPathComboHistory(QComboBox *field)
+    {
+        if (!field) {
+            return;
+        }
+        const QString current = field->currentText();
+        QSignalBlocker blocker(field);
+        field->clear();
+        if (!current.isEmpty()) {
+            field->addItem(current);
+        }
+        field->setCurrentText(current);
+    }
+
+    void clearDiskHistoryCombos()
+    {
+        for (int i = 0; i < 4; i++) {
+            clearPathComboHistory(dfPath[i]);
+        }
+        for (int i = 0; i < 2; i++) {
+            clearPathComboHistory(quickDfPath[i]);
+        }
+        clearPathComboHistory(diskSwapperPath);
+        clearPathComboHistory(cdSlotPath);
+        clearPathComboHistory(stateFileName);
+        status->setText(QStringLiteral("Disk history cleared"));
     }
 
     void rescanRomPathCandidates(bool showResult)
@@ -5979,7 +6018,7 @@ private:
         connect(browseState, &QPushButton::clicked, this, [this]() {
             const QString selected = QFileDialog::getOpenFileName(this, QStringLiteral("Select state file"), stateFileName->currentText(), QStringLiteral("WinUAE state files (*.uss);;All files (*)"));
             if (!selected.isEmpty()) {
-                stateFileName->setCurrentText(selected);
+                setPathComboText(stateFileName, selected);
                 stateFileClear->setChecked(false);
             }
         });
@@ -8309,7 +8348,9 @@ private:
         }
         setCheckBoxIfChanged(dfEnable[drive], quickDfEnable[drive]->isChecked());
         setComboTextIfChanged(dfType[drive], quickDfType[drive]->currentText());
-        setComboTextIfChanged(dfPath[drive], quickDfPath[drive]->currentText());
+        if (dfPath[drive]->currentText() != quickDfPath[drive]->currentText()) {
+            setPathComboText(dfPath[drive], quickDfPath[drive]->currentText());
+        }
         setCheckBoxIfChanged(dfWriteProtect[drive], quickDfWriteProtect[drive]->isChecked());
     }
 
@@ -8320,7 +8361,9 @@ private:
         }
         setCheckBoxIfChanged(quickDfEnable[drive], dfEnable[drive]->isChecked());
         setComboTextIfChanged(quickDfType[drive], dfType[drive]->currentText());
-        setComboTextIfChanged(quickDfPath[drive], dfPath[drive]->currentText());
+        if (quickDfPath[drive]->currentText() != dfPath[drive]->currentText()) {
+            setPathComboText(quickDfPath[drive], dfPath[drive]->currentText());
+        }
         setCheckBoxIfChanged(quickDfWriteProtect[drive], dfWriteProtect[drive]->isChecked());
     }
 
@@ -9394,11 +9437,11 @@ private:
         } else if (key == QStringLiteral("statefile_path")) {
             stateFilesPath->setText(value);
         } else if (key == QStringLiteral("kickstart_rom_file")) {
-            romFile->setCurrentText(value);
+            setPathComboText(romFile, value);
         } else if (key == QStringLiteral("kickstart_ext_rom_file")) {
-            extendedRomFile->setCurrentText(value);
+            setPathComboText(extendedRomFile, value);
         } else if (key == QStringLiteral("cart_file")) {
-            cartFile->setCurrentText(value);
+            setPathComboText(cartFile, value);
         } else if (key == QStringLiteral("flash_file")) {
             flashFile->setText(value);
         } else if (key == QStringLiteral("rtc_file")) {
@@ -9442,7 +9485,7 @@ private:
             syncFloppyDriveToQuick(drive);
         } else if (const int drive = floppyKeyDrive(key); drive >= 0) {
             dfEnable[drive]->setChecked(true);
-            dfPath[drive]->setCurrentText(value);
+            setPathComboText(dfPath[drive], value);
             syncFloppyDriveToQuick(drive);
         } else if (key.startsWith(QStringLiteral("diskimage"))) {
             bool ok = false;
@@ -9450,7 +9493,7 @@ private:
             if (ok && slot >= 0 && slot < MaxDiskSwapperSlots) {
                 setDiskSwapperPath(slot, value);
                 if (slot == selectedDiskSwapperSlot()) {
-                    diskSwapperPath->setCurrentText(value);
+                    setPathComboText(diskSwapperPath, value);
                 }
             }
         } else if (key.startsWith(QStringLiteral("uaehf"))) {
@@ -9828,7 +9871,7 @@ private:
                 setMiscOptionChecked(key, configBoolValue(value));
             }
         } else if (key == QStringLiteral("statefile")) {
-            stateFileName->setCurrentText(value);
+            setPathComboText(stateFileName, value);
             stateFileClear->setChecked(value.trimmed().isEmpty());
         } else if (key == QStringLiteral("keyboard_leds")) {
             for (const QString &field : value.split(QLatin1Char(','))) {
