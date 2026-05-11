@@ -346,4 +346,10 @@ if(APPLE AND TARGET winuae_unix)
         COMMENT "Creating WinUAE.app"
         VERBATIM
     )
+    add_custom_target(winuae_unix_macos_dmg
+        COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tools/macos-dmg.sh" "${CMAKE_BINARY_DIR}" "${CMAKE_BINARY_DIR}/package"
+        DEPENDS winuae_unix
+        COMMENT "Creating WinUAE drag-install DMG"
+        VERBATIM
+    )
 endif()

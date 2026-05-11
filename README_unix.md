@@ -108,6 +108,14 @@ The app bundle is written to:
 
 The bundling script copies the Qt UI resources and runs `macdeployqt` when it is available. It does not bundle Kickstart ROMs, disks, or other Amiga system media.
 
+To create a drag-install DMG with `WinUAE.app`, an `/Applications` link, and a Finder background arrow:
+
+```sh
+cmake --build /tmp/winuae_cmake_build --target winuae_unix_macos_dmg -j
+```
+
+The DMG is written next to the app bundle in `/tmp/winuae_cmake_build/package/`.
+
 To force a configure from scratch:
 
 ```sh
