@@ -51,6 +51,7 @@ if [ "$RTG_Z3" = "1" ]; then
 fi
 
 "$EXE" \
+    -s use_gui=no \
     -s kickstart_rom_file="$ROM" \
     -s floppy0="$ADF" \
     -s nr_floppies=1 \

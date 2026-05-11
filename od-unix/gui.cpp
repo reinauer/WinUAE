@@ -5,7 +5,6 @@
 #include "options.h"
 #include "gui.h"
 #include "gui_unix.h"
-#include "startup_config.h"
 
 #ifdef WINUAE_UNIX_WITH_INTEGRATED_QT_UI
 #include "qt/launcher_bridge.h"
@@ -25,9 +24,8 @@ void unix_gui_set_main_args(int argc, TCHAR **argv)
 int gui_init(void)
 {
 #ifdef WINUAE_UNIX_WITH_INTEGRATED_QT_UI
-    const int action = runWinUaeQtLauncherForStartupConfig(unix_gui_argc, unix_gui_argv, 0);
+    const int action = runWinUaeQtLauncherForPrefs(unix_gui_argc, unix_gui_argv, &changed_prefs, 0);
     if (action == WINUAE_QT_LAUNCHER_START) {
-        unix_startup_config_apply(&changed_prefs);
         return 1;
     }
     if (action == WINUAE_QT_LAUNCHER_ERROR) {

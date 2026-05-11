@@ -1,30 +1,23 @@
 #include "launcher_bridge.h"
 
 #include "launcher.h"
-#include "../startup_config.h"
+#include "prefs_adapter.h"
 
 #include <QByteArray>
 
 #include <stdio.h>
 
-static void storeStartupConfig(const WinUaeQtConfig &config)
-{
-    unix_startup_config_clear();
-    const WinUaeQtConfig::Settings &settings = config.settings();
-    for (auto it = settings.constBegin(); it != settings.constEnd(); ++it) {
-        if (it.value().isEmpty()) {
-            continue;
-        }
-        const QByteArray line = QStringLiteral("%1=%2").arg(it.key(), it.value()).toLocal8Bit();
-        unix_startup_config_add_line(line.constData());
-    }
-}
-
-int runWinUaeQtLauncherForStartupConfig(int argc, char **argv, int *exitCode)
+int runWinUaeQtLauncherForPrefs(int argc, char **argv, struct uae_prefs *prefs, int *exitCode)
 {
     WinUaeQtLauncherResult result = runWinUaeQtLauncherForConfig(argc, argv);
     if (result.status == WinUaeQtLauncherStatus::StartRequested) {
-        storeStartupConfig(result.config);
+        if (!applyWinUaeQtConfigToPrefs(result.config, prefs)) {
+            fprintf(stderr, "Unix Qt UI failed: no preferences target available\n");
+            if (exitCode) {
+                *exitCode = 1;
+            }
+            return WINUAE_QT_LAUNCHER_ERROR;
+        }
         return WINUAE_QT_LAUNCHER_START;
     }
     if (result.status == WinUaeQtLauncherStatus::Error) {
