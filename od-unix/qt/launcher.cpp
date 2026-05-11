@@ -28,6 +28,13 @@
 static constexpr int FpuInternal = -1;
 static constexpr int MaxMountEntries = 8;
 static constexpr int MaxControllerUnits = 8;
+static constexpr int MaxCdSlots = 8;
+
+struct WinUaeQtCdSlot {
+    QString path;
+    QString type;
+    bool inUse = false;
+};
 
 enum MountDataRole {
     MountKindRole = Qt::UserRole,
@@ -267,6 +274,44 @@ static QString hardfileFeatureToken(const QString &featureText)
         return QStringLiteral("SASI_CHS");
     }
     return QString();
+}
+
+static WinUaeQtCdSlot cdSlotFromConfigValue(const QString &value)
+{
+    WinUaeQtCdSlot slot;
+    if (value.compare(QStringLiteral("autodetect"), Qt::CaseInsensitive) == 0) {
+        slot.type = QStringLiteral("Autodetect");
+        slot.inUse = true;
+        return slot;
+    }
+    if (value.isEmpty()
+        || value.compare(QStringLiteral("empty"), Qt::CaseInsensitive) == 0
+        || value == QStringLiteral(".")) {
+        slot.type = QStringLiteral("Image file");
+        return slot;
+    }
+
+    const QStringList fields = winUaeQtConfigFieldList(value);
+    slot.path = fields.value(0);
+    slot.type = fields.value(1).compare(QStringLiteral("image"), Qt::CaseInsensitive) == 0
+        ? QStringLiteral("Image file")
+        : QStringLiteral("Image file");
+    slot.inUse = !slot.path.isEmpty();
+    return slot;
+}
+
+static QString cdSlotConfigValue(const WinUaeQtCdSlot &slot)
+{
+    if (!slot.inUse && slot.path.isEmpty()) {
+        return QString();
+    }
+    if (slot.type == QStringLiteral("Autodetect") && slot.path.isEmpty()) {
+        return QStringLiteral("autodetect");
+    }
+    if (slot.path.isEmpty()) {
+        return QString();
+    }
+    return winUaeQtConfigEscapeMin(slot.path);
 }
 
 static QString sourceFile(const QString &relative)
@@ -590,6 +635,13 @@ private:
     QPushButton *addTapeMountButton = nullptr;
     QPushButton *propertiesMountButton = nullptr;
     QPushButton *removeMountButton = nullptr;
+    QComboBox *cdSlotNumber = nullptr;
+    QComboBox *cdSlotType = nullptr;
+    QComboBox *cdSlotPath = nullptr;
+    QCheckBox *cdSpeedTurbo = nullptr;
+    QVector<WinUaeQtCdSlot> cdSlots;
+    int currentCdSlot = 0;
+    bool cdSlotUpdating = false;
 
     QLineEdit *windowWidth = nullptr;
     QLineEdit *windowHeight = nullptr;
@@ -1075,11 +1127,71 @@ private:
         buttons->addWidget(propertiesMountButton, 1, 2);
         buttons->addWidget(removeMountButton, 1, 3);
         root->addLayout(buttons);
+
+        cdSlotNumber = combo({});
+        for (int i = 0; i < MaxCdSlots; i++) {
+            cdSlotNumber->addItem(QString::number(i + 1));
+        }
+        cdSlotPath = pathCombo();
+        cdSlotType = combo({ QStringLiteral("Autodetect"), QStringLiteral("Image file") }, QStringLiteral("Image file"));
+        QPushButton *selectCdImage = new QPushButton(QStringLiteral("Select image file"));
+        QPushButton *ejectCd = new QPushButton(QStringLiteral("Eject"));
+        cdSpeedTurbo = new QCheckBox(QStringLiteral("CDTV/CDTV-CR/CD32 turbo CD read speed"));
+
+        QGridLayout *optical = new QGridLayout;
+        optical->setColumnStretch(1, 1);
+        optical->addWidget(new QLabel(QStringLiteral("CD drive/image")), 0, 0);
+        optical->addWidget(selectCdImage, 0, 2);
+        optical->addWidget(cdSlotType, 0, 3);
+        optical->addWidget(ejectCd, 0, 4);
+        optical->addWidget(cdSlotNumber, 1, 0);
+        optical->addWidget(cdSlotPath, 1, 1, 1, 4);
+        optical->addWidget(cdSpeedTurbo, 2, 1, 1, 4);
+        root->addWidget(groupBox(QStringLiteral("Optical media options"), optical));
+
         connect(addDirectoryMountButton, &QPushButton::clicked, this, [this]() { addDirectoryMountDialog(); });
         connect(addHardfileMountButton, &QPushButton::clicked, this, [this]() { addHardfileMountDialog(); });
         connect(addHardDriveMountButton, &QPushButton::clicked, this, [this]() { addHardDriveMountDialog(); });
         connect(addCdMountButton, &QPushButton::clicked, this, [this]() { addCdDriveMountDialog(); });
         connect(addTapeMountButton, &QPushButton::clicked, this, [this]() { addTapeDriveMountDialog(); });
+        connect(cdSlotNumber, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index) {
+            if (cdSlotUpdating || index < 0 || index >= MaxCdSlots) {
+                return;
+            }
+            storeCurrentCdSlotFromUi();
+            currentCdSlot = index;
+            loadCdSlotToUi(index);
+        });
+        connect(cdSlotType, &QComboBox::currentTextChanged, this, [this](const QString &text) {
+            if (cdSlotUpdating) {
+                return;
+            }
+            if (text == QStringLiteral("Autodetect") && cdSlotPath->currentText().isEmpty()) {
+                setCurrentCdSlotInUse(true);
+            }
+        });
+        connect(cdSlotPath, &QComboBox::currentTextChanged, this, [this](const QString &text) {
+            if (cdSlotUpdating) {
+                return;
+            }
+            if (!text.isEmpty()) {
+                setComboTextIfChanged(cdSlotType, QStringLiteral("Image file"));
+                setCurrentCdSlotInUse(true);
+            }
+        });
+        connect(selectCdImage, &QPushButton::clicked, this, [this]() {
+            const QString selected = QFileDialog::getOpenFileName(this, QStringLiteral("Select CD image"), cdSlotPath->currentText().isEmpty() ? QDir::homePath() : cdSlotPath->currentText(), QStringLiteral("CD images (*.iso *.cue *.ccd *.mds *.chd);;All files (*)"));
+            if (!selected.isEmpty()) {
+                cdSlotPath->setCurrentText(selected);
+                setComboTextIfChanged(cdSlotType, QStringLiteral("Image file"));
+                setCurrentCdSlotInUse(true);
+            }
+        });
+        connect(ejectCd, &QPushButton::clicked, this, [this]() {
+            cdSlotPath->setCurrentText(QString());
+            setComboTextIfChanged(cdSlotType, QStringLiteral("Image file"));
+            setCurrentCdSlotInUse(false);
+        });
         connect(propertiesMountButton, &QPushButton::clicked, this, [this]() { openSelectedMountProperties(); });
         connect(removeMountButton, &QPushButton::clicked, this, [this]() { removeSelectedMount(); });
         connect(mountedDrives, &QTreeWidget::itemSelectionChanged, this, [this]() { updateMountButtons(); });
@@ -1373,6 +1485,83 @@ private:
         });
     }
 
+    void ensureCdSlots()
+    {
+        if (cdSlots.size() == MaxCdSlots) {
+            return;
+        }
+        cdSlots = QVector<WinUaeQtCdSlot>(MaxCdSlots);
+        for (WinUaeQtCdSlot &slot : cdSlots) {
+            slot.type = QStringLiteral("Image file");
+        }
+    }
+
+    void clearCdSlots()
+    {
+        ensureCdSlots();
+        for (WinUaeQtCdSlot &slot : cdSlots) {
+            slot = WinUaeQtCdSlot();
+            slot.type = QStringLiteral("Image file");
+        }
+        currentCdSlot = 0;
+        loadCdSlotToUi(currentCdSlot);
+    }
+
+    void setCurrentCdSlotInUse(bool inUse)
+    {
+        ensureCdSlots();
+        if (currentCdSlot >= 0 && currentCdSlot < cdSlots.size()) {
+            cdSlots[currentCdSlot].inUse = inUse;
+        }
+    }
+
+    void storeCurrentCdSlotFromUi()
+    {
+        ensureCdSlots();
+        if (!cdSlotPath || !cdSlotType || currentCdSlot < 0 || currentCdSlot >= cdSlots.size()) {
+            return;
+        }
+        WinUaeQtCdSlot &slot = cdSlots[currentCdSlot];
+        slot.path = cdSlotPath->currentText().trimmed();
+        slot.type = cdSlotType->currentText();
+        if (!slot.path.isEmpty()) {
+            slot.inUse = true;
+        } else if (slot.type == QStringLiteral("Image file")) {
+            slot.inUse = false;
+        }
+    }
+
+    WinUaeQtCdSlot cdSlotState(int index) const
+    {
+        WinUaeQtCdSlot slot = index >= 0 && index < cdSlots.size() ? cdSlots.value(index) : WinUaeQtCdSlot();
+        if (index == currentCdSlot && cdSlotPath && cdSlotType) {
+            slot.path = cdSlotPath->currentText().trimmed();
+            slot.type = cdSlotType->currentText();
+            if (!slot.path.isEmpty()) {
+                slot.inUse = true;
+            } else if (slot.type == QStringLiteral("Image file")) {
+                slot.inUse = false;
+            }
+        }
+        return slot;
+    }
+
+    void loadCdSlotToUi(int index)
+    {
+        ensureCdSlots();
+        if (!cdSlotNumber || !cdSlotPath || !cdSlotType || index < 0 || index >= cdSlots.size()) {
+            return;
+        }
+        cdSlotUpdating = true;
+        QSignalBlocker numberBlocker(cdSlotNumber);
+        QSignalBlocker pathBlocker(cdSlotPath);
+        QSignalBlocker typeBlocker(cdSlotType);
+        cdSlotNumber->setCurrentIndex(index);
+        cdSlotPath->setCurrentText(cdSlots[index].path);
+        cdSlotType->setCurrentText(cdSlots[index].type.isEmpty() ? QStringLiteral("Image file") : cdSlots[index].type);
+        cdSlotUpdating = false;
+    }
+
     void resetDefaults()
     {
         loadedConfig = WinUaeQtConfig();
@@ -1431,6 +1620,7 @@ private:
             mountedDrives->clear();
             updateMountButtons();
         }
+        clearCdSlots();
 
         windowWidth->setText(QStringLiteral("720"));
         windowHeight->setText(QStringLiteral("568"));
@@ -1438,6 +1628,7 @@ private:
         nativeMode->setCurrentText(QStringLiteral("Windowed"));
         rtgMode->setCurrentText(QStringLiteral("Windowed"));
         soundOutput->setCurrentText(QStringLiteral("normal"));
+        cdSpeedTurbo->setChecked(false);
         port0->setCurrentText(QStringLiteral("Mouse"));
         port1->setCurrentText(QStringLiteral("Keyboard Layout B"));
         romsPath->setText(QDir::homePath());
@@ -2408,6 +2599,13 @@ private:
         if (!windowHeight->text().isEmpty()) {
             settings.insert(QStringLiteral("gfx_height_windowed"), windowHeight->text());
         }
+        for (int i = 0; i < MaxCdSlots; i++) {
+            const QString value = cdSlotConfigValue(cdSlotState(i));
+            if (!value.isEmpty()) {
+                settings.insert(QStringLiteral("cdimage%1").arg(i), value);
+            }
+        }
+        settings.insert(QStringLiteral("cd_speed"), cdSpeedTurbo->isChecked() ? QStringLiteral("0") : QStringLiteral("100"));
         return settings;
     }
 
@@ -2443,7 +2641,16 @@ private:
             QStringLiteral("gfxcard_size"),
             QStringLiteral("gfxcard_type"),
             QStringLiteral("gfx_width_windowed"),
-            QStringLiteral("gfx_height_windowed")
+            QStringLiteral("gfx_height_windowed"),
+            QStringLiteral("cdimage0"),
+            QStringLiteral("cdimage1"),
+            QStringLiteral("cdimage2"),
+            QStringLiteral("cdimage3"),
+            QStringLiteral("cdimage4"),
+            QStringLiteral("cdimage5"),
+            QStringLiteral("cdimage6"),
+            QStringLiteral("cdimage7"),
+            QStringLiteral("cd_speed")
         };
     }
 
@@ -2509,6 +2716,7 @@ private:
         if (mountedDrives) {
             mountedDrives->clear();
         }
+        clearCdSlots();
         for (const WinUaeQtConfig::Setting &setting : config.orderedSettings()) {
             applySetting(setting.key, setting.value);
         }
@@ -2564,6 +2772,18 @@ private:
             if (parseWinUaeQtHardfile2MountValue(value, &entry)) {
                 addMountEntry(entry);
             }
+        } else if (key.startsWith(QStringLiteral("cdimage"))) {
+            bool ok = false;
+            const int slot = key.mid(7).toInt(&ok);
+            if (ok && slot >= 0 && slot < MaxCdSlots) {
+                ensureCdSlots();
+                cdSlots[slot] = cdSlotFromConfigValue(value);
+                if (slot == currentCdSlot) {
+                    loadCdSlotToUi(slot);
+                }
+            }
+        } else if (key == QStringLiteral("cd_speed")) {
+            cdSpeedTurbo->setChecked(value == QStringLiteral("0"));
         } else if (key == QStringLiteral("chipset")) {
             chipset->setCurrentText(value.toUpper());
         } else if (key == QStringLiteral("chipset_compatible")) {
