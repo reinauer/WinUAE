@@ -1570,6 +1570,8 @@ private:
     QComboBox *z2Fast = nullptr;
     QComboBox *slowMem = nullptr;
     QComboBox *z3Fast = nullptr;
+    QComboBox *z3ChipMem = nullptr;
+    QComboBox *processorSlotMem = nullptr;
     QComboBox *rtgMem = nullptr;
     QComboBox *rtgType = nullptr;
     QComboBox *rtgMonitor = nullptr;
@@ -2212,9 +2214,11 @@ private:
         root->setContentsMargins(4, 4, 4, 4);
 
         chipMem = combo({ QStringLiteral("512 KB"), QStringLiteral("1 MB"), QStringLiteral("2 MB"), QStringLiteral("4 MB"), QStringLiteral("8 MB") }, QStringLiteral("2 MB"));
-        z2Fast = combo({ QStringLiteral("None"), QStringLiteral("1 MB"), QStringLiteral("2 MB"), QStringLiteral("4 MB"), QStringLiteral("8 MB") });
+        z2Fast = combo({ QStringLiteral("None"), QStringLiteral("1 MB"), QStringLiteral("2 MB"), QStringLiteral("4 MB"), QStringLiteral("8 MB"), QStringLiteral("16 MB") });
         slowMem = combo({ QStringLiteral("None"), QStringLiteral("512 KB"), QStringLiteral("1 MB"), QStringLiteral("1.5 MB"), QStringLiteral("1.8 MB") });
-        z3Fast = combo({ QStringLiteral("None"), QStringLiteral("8 MB"), QStringLiteral("16 MB"), QStringLiteral("32 MB"), QStringLiteral("64 MB"), QStringLiteral("128 MB") });
+        z3Fast = combo({ QStringLiteral("None"), QStringLiteral("1 MB"), QStringLiteral("2 MB"), QStringLiteral("4 MB"), QStringLiteral("8 MB"), QStringLiteral("16 MB"), QStringLiteral("32 MB"), QStringLiteral("64 MB"), QStringLiteral("128 MB"), QStringLiteral("256 MB"), QStringLiteral("512 MB"), QStringLiteral("1024 MB") });
+        z3ChipMem = combo({ QStringLiteral("None"), QStringLiteral("16 MB"), QStringLiteral("32 MB"), QStringLiteral("64 MB"), QStringLiteral("128 MB"), QStringLiteral("256 MB"), QStringLiteral("384 MB"), QStringLiteral("512 MB"), QStringLiteral("768 MB"), QStringLiteral("1024 MB") });
+        processorSlotMem = combo({ QStringLiteral("None"), QStringLiteral("1 MB"), QStringLiteral("2 MB"), QStringLiteral("4 MB"), QStringLiteral("8 MB"), QStringLiteral("16 MB"), QStringLiteral("32 MB"), QStringLiteral("64 MB"), QStringLiteral("128 MB") });
 
         QGridLayout *settings = new QGridLayout;
         settings->setColumnStretch(1, 1);
@@ -2228,7 +2232,9 @@ private:
         settings->addWidget(label(QStringLiteral("Z3 Fast:")), 1, 2);
         settings->addWidget(z3Fast, 1, 3);
         settings->addWidget(label(QStringLiteral("Processor slot:")), 2, 0);
-        settings->addWidget(combo({ QStringLiteral("None"), QStringLiteral("32 MB"), QStringLiteral("64 MB"), QStringLiteral("128 MB") }), 2, 1);
+        settings->addWidget(processorSlotMem, 2, 1);
+        settings->addWidget(label(QStringLiteral("32-bit Chip:")), 2, 2);
+        settings->addWidget(z3ChipMem, 2, 3);
         root->addWidget(groupBox(QStringLiteral("Memory Settings"), settings));
 
         QGridLayout *advanced = new QGridLayout;
@@ -3509,6 +3515,8 @@ private:
         z2Fast->setCurrentText(QStringLiteral("None"));
         slowMem->setCurrentText(QStringLiteral("None"));
         z3Fast->setCurrentText(QStringLiteral("None"));
+        z3ChipMem->setCurrentText(QStringLiteral("None"));
+        processorSlotMem->setCurrentText(QStringLiteral("None"));
         rtgMem->setCurrentText(QStringLiteral("None"));
         rtgType->setCurrentText(QStringLiteral("ZorroIII"));
         rtgMonitor->setCurrentText(QStringLiteral("1"));
@@ -4711,6 +4719,12 @@ private:
         if (z3Fast->currentText() != QStringLiteral("None")) {
             settings.insert(QStringLiteral("z3mem_size"), QString::number(megabytesFromText(z3Fast->currentText())));
         }
+        if (z3ChipMem->currentText() != QStringLiteral("None")) {
+            settings.insert(QStringLiteral("megachipmem_size"), QString::number(megabytesFromText(z3ChipMem->currentText())));
+        }
+        if (processorSlotMem->currentText() != QStringLiteral("None")) {
+            settings.insert(QStringLiteral("mbresmem_size"), QString::number(megabytesFromText(processorSlotMem->currentText())));
+        }
         settings.insert(QStringLiteral("cachesize"), QString::number(jit->isChecked() ? jitCacheSizeFromPosition(jitCache->value()) : 0));
         settings.insert(QStringLiteral("compfpu"), jitFpu->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
         settings.insert(QStringLiteral("comp_constjump"), jitConstJump->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
@@ -4889,6 +4903,8 @@ private:
             QStringLiteral("fastmem_size"),
             QStringLiteral("bogomem_size"),
             QStringLiteral("z3mem_size"),
+            QStringLiteral("megachipmem_size"),
+            QStringLiteral("mbresmem_size"),
             QStringLiteral("cachesize"),
             QStringLiteral("compfpu"),
             QStringLiteral("comp_constjump"),
@@ -5244,8 +5260,21 @@ private:
             chipMem->setCurrentText(map.value(value.toInt(), QStringLiteral("2 MB")));
         } else if (key == QStringLiteral("fastmem_size")) {
             z2Fast->setCurrentText(value == QStringLiteral("0") ? QStringLiteral("None") : value + QStringLiteral(" MB"));
+        } else if (key == QStringLiteral("bogomem_size")) {
+            const QMap<int, QString> map = {
+                { 0, QStringLiteral("None") },
+                { 2, QStringLiteral("512 KB") },
+                { 4, QStringLiteral("1 MB") },
+                { 6, QStringLiteral("1.5 MB") },
+                { 7, QStringLiteral("1.8 MB") }
+            };
+            slowMem->setCurrentText(map.value(value.toInt(), QStringLiteral("None")));
         } else if (key == QStringLiteral("z3mem_size")) {
             z3Fast->setCurrentText(value == QStringLiteral("0") ? QStringLiteral("None") : value + QStringLiteral(" MB"));
+        } else if (key == QStringLiteral("megachipmem_size")) {
+            z3ChipMem->setCurrentText(value == QStringLiteral("0") ? QStringLiteral("None") : value + QStringLiteral(" MB"));
+        } else if (key == QStringLiteral("mbresmem_size")) {
+            processorSlotMem->setCurrentText(value == QStringLiteral("0") ? QStringLiteral("None") : value + QStringLiteral(" MB"));
         } else if (key == QStringLiteral("gfxcard_size")) {
             rtgMem->setCurrentText(value == QStringLiteral("0") ? QStringLiteral("None") : value + QStringLiteral(" MB"));
         } else if (key == QStringLiteral("gfxcard_type")) {
