@@ -68,6 +68,9 @@ cp "${source_dir}/README_unix.md" "${resources_dir}/README_unix.md"
 
 if [[ -f "${source_dir}/od-win32/resources/winuae.ico" ]]; then
     cp "${source_dir}/od-win32/resources/winuae.ico" "${resources_dir}/winuae.ico"
+    if command -v sips >/dev/null 2>&1; then
+        sips -s format icns "${source_dir}/od-win32/resources/winuae.ico" --out "${resources_dir}/WinUAE.icns" >/dev/null
+    fi
 fi
 
 cat > "${contents_dir}/Info.plist" <<EOF
@@ -84,6 +87,8 @@ cat > "${contents_dir}/Info.plist" <<EOF
     <string>WinUAE</string>
     <key>CFBundleIdentifier</key>
     <string>net.winuae.unix</string>
+    <key>CFBundleIconFile</key>
+    <string>WinUAE.icns</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
