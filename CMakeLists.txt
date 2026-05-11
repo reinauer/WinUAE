@@ -300,6 +300,18 @@ if(WINUAE_UNIX_WITH_QT_UI OR WINUAE_UNIX_WITH_INTEGRATED_QT_UI)
         )
         target_link_libraries(winuae_unix_qt_config_test PRIVATE ${WINUAE_UNIX_QT_WIDGETS_TARGET})
 
+        add_executable(winuae_unix_qt_prefs_adapter_test EXCLUDE_FROM_ALL
+            od-unix/qt/config.cpp
+            od-unix/qt/prefs_adapter.cpp
+            od-unix/qt/prefs_adapter_test.cpp
+        )
+        target_include_directories(winuae_unix_qt_prefs_adapter_test PRIVATE
+            "${CMAKE_CURRENT_SOURCE_DIR}/od-unix"
+            "${CMAKE_CURRENT_SOURCE_DIR}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/include"
+        )
+        target_link_libraries(winuae_unix_qt_prefs_adapter_test PRIVATE ${WINUAE_UNIX_QT_WIDGETS_TARGET})
+
         if(WINUAE_UNIX_WITH_INTEGRATED_QT_UI)
             target_compile_definitions(winuae_core PRIVATE WINUAE_UNIX_WITH_INTEGRATED_QT_UI=1)
             if(TARGET winuae_unix)
