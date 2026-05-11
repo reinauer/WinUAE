@@ -46,7 +46,7 @@ static bool settingToBool(const WinUaeQtConfig::Settings &settings, const QStrin
 
 static void parseSettingLine(struct uae_prefs *prefs, const QString &key, const QString &value)
 {
-    if (value.isEmpty()) {
+    if (value.isEmpty() || key.startsWith(QStringLiteral("unix.ui."))) {
         return;
     }
     QByteArray line = QStringLiteral("%1=%2").arg(key, value).toLocal8Bit();

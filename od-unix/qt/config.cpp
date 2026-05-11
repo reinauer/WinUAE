@@ -5,6 +5,11 @@
 
 #include <utility>
 
+static bool isUiOnlySetting(const QString &key)
+{
+    return key.startsWith(QStringLiteral("unix.ui."));
+}
+
 WinUaeQtConfig::WinUaeQtConfig(Settings settings)
 {
     setSettings(std::move(settings));
@@ -292,7 +297,7 @@ QStringList WinUaeQtConfig::commandArguments() const
 {
     QStringList args;
     for (const Setting &setting : orderedConfigSettings) {
-        if (!setting.value.isEmpty()) {
+        if (!setting.value.isEmpty() && !isUiOnlySetting(setting.key)) {
             args << QStringLiteral("-s") << QStringLiteral("%1=%2").arg(setting.key, setting.value);
         }
     }
