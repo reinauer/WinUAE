@@ -2231,6 +2231,29 @@ static bool configBoolValue(const QString &value)
         || value == QStringLiteral("1");
 }
 
+static QString configBoolText(bool value)
+{
+    return value ? QStringLiteral("true") : QStringLiteral("false");
+}
+
+static void insertLineEditSetting(WinUaeQtConfig::Settings &settings, const QString &key, const QLineEdit *field)
+{
+    if (!field) {
+        return;
+    }
+    const QString value = field->text().trimmed();
+    if (!value.isEmpty()) {
+        settings.insert(key, value);
+    }
+}
+
+static void insertCheckBoxSetting(WinUaeQtConfig::Settings &settings, const QString &key, const QCheckBox *field)
+{
+    if (field) {
+        settings.insert(key, configBoolText(field->isChecked()));
+    }
+}
+
 static void setComboTextIfChanged(QComboBox *combo, const QString &text)
 {
     if (combo && combo->currentText() != text) {
@@ -8547,9 +8570,25 @@ private:
         if (romsPath && !romsPath->text().trimmed().isEmpty()) {
             settings.insert(QStringLiteral("unix.rom_path"), romsPath->text().trimmed());
         }
-        if (stateFilesPath && !stateFilesPath->text().trimmed().isEmpty()) {
-            settings.insert(QStringLiteral("statefile_path"), stateFilesPath->text().trimmed());
+        insertLineEditSetting(settings, QStringLiteral("unix.ui.config_path"), configsPath);
+        insertLineEditSetting(settings, QStringLiteral("unix.ui.nvram_path"), nvramPath);
+        insertLineEditSetting(settings, QStringLiteral("unix.ui.screenshot_path"), screenshotsPath);
+        insertLineEditSetting(settings, QStringLiteral("statefile_path"), stateFilesPath);
+        insertLineEditSetting(settings, QStringLiteral("unix.ui.video_path"), videosPath);
+        insertLineEditSetting(settings, QStringLiteral("unix.ui.saveimage_path"), saveImagesPath);
+        insertLineEditSetting(settings, QStringLiteral("unix.ui.rip_path"), ripsPath);
+        insertLineEditSetting(settings, QStringLiteral("unix.ui.data_path"), dataPath);
+        if (pathDefaultType) {
+            settings.insert(QStringLiteral("unix.ui.path_mode"), pathDefaultType->currentText());
         }
+        insertCheckBoxSetting(settings, QStringLiteral("unix.ui.recursive_roms"), recursiveRoms);
+        insertCheckBoxSetting(settings, QStringLiteral("unix.ui.cache_configurations"), cacheConfigurations);
+        insertCheckBoxSetting(settings, QStringLiteral("unix.ui.cache_boxart"), cacheBoxArt);
+        insertCheckBoxSetting(settings, QStringLiteral("unix.ui.saveimage_original_path"), saveImageOriginalPath);
+        insertCheckBoxSetting(settings, QStringLiteral("unix.ui.relative_paths"), relativePaths);
+        insertCheckBoxSetting(settings, QStringLiteral("unix.ui.portable_mode"), portableMode);
+        insertCheckBoxSetting(settings, QStringLiteral("unix.ui.full_logging"), fullLogging);
+        insertCheckBoxSetting(settings, QStringLiteral("unix.ui.log_window"), logWindow);
         settings.insert(QStringLiteral("kickstart_rom_file"), romFile->currentText());
         if (!extendedRomFile->currentText().isEmpty()) {
             settings.insert(QStringLiteral("kickstart_ext_rom_file"), extendedRomFile->currentText());
@@ -8949,7 +8988,23 @@ private:
             QStringLiteral("config_description"),
             QStringLiteral("quickstart"),
             QStringLiteral("unix.rom_path"),
+            QStringLiteral("unix.ui.config_path"),
+            QStringLiteral("unix.ui.nvram_path"),
+            QStringLiteral("unix.ui.screenshot_path"),
             QStringLiteral("statefile_path"),
+            QStringLiteral("unix.ui.video_path"),
+            QStringLiteral("unix.ui.saveimage_path"),
+            QStringLiteral("unix.ui.rip_path"),
+            QStringLiteral("unix.ui.data_path"),
+            QStringLiteral("unix.ui.path_mode"),
+            QStringLiteral("unix.ui.recursive_roms"),
+            QStringLiteral("unix.ui.cache_configurations"),
+            QStringLiteral("unix.ui.cache_boxart"),
+            QStringLiteral("unix.ui.saveimage_original_path"),
+            QStringLiteral("unix.ui.relative_paths"),
+            QStringLiteral("unix.ui.portable_mode"),
+            QStringLiteral("unix.ui.full_logging"),
+            QStringLiteral("unix.ui.log_window"),
             QStringLiteral("kickstart_rom_file"),
             QStringLiteral("kickstart_ext_rom_file"),
             QStringLiteral("cart_file"),
@@ -9541,8 +9596,40 @@ private:
             }
         } else if (key == QStringLiteral("unix.rom_path") || key == QStringLiteral("rom_path")) {
             romsPath->setText(value);
+        } else if (key == QStringLiteral("unix.ui.config_path")) {
+            configsPath->setText(value);
+        } else if (key == QStringLiteral("unix.ui.nvram_path")) {
+            nvramPath->setText(value);
+        } else if (key == QStringLiteral("unix.ui.screenshot_path")) {
+            screenshotsPath->setText(value);
         } else if (key == QStringLiteral("statefile_path")) {
             stateFilesPath->setText(value);
+        } else if (key == QStringLiteral("unix.ui.video_path")) {
+            videosPath->setText(value);
+        } else if (key == QStringLiteral("unix.ui.saveimage_path")) {
+            saveImagesPath->setText(value);
+        } else if (key == QStringLiteral("unix.ui.rip_path")) {
+            ripsPath->setText(value);
+        } else if (key == QStringLiteral("unix.ui.data_path")) {
+            dataPath->setText(value);
+        } else if (key == QStringLiteral("unix.ui.path_mode")) {
+            pathDefaultType->setCurrentText(value);
+        } else if (key == QStringLiteral("unix.ui.recursive_roms")) {
+            recursiveRoms->setChecked(configBoolValue(value));
+        } else if (key == QStringLiteral("unix.ui.cache_configurations")) {
+            cacheConfigurations->setChecked(configBoolValue(value));
+        } else if (key == QStringLiteral("unix.ui.cache_boxart")) {
+            cacheBoxArt->setChecked(configBoolValue(value));
+        } else if (key == QStringLiteral("unix.ui.saveimage_original_path")) {
+            saveImageOriginalPath->setChecked(configBoolValue(value));
+        } else if (key == QStringLiteral("unix.ui.relative_paths")) {
+            relativePaths->setChecked(configBoolValue(value));
+        } else if (key == QStringLiteral("unix.ui.portable_mode")) {
+            portableMode->setChecked(configBoolValue(value));
+        } else if (key == QStringLiteral("unix.ui.full_logging")) {
+            fullLogging->setChecked(configBoolValue(value));
+        } else if (key == QStringLiteral("unix.ui.log_window")) {
+            logWindow->setChecked(configBoolValue(value));
         } else if (key == QStringLiteral("kickstart_rom_file")) {
             setPathComboText(romFile, value);
         } else if (key == QStringLiteral("kickstart_ext_rom_file")) {

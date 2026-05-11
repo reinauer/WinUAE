@@ -146,6 +146,7 @@ static bool testRepresentativeConfig()
     settings.insert(QStringLiteral("gfxcard_type"), QStringLiteral("ZorroIII"));
     settings.insert(QStringLiteral("gfx_width_windowed"), QStringLiteral("800"));
     settings.insert(QStringLiteral("gfx_height_windowed"), QStringLiteral("600"));
+    settings.insert(QStringLiteral("unix.ui.config_path"), QStringLiteral("/configs"));
 
     struct uae_prefs *prefs = allocPrefs();
     if (!prefs) {
@@ -158,7 +159,8 @@ static bool testRepresentativeConfig()
     parsedLines.clear();
     bool ok = applyWinUaeQtConfigToPrefs(WinUaeQtConfig(settings), prefs);
     ok = require(ok, "adapter rejected representative config") && ok;
-    ok = requireInt(parsedLines.size(), settings.size(), "parsed line count") && ok;
+    ok = requireInt(parsedLines.size(), settings.size() - 1, "parsed line count") && ok;
+    ok = require(!parsedLines.contains(QStringLiteral("unix.ui.config_path=/configs")), "UI-only path was delegated") && ok;
     ok = require(parsedLines.contains(QStringLiteral("chipset_compatible=A1200")), "chipset compatibility was not delegated") && ok;
     ok = require(parsedLines.contains(QStringLiteral("floppy1type=1")), "floppy drive type was not delegated") && ok;
     ok = require(parsedLines.contains(QStringLiteral("floppy0wp=true")), "floppy write protect was not delegated") && ok;
