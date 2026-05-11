@@ -6125,8 +6125,8 @@ private:
         QPushButton *loadState = new QPushButton(QStringLiteral("Load state..."));
         QPushButton *saveState = new QPushButton(QStringLiteral("Save state..."));
         QPushButton *browseState = smallButton(QStringLiteral("..."));
-        loadState->setEnabled(false);
         saveState->setEnabled(false);
+        saveState->setToolTip(QStringLiteral("Saving emulator state requires runtime save-state support in the Unix GUI."));
         stateFiles->addWidget(stateFileName, 0, 0);
         stateFiles->addWidget(stateFileClear, 0, 1);
         stateFiles->addWidget(browseState, 0, 2);
@@ -6145,13 +6145,16 @@ private:
         right->addWidget(groupBox(QStringLiteral("Keyboard LEDs"), keyboard));
         root->addLayout(right, 1);
 
-        connect(browseState, &QPushButton::clicked, this, [this]() {
+        const auto selectStateFile = [this]() {
             const QString selected = QFileDialog::getOpenFileName(this, QStringLiteral("Select state file"), stateFileName->currentText(), QStringLiteral("WinUAE state files (*.uss);;All files (*)"));
             if (!selected.isEmpty()) {
                 setPathComboText(stateFileName, selected);
                 stateFileClear->setChecked(false);
+                status->setText(QStringLiteral("State file %1 selected for restore").arg(selected));
             }
-        });
+        };
+        connect(loadState, &QPushButton::clicked, this, selectStateFile);
+        connect(browseState, &QPushButton::clicked, this, selectStateFile);
         connect(stateFileName, &QComboBox::currentTextChanged, this, [this](const QString &text) {
             stateFileClear->setChecked(text.trimmed().isEmpty());
         });
