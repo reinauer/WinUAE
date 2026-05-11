@@ -57,11 +57,21 @@ static bool testHardfileMount()
     ok = requireText(entry.device, QStringLiteral("DH2"), "hardfile device") && ok;
     ok = requireText(entry.path, QStringLiteral("/tmp/disk.hdf"), "hardfile path") && ok;
     ok = require(!entry.readOnly, "hardfile read/write") && ok;
+    ok = requireInt(entry.bootPri, 0, "hardfile boot priority") && ok;
     ok = requireText(serializeWinUaeQtHardfile2MountValue(entry), config, "hardfile2 serialized value") && ok;
     ok = requireText(serializeWinUaeQtUaehfHardfileMountValue(entry), QStringLiteral("hdf,") + config, "uaehf hardfile serialized value") && ok;
+    entry.readOnly = true;
+    entry.device = QStringLiteral("DH3");
+    entry.bootPri = 7;
+    ok = requireText(serializeWinUaeQtHardfile2MountValue(entry), QStringLiteral("ro,DH3:/tmp/disk.hdf,32,1,2,512,7,,uae0"), "edited hardfile2 serialized value") && ok;
     WinUaeQtMountEntry uaehfEntry;
     ok = require(parseWinUaeQtUaehfMountValue(QStringLiteral("hdf,") + config, &uaehfEntry), "uaehf hardfile did not parse") && ok;
     ok = requireText(serializeWinUaeQtHardfile2MountValue(uaehfEntry), config, "uaehf hardfile direct serialized value") && ok;
+    WinUaeQtMountEntry minimalEntry;
+    ok = require(parseWinUaeQtHardfile2MountValue(QStringLiteral("rw,DH4:/tmp/min.hdf,16,2,1,512,3"), &minimalEntry), "minimal hardfile did not parse") && ok;
+    minimalEntry.readOnly = true;
+    minimalEntry.bootPri = 4;
+    ok = requireText(serializeWinUaeQtHardfile2MountValue(minimalEntry), QStringLiteral("ro,DH4:/tmp/min.hdf,16,2,1,512,4"), "minimal hardfile serialized value") && ok;
     return ok;
 }
 

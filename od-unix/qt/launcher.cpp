@@ -33,7 +33,9 @@ enum MountDataRole {
     MountPathRole,
     MountReadOnlyRole,
     MountBootPriRole,
-    MountRawConfigRole
+    MountRawConfigRole,
+    MountHardfileGeometryRole,
+    MountHardfileTailRole
 };
 
 static QString sourceFile(const QString &relative)
@@ -352,6 +354,7 @@ private:
     QTreeWidget *mountedDrives = nullptr;
     QPushButton *addDirectoryMountButton = nullptr;
     QPushButton *addHardfileMountButton = nullptr;
+    QPushButton *propertiesMountButton = nullptr;
     QPushButton *removeMountButton = nullptr;
 
     QLineEdit *windowWidth = nullptr;
@@ -816,16 +819,26 @@ private:
         QHBoxLayout *buttons = new QHBoxLayout;
         addDirectoryMountButton = new QPushButton(QStringLiteral("Add Directory or Archive..."));
         addHardfileMountButton = new QPushButton(QStringLiteral("Add Hardfile..."));
+        propertiesMountButton = new QPushButton(QStringLiteral("Properties"));
         removeMountButton = new QPushButton(QStringLiteral("Remove"));
         buttons->addWidget(addDirectoryMountButton);
         buttons->addWidget(addHardfileMountButton);
+        buttons->addWidget(propertiesMountButton);
         buttons->addWidget(removeMountButton);
         buttons->addStretch();
         root->addLayout(buttons);
         connect(addDirectoryMountButton, &QPushButton::clicked, this, [this]() { addDirectoryMountDialog(); });
         connect(addHardfileMountButton, &QPushButton::clicked, this, [this]() { addHardfileMountDialog(); });
+        connect(propertiesMountButton, &QPushButton::clicked, this, [this]() { openSelectedMountProperties(); });
         connect(removeMountButton, &QPushButton::clicked, this, [this]() { removeSelectedMount(); });
         connect(mountedDrives, &QTreeWidget::itemSelectionChanged, this, [this]() { updateMountButtons(); });
+        connect(mountedDrives, &QTreeWidget::itemDoubleClicked, this, [this](QTreeWidgetItem *, int) { openSelectedMountProperties(); });
+        QShortcut *propertiesShortcut = new QShortcut(QKeySequence(Qt::Key_Return), mountedDrives);
+        connect(propertiesShortcut, &QShortcut::activated, this, [this]() { openSelectedMountProperties(); });
+        QShortcut *propertiesEnterShortcut = new QShortcut(QKeySequence(Qt::Key_Enter), mountedDrives);
+        connect(propertiesEnterShortcut, &QShortcut::activated, this, [this]() { openSelectedMountProperties(); });
+        QShortcut *removeShortcut = new QShortcut(QKeySequence::Delete, mountedDrives);
+        connect(removeShortcut, &QShortcut::activated, this, [this]() { removeSelectedMount(); });
         updateMountButtons();
         return page;
     }
@@ -1317,15 +1330,150 @@ private:
 
     void addDirectoryMountDialog()
     {
-        QDialog dialog(this);
-        dialog.setWindowTitle(QStringLiteral("Add Directory or Archive"));
+        WinUaeQtMountEntry entry;
+        entry.kind = QStringLiteral("dir");
+        entry.device = nextMountDeviceName();
+        if (showDirectoryMountDialog(&entry, QStringLiteral("Add Directory or Archive"))) {
+            addMountEntry(entry);
+        }
+    }
 
-        QLineEdit *path = new QLineEdit;
-        QLineEdit *device = new QLineEdit(nextMountDeviceName());
-        QLineEdit *volume = new QLineEdit;
+    void addHardfileMountDialog()
+    {
+        const QString path = QFileDialog::getOpenFileName(this, QStringLiteral("Add hardfile"), QDir::homePath(), QStringLiteral("Hardfiles (*.hdf *.vhd *.chd);;All files (*)"));
+        if (path.isEmpty()) {
+            return;
+        }
+
+        WinUaeQtMountEntry entry;
+        entry.kind = QStringLiteral("hdf");
+        entry.device = nextMountDeviceName();
+        entry.path = path;
+        entry.hardfileGeometry = QStringLiteral("32,1,2,512");
+        entry.hardfileTail = QStringLiteral(",uae0");
+        entry.readOnly = false;
+        entry.bootPri = 0;
+        if (showHardfileMountDialog(&entry, QStringLiteral("Hardfile Properties"))) {
+            addMountEntry(entry);
+        }
+    }
+
+    void addMountEntry(const WinUaeQtMountEntry &entry)
+    {
+        if (!mountedDrives || mountedDrives->topLevelItemCount() >= MaxMountEntries) {
+            return;
+        }
+        QTreeWidgetItem *item = new QTreeWidgetItem(mountedDrives);
+        updateMountItem(item, entry);
+        updateMountButtons();
+    }
+
+    void updateMountItem(QTreeWidgetItem *item, const WinUaeQtMountEntry &entry)
+    {
+        if (!mountedDrives || !item) {
+            return;
+        }
+        item->setText(0, winUaeQtSanitizedAmigaName(entry.device, nextMountDeviceName(), true));
+        item->setText(1, entry.kind == QStringLiteral("dir") ? winUaeQtSanitizedAmigaName(entry.volume, winUaeQtDefaultVolumeName(entry.path), false) : QString());
+        item->setText(2, entry.kind == QStringLiteral("hdf") ? QStringLiteral("Hardfile") : QStringLiteral("Directory"));
+        item->setText(3, entry.readOnly ? QStringLiteral("Read-only") : QStringLiteral("Read/write"));
+        item->setText(4, QString::number(entry.bootPri));
+        item->setText(5, entry.path);
+        item->setData(0, MountKindRole, entry.kind);
+        item->setData(0, MountPathRole, entry.path);
+        item->setData(0, MountReadOnlyRole, entry.readOnly);
+        item->setData(0, MountBootPriRole, entry.bootPri);
+        item->setData(0, MountRawConfigRole, entry.rawConfig);
+        item->setData(0, MountHardfileGeometryRole, entry.hardfileGeometry);
+        item->setData(0, MountHardfileTailRole, entry.hardfileTail);
+        for (int i = 0; i < mountedDrives->columnCount(); i++) {
+            mountedDrives->resizeColumnToContents(i);
+        }
+    }
+
+    void removeSelectedMount()
+    {
+        if (!mountedDrives) {
+            return;
+        }
+        qDeleteAll(mountedDrives->selectedItems());
+        updateMountButtons();
+    }
+
+    void updateMountButtons()
+    {
+        if (!mountedDrives) {
+            return;
+        }
+        const bool canAdd = mountedDrives->topLevelItemCount() < MaxMountEntries;
+        if (addDirectoryMountButton) {
+            addDirectoryMountButton->setEnabled(canAdd);
+        }
+        if (addHardfileMountButton) {
+            addHardfileMountButton->setEnabled(canAdd);
+        }
+        if (propertiesMountButton) {
+            propertiesMountButton->setEnabled(!mountedDrives->selectedItems().isEmpty());
+        }
+        if (removeMountButton) {
+            removeMountButton->setEnabled(!mountedDrives->selectedItems().isEmpty());
+        }
+    }
+
+    WinUaeQtMountEntry mountEntryFromItem(const QTreeWidgetItem *item) const
+    {
+        WinUaeQtMountEntry entry;
+        entry.kind = item->data(0, MountKindRole).toString();
+        entry.device = item->text(0);
+        entry.volume = item->text(1);
+        entry.path = item->data(0, MountPathRole).toString();
+        entry.readOnly = item->data(0, MountReadOnlyRole).toBool();
+        entry.bootPri = item->data(0, MountBootPriRole).toInt();
+        entry.rawConfig = item->data(0, MountRawConfigRole).toString();
+        entry.hardfileGeometry = item->data(0, MountHardfileGeometryRole).toString();
+        entry.hardfileTail = item->data(0, MountHardfileTailRole).toString();
+        return entry;
+    }
+
+    void openSelectedMountProperties()
+    {
+        if (!mountedDrives) {
+            return;
+        }
+        QTreeWidgetItem *item = mountedDrives->currentItem();
+        if (!item) {
+            return;
+        }
+
+        WinUaeQtMountEntry entry = mountEntryFromItem(item);
+        bool accepted = false;
+        if (entry.kind == QStringLiteral("dir")) {
+            accepted = showDirectoryMountDialog(&entry, QStringLiteral("Directory Properties"));
+        } else if (entry.kind == QStringLiteral("hdf")) {
+            accepted = showHardfileMountDialog(&entry, QStringLiteral("Hardfile Properties"));
+        }
+        if (accepted) {
+            updateMountItem(item, entry);
+        }
+    }
+
+    bool showDirectoryMountDialog(WinUaeQtMountEntry *entry, const QString &title)
+    {
+        if (!entry) {
+            return false;
+        }
+
+        QDialog dialog(this);
+        dialog.setWindowTitle(title);
+
+        QLineEdit *path = new QLineEdit(entry->path);
+        QLineEdit *device = new QLineEdit(entry->device.isEmpty() ? nextMountDeviceName() : entry->device);
+        QLineEdit *volume = new QLineEdit(entry->volume);
         QSpinBox *bootPri = new QSpinBox;
         bootPri->setRange(-128, 127);
+        bootPri->setValue(entry->bootPri);
         QCheckBox *readOnly = new QCheckBox(QStringLiteral("Read-only"));
+        readOnly->setChecked(entry->readOnly);
         QPushButton *browse = smallButton(QStringLiteral("..."));
 
         QGridLayout *fields = new QGridLayout;
@@ -1359,95 +1507,78 @@ private:
         connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
 
         if (dialog.exec() != QDialog::Accepted || path->text().trimmed().isEmpty()) {
-            return;
+            return false;
         }
 
-        WinUaeQtMountEntry entry;
-        entry.kind = QStringLiteral("dir");
-        entry.device = winUaeQtSanitizedAmigaName(device->text(), nextMountDeviceName(), true);
-        entry.volume = winUaeQtSanitizedAmigaName(volume->text(), winUaeQtDefaultVolumeName(path->text()), false);
-        entry.path = path->text().trimmed();
-        entry.bootPri = bootPri->value();
-        entry.readOnly = readOnly->isChecked();
-        addMountEntry(entry);
+        entry->kind = QStringLiteral("dir");
+        entry->device = winUaeQtSanitizedAmigaName(device->text(), nextMountDeviceName(), true);
+        entry->volume = winUaeQtSanitizedAmigaName(volume->text(), winUaeQtDefaultVolumeName(path->text()), false);
+        entry->path = path->text().trimmed();
+        entry->bootPri = bootPri->value();
+        entry->readOnly = readOnly->isChecked();
+        return true;
     }
 
-    void addHardfileMountDialog()
+    bool showHardfileMountDialog(WinUaeQtMountEntry *entry, const QString &title)
     {
-        const QString path = QFileDialog::getOpenFileName(this, QStringLiteral("Add hardfile"), QDir::homePath(), QStringLiteral("Hardfiles (*.hdf *.vhd *.chd);;All files (*)"));
-        if (path.isEmpty()) {
-            return;
+        if (!entry) {
+            return false;
         }
 
-        WinUaeQtMountEntry entry;
-        entry.kind = QStringLiteral("hdf");
-        entry.device = nextMountDeviceName();
-        entry.path = path;
-        entry.readOnly = false;
-        entry.bootPri = 0;
-        addMountEntry(entry);
-    }
+        QDialog dialog(this);
+        dialog.setWindowTitle(title);
 
-    void addMountEntry(const WinUaeQtMountEntry &entry)
-    {
-        if (!mountedDrives || mountedDrives->topLevelItemCount() >= MaxMountEntries) {
-            return;
-        }
-        QTreeWidgetItem *item = new QTreeWidgetItem(mountedDrives);
-        item->setText(0, winUaeQtSanitizedAmigaName(entry.device, nextMountDeviceName(), true));
-        item->setText(1, entry.kind == QStringLiteral("dir") ? winUaeQtSanitizedAmigaName(entry.volume, winUaeQtDefaultVolumeName(entry.path), false) : QString());
-        item->setText(2, entry.kind == QStringLiteral("hdf") ? QStringLiteral("Hardfile") : QStringLiteral("Directory"));
-        item->setText(3, entry.readOnly ? QStringLiteral("Read-only") : QStringLiteral("Read/write"));
-        item->setText(4, QString::number(entry.bootPri));
-        item->setText(5, entry.path);
-        item->setData(0, MountKindRole, entry.kind);
-        item->setData(0, MountPathRole, entry.path);
-        item->setData(0, MountReadOnlyRole, entry.readOnly);
-        item->setData(0, MountBootPriRole, entry.bootPri);
-        item->setData(0, MountRawConfigRole, entry.rawConfig);
-        for (int i = 0; i < mountedDrives->columnCount(); i++) {
-            mountedDrives->resizeColumnToContents(i);
-        }
-        updateMountButtons();
-    }
+        QLineEdit *path = new QLineEdit(entry->path);
+        QLineEdit *device = new QLineEdit(entry->device.isEmpty() ? nextMountDeviceName() : entry->device);
+        QSpinBox *bootPri = new QSpinBox;
+        bootPri->setRange(-128, 127);
+        bootPri->setValue(entry->bootPri);
+        QCheckBox *readOnly = new QCheckBox(QStringLiteral("Read-only"));
+        readOnly->setChecked(entry->readOnly);
+        QPushButton *browse = smallButton(QStringLiteral("..."));
 
-    void removeSelectedMount()
-    {
-        if (!mountedDrives) {
-            return;
-        }
-        qDeleteAll(mountedDrives->selectedItems());
-        updateMountButtons();
-    }
+        QGridLayout *fields = new QGridLayout;
+        fields->setColumnStretch(1, 1);
+        fields->addWidget(label(QStringLiteral("Path:")), 0, 0);
+        fields->addWidget(path, 0, 1);
+        fields->addWidget(browse, 0, 2);
+        fields->addWidget(label(QStringLiteral("Device:")), 1, 0);
+        fields->addWidget(device, 1, 1, 1, 2);
+        fields->addWidget(label(QStringLiteral("Boot priority:")), 2, 0);
+        fields->addWidget(bootPri, 2, 1);
+        fields->addWidget(readOnly, 3, 1, 1, 2);
 
-    void updateMountButtons()
-    {
-        if (!mountedDrives) {
-            return;
-        }
-        const bool canAdd = mountedDrives->topLevelItemCount() < MaxMountEntries;
-        if (addDirectoryMountButton) {
-            addDirectoryMountButton->setEnabled(canAdd);
-        }
-        if (addHardfileMountButton) {
-            addHardfileMountButton->setEnabled(canAdd);
-        }
-        if (removeMountButton) {
-            removeMountButton->setEnabled(!mountedDrives->selectedItems().isEmpty());
-        }
-    }
+        QDialogButtonBox *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+        QVBoxLayout *root = new QVBoxLayout(&dialog);
+        root->addLayout(fields);
+        root->addWidget(buttons);
 
-    WinUaeQtMountEntry mountEntryFromItem(const QTreeWidgetItem *item) const
-    {
-        WinUaeQtMountEntry entry;
-        entry.kind = item->data(0, MountKindRole).toString();
-        entry.device = item->text(0);
-        entry.volume = item->text(1);
-        entry.path = item->data(0, MountPathRole).toString();
-        entry.readOnly = item->data(0, MountReadOnlyRole).toBool();
-        entry.bootPri = item->data(0, MountBootPriRole).toInt();
-        entry.rawConfig = item->data(0, MountRawConfigRole).toString();
-        return entry;
+        connect(browse, &QPushButton::clicked, this, [this, path]() {
+            const QString selected = QFileDialog::getOpenFileName(this, QStringLiteral("Select hardfile"), path->text().isEmpty() ? QDir::homePath() : path->text(), QStringLiteral("Hardfiles (*.hdf *.vhd *.chd);;All files (*)"));
+            if (!selected.isEmpty()) {
+                path->setText(selected);
+            }
+        });
+        connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+        connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+
+        if (dialog.exec() != QDialog::Accepted || path->text().trimmed().isEmpty()) {
+            return false;
+        }
+
+        entry->kind = QStringLiteral("hdf");
+        entry->device = winUaeQtSanitizedAmigaName(device->text(), nextMountDeviceName(), true);
+        entry->path = path->text().trimmed();
+        entry->bootPri = bootPri->value();
+        entry->readOnly = readOnly->isChecked();
+        const bool needsHardfileDefaults = entry->hardfileGeometry.isEmpty();
+        if (entry->hardfileGeometry.isEmpty()) {
+            entry->hardfileGeometry = QStringLiteral("32,1,2,512");
+        }
+        if (needsHardfileDefaults && entry->hardfileTail.isEmpty()) {
+            entry->hardfileTail = QStringLiteral(",uae0");
+        }
+        return true;
     }
 
     WinUaeQtConfig::OrderedSettings currentMountSettings() const
