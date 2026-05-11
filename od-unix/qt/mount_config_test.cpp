@@ -103,6 +103,16 @@ static bool testTapeMount()
     return ok;
 }
 
+static bool testConfigFieldList()
+{
+    const QStringList fields = winUaeQtConfigFieldList(QStringLiteral(",ide0,\"/tmp/Geo,One\",CF,ATA2+S,flags=0x1"));
+    bool ok = requireInt(fields.size(), 6, "field list size");
+    ok = requireText(fields.value(0), QString(), "empty filesys field") && ok;
+    ok = requireText(fields.value(2), QStringLiteral("/tmp/Geo,One"), "quoted field") && ok;
+    ok = requireText(winUaeQtConfigJoinFields(fields), QStringLiteral(",ide0,\"/tmp/Geo,One\",CF,ATA2+S,flags=0x1"), "joined fields") && ok;
+    return ok;
+}
+
 int main()
 {
     bool ok = true;
@@ -110,6 +120,7 @@ int main()
     ok = testHardfileMount() && ok;
     ok = testCdMount() && ok;
     ok = testTapeMount() && ok;
+    ok = testConfigFieldList() && ok;
     ok = requireText(winUaeQtSanitizedAmigaName(QStringLiteral("dh:0, "), QStringLiteral("DH0"), true), QStringLiteral("DH_0_"), "sanitized name") && ok;
     return ok ? 0 : 1;
 }

@@ -98,6 +98,29 @@ static bool takeConfigField(QString *input, QChar delimiter, QString *field, boo
     return true;
 }
 
+QStringList winUaeQtConfigFieldList(QString value)
+{
+    QStringList fields;
+    while (!value.isEmpty()) {
+        QString field;
+        if (!takeConfigField(&value, QLatin1Char(','), &field, false)) {
+            return fields;
+        }
+        fields.append(field);
+    }
+    return fields;
+}
+
+QString winUaeQtConfigJoinFields(const QStringList &fields)
+{
+    QStringList escapedFields;
+    escapedFields.reserve(fields.size());
+    for (const QString &field : fields) {
+        escapedFields.append(winUaeQtConfigEscapeMin(field));
+    }
+    return escapedFields.join(QLatin1Char(','));
+}
+
 static bool parseAccessValue(const QString &value, bool *readOnly)
 {
     if (value.compare(QStringLiteral("ro"), Qt::CaseInsensitive) == 0) {

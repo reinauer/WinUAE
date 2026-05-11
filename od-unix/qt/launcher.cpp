@@ -47,7 +47,7 @@ static QStringList mountControllerParts(QString tail)
     if (!tail.startsWith(QLatin1Char(','))) {
         tail.prepend(QLatin1Char(','));
     }
-    QStringList parts = tail.split(QLatin1Char(','));
+    QStringList parts = winUaeQtConfigFieldList(tail);
     while (parts.size() < 2) {
         parts.append(QString());
     }
@@ -64,7 +64,7 @@ static QString mountTailWithController(const WinUaeQtMountEntry &entry, const QS
 {
     QStringList parts = mountControllerParts(entry.hardfileTail);
     parts[1] = controller;
-    return parts.join(QLatin1Char(','));
+    return winUaeQtConfigJoinFields(parts);
 }
 
 static QString mountControllerFamily(const WinUaeQtMountEntry &entry, const QString &fallback)
@@ -118,6 +118,155 @@ static QString mountControllerDisplay(const WinUaeQtMountEntry &entry)
         return QStringLiteral("UAE:%1").arg(mountControllerUnit(entry, fallback));
     }
     return value;
+}
+
+static bool isIntegerText(const QString &value)
+{
+    bool ok = false;
+    value.toInt(&ok);
+    return ok;
+}
+
+static QStringList hardfileGeometryParts(const WinUaeQtMountEntry &entry)
+{
+    QStringList parts = entry.hardfileGeometry.split(QLatin1Char(','));
+    while (parts.size() < 4) {
+        parts.append(QStringLiteral("0"));
+    }
+    return parts;
+}
+
+static bool hardfileIsRdb(const WinUaeQtMountEntry &entry)
+{
+    const QStringList geometry = hardfileGeometryParts(entry);
+    return geometry.value(0).toInt() == 0
+        && geometry.value(1).toInt() == 0
+        && geometry.value(2).toInt() == 0;
+}
+
+static bool hardfileHasPhysicalGeometry(const WinUaeQtMountEntry &entry)
+{
+    const QStringList parts = mountControllerParts(entry.hardfileTail);
+    return parts.size() > 3
+        && isIntegerText(parts.value(2))
+        && parts.value(3).contains(QLatin1Char('/'));
+}
+
+static QStringList hardfilePhysicalGeometryParts(const WinUaeQtMountEntry &entry)
+{
+    QStringList geometry;
+    if (hardfileHasPhysicalGeometry(entry)) {
+        geometry = mountControllerParts(entry.hardfileTail).value(3).split(QLatin1Char('/'));
+    }
+    while (geometry.size() < 3) {
+        geometry.append(QStringLiteral("0"));
+    }
+    return geometry;
+}
+
+static QString hardfileTailGeometryFile(const WinUaeQtMountEntry &entry)
+{
+    const QStringList parts = mountControllerParts(entry.hardfileTail);
+    return hardfileHasPhysicalGeometry(entry) ? parts.value(4) : QString();
+}
+
+static int hardfileTailExtraStart(const WinUaeQtMountEntry &entry)
+{
+    return hardfileHasPhysicalGeometry(entry) ? 5 : 2;
+}
+
+static bool isManagedHardfileTailToken(const QString &token)
+{
+    static const QStringList managed = {
+        QStringLiteral("HD"),
+        QStringLiteral("CF"),
+        QStringLiteral("SCSI1"),
+        QStringLiteral("SCSI2"),
+        QStringLiteral("SASIE"),
+        QStringLiteral("SASI"),
+        QStringLiteral("SASI_CHS"),
+        QStringLiteral("ATA1"),
+        QStringLiteral("ATA2+"),
+        QStringLiteral("ATA2+S")
+    };
+    for (const QString &item : managed) {
+        if (token.compare(item, Qt::CaseInsensitive) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static QStringList hardfilePreservedTailExtras(const WinUaeQtMountEntry &entry)
+{
+    const QStringList parts = mountControllerParts(entry.hardfileTail);
+    QStringList extras;
+    for (int i = hardfileTailExtraStart(entry); i < parts.size(); i++) {
+        if (!parts.value(i).isEmpty() && !isManagedHardfileTailToken(parts.value(i))) {
+            extras.append(parts.value(i));
+        }
+    }
+    return extras;
+}
+
+static bool hardfileTailHasToken(const WinUaeQtMountEntry &entry, const QString &token)
+{
+    const QStringList parts = mountControllerParts(entry.hardfileTail);
+    for (int i = hardfileTailExtraStart(entry); i < parts.size(); i++) {
+        if (parts.value(i).compare(token, Qt::CaseInsensitive) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static QString hardfileFeatureText(const WinUaeQtMountEntry &entry, const QString &controllerFamily)
+{
+    if (controllerFamily == QStringLiteral("IDE (Auto)")) {
+        if (hardfileTailHasToken(entry, QStringLiteral("ATA2+S"))) {
+            return QStringLiteral("ATA-2+ Strict");
+        }
+        if (hardfileTailHasToken(entry, QStringLiteral("ATA2+"))) {
+            return QStringLiteral("ATA-2+");
+        }
+        if (hardfileTailHasToken(entry, QStringLiteral("ATA1"))) {
+            return QStringLiteral("ATA-1");
+        }
+    } else if (controllerFamily == QStringLiteral("SCSI (Auto)")) {
+        if (hardfileTailHasToken(entry, QStringLiteral("SASI_CHS"))) {
+            return QStringLiteral("SASI CHS");
+        }
+        if (hardfileTailHasToken(entry, QStringLiteral("SASI"))) {
+            return QStringLiteral("SASI");
+        }
+        if (hardfileTailHasToken(entry, QStringLiteral("SCSI1"))) {
+            return QStringLiteral("SCSI-1");
+        }
+        if (hardfileTailHasToken(entry, QStringLiteral("SCSI2"))) {
+            return QStringLiteral("SCSI-2");
+        }
+    }
+    return QStringLiteral("Default");
+}
+
+static QString hardfileFeatureToken(const QString &featureText)
+{
+    if (featureText == QStringLiteral("ATA-1")) {
+        return QStringLiteral("ATA1");
+    }
+    if (featureText == QStringLiteral("ATA-2+ Strict")) {
+        return QStringLiteral("ATA2+S");
+    }
+    if (featureText == QStringLiteral("SCSI-1")) {
+        return QStringLiteral("SCSI1");
+    }
+    if (featureText == QStringLiteral("SASI")) {
+        return QStringLiteral("SASI");
+    }
+    if (featureText == QStringLiteral("SASI CHS")) {
+        return QStringLiteral("SASI_CHS");
+    }
+    return QString();
 }
 
 static QString sourceFile(const QString &relative)
@@ -1778,37 +1927,209 @@ private:
 
         QDialog dialog(this);
         dialog.setWindowTitle(title);
+        dialog.resize(600, 460);
 
         QLineEdit *path = new QLineEdit(entry->path);
+        QLineEdit *geometryFile = new QLineEdit(hardfileTailGeometryFile(*entry));
+        QLineEdit *filesys = new QLineEdit(mountControllerParts(entry->hardfileTail).value(0));
         QLineEdit *device = new QLineEdit(entry->device.isEmpty() ? nextMountDeviceName() : entry->device);
         QSpinBox *bootPri = new QSpinBox;
-        bootPri->setRange(-128, 127);
+        bootPri->setRange(-129, 127);
         bootPri->setValue(entry->bootPri);
-        QCheckBox *readOnly = new QCheckBox(QStringLiteral("Read-only"));
-        readOnly->setChecked(entry->readOnly);
+        QCheckBox *readWrite = new QCheckBox(QStringLiteral("Read/write"));
+        readWrite->setChecked(!entry->readOnly);
+        QCheckBox *autoboot = new QCheckBox(QStringLiteral("Bootable"));
+        QCheckBox *doNotMount = new QCheckBox(QStringLiteral("Do not mount"));
+        QCheckBox *rdbMode = new QCheckBox(QStringLiteral("Full drive/RDB mode"));
+        QCheckBox *manualGeometry = new QCheckBox(QStringLiteral("Manual geometry"));
+        rdbMode->setChecked(hardfileIsRdb(*entry));
+        manualGeometry->setChecked(hardfileHasPhysicalGeometry(*entry));
+
+        const QStringList geometry = hardfileGeometryParts(*entry);
+        QSpinBox *surfaces = new QSpinBox;
+        QSpinBox *sectors = new QSpinBox;
+        QSpinBox *reserved = new QSpinBox;
+        QSpinBox *blockSize = new QSpinBox;
+        for (QSpinBox *spin : { surfaces, sectors, reserved }) {
+            spin->setRange(0, 1000000000);
+        }
+        blockSize->setRange(1, 65536);
+        sectors->setValue(geometry.value(0).toInt());
+        surfaces->setValue(geometry.value(1).toInt());
+        reserved->setValue(geometry.value(2).toInt());
+        blockSize->setValue(qMax(1, geometry.value(3, QStringLiteral("512")).toInt()));
+
+        const QStringList physicalGeometry = hardfilePhysicalGeometryParts(*entry);
+        QSpinBox *physicalCylinders = new QSpinBox;
+        QSpinBox *physicalHeads = new QSpinBox;
+        QSpinBox *physicalSectors = new QSpinBox;
+        for (QSpinBox *spin : { physicalCylinders, physicalHeads, physicalSectors }) {
+            spin->setRange(0, 1000000000);
+        }
+        physicalCylinders->setValue(physicalGeometry.value(0).toInt());
+        physicalHeads->setValue(physicalGeometry.value(1).toInt());
+        physicalSectors->setValue(physicalGeometry.value(2).toInt());
+
+        QComboBox *controller = combo({
+            QStringLiteral("UAE (uaehf.device)"),
+            QStringLiteral("IDE (Auto)"),
+            QStringLiteral("SCSI (Auto)")
+        }, mountControllerFamily(*entry, QStringLiteral("uae0")));
+        QSpinBox *controllerUnit = new QSpinBox;
+        controllerUnit->setRange(0, MaxControllerUnits - 1);
+        controllerUnit->setValue(mountControllerUnit(*entry, QStringLiteral("uae0")));
+        QComboBox *mediaType = combo({ QStringLiteral("HD"), QStringLiteral("CF") }, hardfileTailHasToken(*entry, QStringLiteral("CF")) ? QStringLiteral("CF") : QStringLiteral("HD"));
+        QComboBox *featureLevel = new QComboBox;
+
         QPushButton *browse = smallButton(QStringLiteral("..."));
+        QPushButton *geometryBrowse = smallButton(QStringLiteral("..."));
+        QPushButton *filesysBrowse = smallButton(QStringLiteral("..."));
 
         QGridLayout *fields = new QGridLayout;
         fields->setColumnStretch(1, 1);
         fields->addWidget(label(QStringLiteral("Path:")), 0, 0);
-        fields->addWidget(path, 0, 1);
-        fields->addWidget(browse, 0, 2);
-        fields->addWidget(label(QStringLiteral("Device:")), 1, 0);
-        fields->addWidget(device, 1, 1, 1, 2);
-        fields->addWidget(label(QStringLiteral("Boot priority:")), 2, 0);
-        fields->addWidget(bootPri, 2, 1);
-        fields->addWidget(readOnly, 3, 1, 1, 2);
+        fields->addWidget(path, 0, 1, 1, 2);
+        fields->addWidget(browse, 0, 3);
+        fields->addWidget(label(QStringLiteral("Geometry:")), 1, 0);
+        fields->addWidget(geometryFile, 1, 1, 1, 2);
+        fields->addWidget(geometryBrowse, 1, 3);
+        fields->addWidget(label(QStringLiteral("FileSys:")), 2, 0);
+        fields->addWidget(filesys, 2, 1, 1, 2);
+        fields->addWidget(filesysBrowse, 2, 3);
+        fields->addWidget(label(QStringLiteral("Device:")), 3, 0);
+        fields->addWidget(device, 3, 1);
+        fields->addWidget(label(QStringLiteral("Boot priority:")), 3, 2);
+        fields->addWidget(bootPri, 3, 3);
+        fields->addWidget(readWrite, 4, 1);
+        fields->addWidget(autoboot, 4, 2);
+        fields->addWidget(doNotMount, 5, 1);
+        fields->addWidget(rdbMode, 6, 1);
+        fields->addWidget(manualGeometry, 6, 2, 1, 2);
+
+        QGridLayout *geometryLayout = new QGridLayout;
+        geometryLayout->addWidget(label(QStringLiteral("Surfaces:")), 0, 0);
+        geometryLayout->addWidget(surfaces, 0, 1);
+        geometryLayout->addWidget(label(QStringLiteral("Sectors:")), 1, 0);
+        geometryLayout->addWidget(sectors, 1, 1);
+        geometryLayout->addWidget(label(QStringLiteral("Reserved:")), 2, 0);
+        geometryLayout->addWidget(reserved, 2, 1);
+        geometryLayout->addWidget(label(QStringLiteral("Block size:")), 3, 0);
+        geometryLayout->addWidget(blockSize, 3, 1);
+        geometryLayout->addWidget(label(QStringLiteral("Physical cyls:")), 0, 2);
+        geometryLayout->addWidget(physicalCylinders, 0, 3);
+        geometryLayout->addWidget(label(QStringLiteral("Physical heads:")), 1, 2);
+        geometryLayout->addWidget(physicalHeads, 1, 3);
+        geometryLayout->addWidget(label(QStringLiteral("Physical sectors:")), 2, 2);
+        geometryLayout->addWidget(physicalSectors, 2, 3);
+
+        QGridLayout *controllerLayout = new QGridLayout;
+        controllerLayout->setColumnStretch(1, 1);
+        controllerLayout->addWidget(label(QStringLiteral("HD Controller:")), 0, 0);
+        controllerLayout->addWidget(controller, 0, 1);
+        controllerLayout->addWidget(label(QStringLiteral("Unit:")), 0, 2);
+        controllerLayout->addWidget(controllerUnit, 0, 3);
+        controllerLayout->addWidget(label(QStringLiteral("Type:")), 1, 0);
+        controllerLayout->addWidget(mediaType, 1, 1);
+        controllerLayout->addWidget(label(QStringLiteral("Feature level:")), 1, 2);
+        controllerLayout->addWidget(featureLevel, 1, 3);
 
         QDialogButtonBox *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
         QVBoxLayout *root = new QVBoxLayout(&dialog);
-        root->addLayout(fields);
+        root->addWidget(groupBox(QStringLiteral("Settings"), fields));
+        root->addWidget(groupBox(QStringLiteral("Geometry"), geometryLayout));
+        root->addWidget(groupBox(QStringLiteral("HD Controller"), controllerLayout));
         root->addWidget(buttons);
+
+        auto updateBootChecks = [bootPri, autoboot, doNotMount]() {
+            QSignalBlocker blockAutoboot(autoboot);
+            QSignalBlocker blockDoNotMount(doNotMount);
+            autoboot->setChecked(bootPri->value() > -128);
+            doNotMount->setChecked(bootPri->value() <= -129);
+        };
+        auto updatePhysicalControls = [manualGeometry, physicalCylinders, physicalHeads, physicalSectors]() {
+            const bool enabled = manualGeometry->isChecked();
+            physicalCylinders->setEnabled(enabled);
+            physicalHeads->setEnabled(enabled);
+            physicalSectors->setEnabled(enabled);
+        };
+        auto setFeatureItems = [controller, featureLevel, mediaType](const QString &preferred) {
+            const QString family = controller->currentText();
+            QSignalBlocker blocker(featureLevel);
+            featureLevel->clear();
+            featureLevel->addItem(QStringLiteral("Default"));
+            if (family == QStringLiteral("IDE (Auto)")) {
+                featureLevel->addItems({ QStringLiteral("ATA-1"), QStringLiteral("ATA-2+"), QStringLiteral("ATA-2+ Strict") });
+            } else if (family == QStringLiteral("SCSI (Auto)")) {
+                featureLevel->addItems({ QStringLiteral("SCSI-1"), QStringLiteral("SCSI-2"), QStringLiteral("SASI"), QStringLiteral("SASI CHS") });
+            }
+            const int index = featureLevel->findText(preferred);
+            featureLevel->setCurrentIndex(index >= 0 ? index : 0);
+            featureLevel->setEnabled(family != QStringLiteral("UAE (uaehf.device)"));
+            mediaType->setEnabled(family == QStringLiteral("IDE (Auto)"));
+        };
+
+        updateBootChecks();
+        updatePhysicalControls();
+        updateControllerUnitRange(controllerUnit, controller->currentText());
+        setFeatureItems(hardfileFeatureText(*entry, controller->currentText()));
 
         connect(browse, &QPushButton::clicked, this, [this, path]() {
             const QString selected = QFileDialog::getOpenFileName(this, QStringLiteral("Select hardfile"), path->text().isEmpty() ? QDir::homePath() : path->text(), QStringLiteral("Hardfiles (*.hdf *.vhd *.chd);;All files (*)"));
             if (!selected.isEmpty()) {
                 path->setText(selected);
             }
+        });
+        connect(geometryBrowse, &QPushButton::clicked, this, [this, geometryFile]() {
+            const QString selected = QFileDialog::getOpenFileName(this, QStringLiteral("Select geometry file"), geometryFile->text().isEmpty() ? QDir::homePath() : geometryFile->text(), QStringLiteral("Geometry files (*.geo);;All files (*)"));
+            if (!selected.isEmpty()) {
+                geometryFile->setText(selected);
+            }
+        });
+        connect(filesysBrowse, &QPushButton::clicked, this, [this, filesys]() {
+            const QString selected = QFileDialog::getOpenFileName(this, QStringLiteral("Select filesystem"), filesys->text().isEmpty() ? QDir::homePath() : filesys->text(), QStringLiteral("Filesystem files (*.fs *.filesystem);;All files (*)"));
+            if (!selected.isEmpty()) {
+                filesys->setText(selected);
+            }
+        });
+        connect(bootPri, QOverload<int>::of(&QSpinBox::valueChanged), this, updateBootChecks);
+        connect(autoboot, &QCheckBox::toggled, this, [bootPri, doNotMount](bool checked) {
+            QSignalBlocker blocker(doNotMount);
+            if (checked) {
+                bootPri->setValue(0);
+                doNotMount->setChecked(false);
+            } else if (bootPri->value() > -128) {
+                bootPri->setValue(-128);
+            }
+        });
+        connect(doNotMount, &QCheckBox::toggled, this, [bootPri, autoboot](bool checked) {
+            QSignalBlocker blocker(autoboot);
+            if (checked) {
+                bootPri->setValue(-129);
+                autoboot->setChecked(false);
+            } else if (bootPri->value() <= -129) {
+                bootPri->setValue(-128);
+            }
+        });
+        connect(rdbMode, &QCheckBox::toggled, this, [sectors, surfaces, reserved, blockSize, device, filesys, bootPri](bool checked) {
+            if (checked) {
+                sectors->setValue(0);
+                surfaces->setValue(0);
+                reserved->setValue(0);
+                blockSize->setValue(512);
+                device->clear();
+                filesys->clear();
+                bootPri->setValue(0);
+            } else if (sectors->value() == 0 && surfaces->value() == 0 && reserved->value() == 0) {
+                sectors->setValue(32);
+                surfaces->setValue(1);
+                reserved->setValue(2);
+                blockSize->setValue(512);
+            }
+        });
+        connect(manualGeometry, &QCheckBox::toggled, this, updatePhysicalControls);
+        connect(controller, &QComboBox::currentTextChanged, this, [this, controllerUnit, setFeatureItems](const QString &text) {
+            updateControllerUnitRange(controllerUnit, text);
+            setFeatureItems(QStringLiteral("Default"));
         });
         connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
         connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
@@ -1821,14 +2142,35 @@ private:
         entry->device = winUaeQtSanitizedAmigaName(device->text(), nextMountDeviceName(), true);
         entry->path = path->text().trimmed();
         entry->bootPri = bootPri->value();
-        entry->readOnly = readOnly->isChecked();
-        const bool needsHardfileDefaults = entry->hardfileGeometry.isEmpty();
-        if (entry->hardfileGeometry.isEmpty()) {
-            entry->hardfileGeometry = QStringLiteral("32,1,2,512");
+        entry->readOnly = !readWrite->isChecked();
+        entry->hardfileGeometry = QStringLiteral("%1,%2,%3,%4")
+            .arg(sectors->value())
+            .arg(surfaces->value())
+            .arg(reserved->value())
+            .arg(blockSize->value());
+
+        QStringList tailFields;
+        tailFields.append(filesys->text().trimmed());
+        tailFields.append(mountControllerConfigValue(controller->currentText(), controllerUnit->value()));
+        if (manualGeometry->isChecked() || !geometryFile->text().trimmed().isEmpty()) {
+            tailFields.append(QString::number(physicalCylinders->value()));
+            tailFields.append(QStringLiteral("%1/%2/%3")
+                .arg(physicalCylinders->value())
+                .arg(physicalHeads->value())
+                .arg(physicalSectors->value()));
+            if (!geometryFile->text().trimmed().isEmpty()) {
+                tailFields.append(geometryFile->text().trimmed());
+            }
         }
-        if (needsHardfileDefaults && entry->hardfileTail.isEmpty()) {
-            entry->hardfileTail = QStringLiteral(",uae0");
+        if (controller->currentText() == QStringLiteral("IDE (Auto)") && mediaType->currentText() == QStringLiteral("CF")) {
+            tailFields.append(QStringLiteral("CF"));
         }
+        const QString featureToken = hardfileFeatureToken(featureLevel->currentText());
+        if (!featureToken.isEmpty()) {
+            tailFields.append(featureToken);
+        }
+        tailFields.append(hardfilePreservedTailExtras(*entry));
+        entry->hardfileTail = winUaeQtConfigJoinFields(tailFields);
         return true;
     }
 

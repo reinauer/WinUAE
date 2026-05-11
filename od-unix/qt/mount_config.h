@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QString>
+#include <QStringList>
 
 struct WinUaeQtMountEntry {
     QString kind;
@@ -17,6 +18,8 @@ struct WinUaeQtMountEntry {
 
 QString winUaeQtConfigAccessValue(bool readOnly);
 QString winUaeQtConfigEscapeMin(QString value);
+QStringList winUaeQtConfigFieldList(QString value);
+QString winUaeQtConfigJoinFields(const QStringList &fields);
 QString winUaeQtSanitizedAmigaName(QString value, const QString &fallback, bool uppercase);
 QString winUaeQtDefaultVolumeName(const QString &path);
 bool parseWinUaeQtUaehfMountValue(const QString &value, WinUaeQtMountEntry *entry);
