@@ -314,6 +314,18 @@ static QString cdSlotConfigValue(const WinUaeQtCdSlot &slot)
     return winUaeQtConfigEscapeMin(slot.path);
 }
 
+static int floppyKeyDrive(const QString &key, const QString &suffix = QString())
+{
+    if (!key.startsWith(QStringLiteral("floppy"))) {
+        return -1;
+    }
+    if (key.size() != 7 + suffix.size() || !key.endsWith(suffix)) {
+        return -1;
+    }
+    const int drive = key.at(6).digitValue();
+    return drive >= 0 && drive < 4 ? drive : -1;
+}
+
 static QString fullscreenModeConfigValue(const QString &text)
 {
     if (text == QStringLiteral("Fullscreen")) {
@@ -555,6 +567,166 @@ static QString magicMouseCursorText(const QString &value)
         return QStringLiteral("Show host cursor only");
     }
     return QStringLiteral("Show both cursors");
+}
+
+static constexpr int SoundVolumeCount = 5;
+static constexpr int FloppySoundDriveCount = 4;
+
+static QString soundOutputConfigValue(int id)
+{
+    switch (id) {
+    case 0:
+        return QStringLiteral("none");
+    case 1:
+        return QStringLiteral("interrupts");
+    case 2:
+    default:
+        return QStringLiteral("exact");
+    }
+}
+
+static int soundOutputId(const QString &value)
+{
+    if (value.compare(QStringLiteral("none"), Qt::CaseInsensitive) == 0) {
+        return 0;
+    }
+    if (value.compare(QStringLiteral("interrupts"), Qt::CaseInsensitive) == 0) {
+        return 1;
+    }
+    return 2;
+}
+
+static QStringList soundChannelItems()
+{
+    return {
+        QStringLiteral("Mono"),
+        QStringLiteral("Stereo"),
+        QStringLiteral("Cloned Stereo (4 Channels)"),
+        QStringLiteral("4 Channels"),
+        QStringLiteral("Cloned Stereo (5.1)"),
+        QStringLiteral("5.1"),
+        QStringLiteral("Cloned stereo (7.1)"),
+        QStringLiteral("7.1")
+    };
+}
+
+static QString soundChannelConfigValue(const QString &text)
+{
+    static const QStringList values = {
+        QStringLiteral("mono"),
+        QStringLiteral("stereo"),
+        QStringLiteral("clonedstereo"),
+        QStringLiteral("4ch"),
+        QStringLiteral("clonedstereo6ch"),
+        QStringLiteral("6ch"),
+        QStringLiteral("clonedstereo8ch"),
+        QStringLiteral("8ch")
+    };
+    const int index = soundChannelItems().indexOf(text);
+    return values.value(index, QStringLiteral("stereo"));
+}
+
+static QString soundChannelText(const QString &value)
+{
+    static const QStringList values = {
+        QStringLiteral("mono"),
+        QStringLiteral("stereo"),
+        QStringLiteral("clonedstereo"),
+        QStringLiteral("4ch"),
+        QStringLiteral("clonedstereo6ch"),
+        QStringLiteral("6ch"),
+        QStringLiteral("clonedstereo8ch"),
+        QStringLiteral("8ch")
+    };
+    const int index = values.indexOf(value.toLower());
+    return soundChannelItems().value(index, QStringLiteral("Stereo"));
+}
+
+static QString soundInterpolationConfigValue(const QString &text)
+{
+    if (text == QStringLiteral("Anti")) {
+        return QStringLiteral("anti");
+    }
+    if (text == QStringLiteral("Sinc")) {
+        return QStringLiteral("sinc");
+    }
+    if (text == QStringLiteral("RH")) {
+        return QStringLiteral("rh");
+    }
+    if (text == QStringLiteral("Crux")) {
+        return QStringLiteral("crux");
+    }
+    return QStringLiteral("none");
+}
+
+static QString soundInterpolationText(const QString &value)
+{
+    if (value.compare(QStringLiteral("anti"), Qt::CaseInsensitive) == 0) {
+        return QStringLiteral("Anti");
+    }
+    if (value.compare(QStringLiteral("sinc"), Qt::CaseInsensitive) == 0) {
+        return QStringLiteral("Sinc");
+    }
+    if (value.compare(QStringLiteral("rh"), Qt::CaseInsensitive) == 0) {
+        return QStringLiteral("RH");
+    }
+    if (value.compare(QStringLiteral("crux"), Qt::CaseInsensitive) == 0) {
+        return QStringLiteral("Crux");
+    }
+    return QStringLiteral("Disabled");
+}
+
+static QString soundFilterConfigValue(const QString &text)
+{
+    if (text == QStringLiteral("Always off")) {
+        return QStringLiteral("off");
+    }
+    return text.startsWith(QStringLiteral("Emulated")) ? QStringLiteral("emulated") : QStringLiteral("on");
+}
+
+static QString soundFilterTypeConfigValue(const QString &text)
+{
+    return text.contains(QStringLiteral("A1200")) ? QStringLiteral("enhanced") : QStringLiteral("standard");
+}
+
+static QString soundFilterText(const QString &filter, const QString &type)
+{
+    const bool enhanced = type.compare(QStringLiteral("enhanced"), Qt::CaseInsensitive) == 0;
+    if (filter.compare(QStringLiteral("off"), Qt::CaseInsensitive) == 0) {
+        return QStringLiteral("Always off");
+    }
+    if (filter.compare(QStringLiteral("emulated"), Qt::CaseInsensitive) == 0) {
+        return enhanced ? QStringLiteral("Emulated (A1200)") : QStringLiteral("Emulated (A500)");
+    }
+    return enhanced ? QStringLiteral("Always on (A1200)") : QStringLiteral("Always on (A500)");
+}
+
+static QString soundSwapText(bool paula, bool ahi)
+{
+    const int index = (paula ? 1 : 0) + (ahi ? 2 : 0);
+    return QStringList({ QStringLiteral("-"), QStringLiteral("Paula only"), QStringLiteral("AHI only"), QStringLiteral("Both") }).value(index);
+}
+
+static int soundBufferSizeFromIndex(int index)
+{
+    static const int sizes[] = { 1024, 2048, 3072, 4096, 6144, 8192, 12288, 16384, 32768, 65536 };
+    if (index <= 0) {
+        return 0;
+    }
+    return sizes[qBound(1, index, 10) - 1];
+}
+
+static int soundBufferIndexFromSize(int size)
+{
+    static const int sizes[] = { 1024, 2048, 3072, 4096, 6144, 8192, 12288, 16384, 32768, 65536 };
+    if (size < sizes[0]) {
+        return 0;
+    }
+    int index = 0;
+    while (index < 9 && sizes[index] < size) {
+        index++;
+    }
+    return index + 1;
 }
 
 static QString sourceFile(const QString &relative)
@@ -898,7 +1070,36 @@ private:
     QCheckBox *displayFlickerFixer = nullptr;
     QCheckBox *displayLoresSmoothed = nullptr;
     QButtonGroup *displayLineModeButtons = nullptr;
-    QComboBox *soundOutput = nullptr;
+    QButtonGroup *soundOutputButtons = nullptr;
+    QCheckBox *soundAutomatic = nullptr;
+    QSlider *soundMasterVolume = nullptr;
+    QLabel *soundMasterVolumeValue = nullptr;
+    QComboBox *soundVolumeSelect = nullptr;
+    QSlider *soundSelectedVolume = nullptr;
+    QLabel *soundSelectedVolumeValue = nullptr;
+    QSlider *soundBufferSize = nullptr;
+    QLabel *soundBufferSizeValue = nullptr;
+    QComboBox *soundChannels = nullptr;
+    QComboBox *soundStereoSeparation = nullptr;
+    QComboBox *soundInterpolation = nullptr;
+    QComboBox *soundFrequency = nullptr;
+    QComboBox *soundSwap = nullptr;
+    QComboBox *soundStereoDelay = nullptr;
+    QComboBox *soundFilter = nullptr;
+    QComboBox *floppySoundDrive = nullptr;
+    QComboBox *floppySoundType = nullptr;
+    QSlider *floppySoundEmptyVolume = nullptr;
+    QLabel *floppySoundEmptyVolumeValue = nullptr;
+    QSlider *floppySoundDiskVolume = nullptr;
+    QLabel *floppySoundDiskVolumeValue = nullptr;
+    int soundVolumeAttenuation[SoundVolumeCount] = {};
+    int floppySoundTypeValue[FloppySoundDriveCount] = {};
+    int floppySoundEmptyAttenuation[FloppySoundDriveCount] = {};
+    int floppySoundDiskAttenuation[FloppySoundDriveCount] = {};
+    int currentSoundVolume = 0;
+    int currentFloppySoundDrive = 0;
+    bool soundVolumeUpdating = false;
+    bool floppySoundUpdating = false;
     QComboBox *portDevice[4] = {};
     QComboBox *portAutofire[2] = {};
     QComboBox *portMode[2] = {};
@@ -1564,19 +1765,309 @@ private:
         QWidget *page = makePage();
         QVBoxLayout *root = new QVBoxLayout(page);
         root->setContentsMargins(4, 4, 4, 4);
-        soundOutput = combo({ QStringLiteral("normal"), QStringLiteral("none") }, QStringLiteral("normal"));
-        QGridLayout *sound = new QGridLayout;
-        sound->setColumnStretch(1, 1);
-        sound->addWidget(label(QStringLiteral("Sound card:")), 0, 0);
-        sound->addWidget(combo({ QStringLiteral("Default audio device") }), 0, 1);
-        sound->addWidget(label(QStringLiteral("Sound output:")), 1, 0);
-        sound->addWidget(soundOutput, 1, 1);
-        sound->addWidget(label(QStringLiteral("Frequency:")), 2, 0);
-        sound->addWidget(combo({ QStringLiteral("44100"), QStringLiteral("48000") }, QStringLiteral("48000")), 2, 1);
-        sound->addWidget(new QCheckBox(QStringLiteral("Stereo")), 3, 1);
-        root->addWidget(groupBox(QStringLiteral("Sound Emulation"), sound));
-        root->addStretch();
+        root->addWidget(combo({ QStringLiteral("Default audio device") }));
+
+        QHBoxLayout *top = new QHBoxLayout;
+        QVBoxLayout *emulation = new QVBoxLayout;
+        soundOutputButtons = new QButtonGroup(this);
+        QRadioButton *soundDisabled = new QRadioButton(QStringLiteral("Disabled"));
+        QRadioButton *soundEmulated = new QRadioButton(QStringLiteral("Disabled, but emulated"));
+        QRadioButton *soundEnabled = new QRadioButton(QStringLiteral("Enabled"));
+        soundOutputButtons->addButton(soundDisabled, 0);
+        soundOutputButtons->addButton(soundEmulated, 1);
+        soundOutputButtons->addButton(soundEnabled, 2);
+        soundEnabled->setChecked(true);
+        soundAutomatic = new QCheckBox(QStringLiteral("Automatic switching"));
+        emulation->addWidget(soundDisabled);
+        emulation->addWidget(soundEmulated);
+        emulation->addWidget(soundEnabled);
+        emulation->addSpacing(8);
+        emulation->addWidget(soundAutomatic);
+        top->addWidget(groupBox(QStringLiteral("Sound Emulation"), emulation), 1);
+
+        QGridLayout *volume = new QGridLayout;
+        volume->setColumnStretch(1, 1);
+        soundMasterVolume = new QSlider(Qt::Horizontal);
+        soundMasterVolume->setRange(0, 100);
+        soundMasterVolumeValue = new QLabel;
+        soundMasterVolumeValue->setMinimumWidth(44);
+        soundVolumeSelect = combo({ QStringLiteral("Paula"), QStringLiteral("CD"), QStringLiteral("AHI"), QStringLiteral("MIDI"), QStringLiteral("Genlock") }, QStringLiteral("Paula"));
+        soundSelectedVolume = new QSlider(Qt::Horizontal);
+        soundSelectedVolume->setRange(0, 100);
+        soundSelectedVolumeValue = new QLabel;
+        soundSelectedVolumeValue->setMinimumWidth(44);
+        volume->addWidget(label(QStringLiteral("Master")), 0, 0);
+        volume->addWidget(soundMasterVolume, 0, 1);
+        volume->addWidget(soundMasterVolumeValue, 0, 2);
+        volume->addWidget(soundVolumeSelect, 1, 0);
+        volume->addWidget(soundSelectedVolume, 1, 1);
+        volume->addWidget(soundSelectedVolumeValue, 1, 2);
+        top->addWidget(groupBox(QStringLiteral("Volume"), volume), 2);
+
+        QGridLayout *buffer = new QGridLayout;
+        buffer->setColumnStretch(0, 1);
+        soundBufferSize = new QSlider(Qt::Horizontal);
+        soundBufferSize->setRange(0, 10);
+        soundBufferSizeValue = new QLabel;
+        soundBufferSizeValue->setMinimumWidth(44);
+        buffer->addWidget(soundBufferSize, 0, 0);
+        buffer->addWidget(soundBufferSizeValue, 0, 1);
+        top->addWidget(groupBox(QStringLiteral("Sound Buffer Size"), buffer), 1);
+        root->addLayout(top);
+
+        soundChannels = combo(soundChannelItems(), QStringLiteral("Stereo"));
+        soundStereoSeparation = combo({});
+        for (int i = 10; i >= 0; i--) {
+            soundStereoSeparation->addItem(QStringLiteral("%1%").arg(i * 10));
+        }
+        soundInterpolation = combo({ QStringLiteral("Disabled"), QStringLiteral("Anti"), QStringLiteral("Sinc"), QStringLiteral("RH"), QStringLiteral("Crux") }, QStringLiteral("Anti"));
+        soundFrequency = combo({ QStringLiteral("11025"), QStringLiteral("15000"), QStringLiteral("22050"), QStringLiteral("32000"), QStringLiteral("44100"), QStringLiteral("48000") }, QStringLiteral("44100"));
+        soundFrequency->setEditable(true);
+        soundSwap = combo({ QStringLiteral("-"), QStringLiteral("Paula only"), QStringLiteral("AHI only"), QStringLiteral("Both") }, QStringLiteral("-"));
+        soundStereoDelay = combo({ QStringLiteral("-"), QStringLiteral("1"), QStringLiteral("2"), QStringLiteral("3"), QStringLiteral("4"), QStringLiteral("5"), QStringLiteral("6"), QStringLiteral("7"), QStringLiteral("8"), QStringLiteral("9"), QStringLiteral("10") }, QStringLiteral("-"));
+        soundFilter = combo({ QStringLiteral("Always off"), QStringLiteral("Emulated (A500)"), QStringLiteral("Emulated (A1200)"), QStringLiteral("Always on (A500)"), QStringLiteral("Always on (A1200)") }, QStringLiteral("Emulated (A500)"));
+
+        QGridLayout *settings = new QGridLayout;
+        settings->setColumnStretch(1, 1);
+        settings->setColumnStretch(3, 1);
+        settings->setColumnStretch(5, 1);
+        settings->addWidget(label(QStringLiteral("Channel mode:")), 0, 0);
+        settings->addWidget(soundChannels, 0, 1);
+        settings->addWidget(label(QStringLiteral("Stereo separation:")), 0, 2);
+        settings->addWidget(soundStereoSeparation, 0, 3);
+        settings->addWidget(label(QStringLiteral("Interpolation:")), 0, 4);
+        settings->addWidget(soundInterpolation, 0, 5);
+        settings->addWidget(label(QStringLiteral("Frequency:")), 1, 0);
+        settings->addWidget(soundFrequency, 1, 1);
+        settings->addWidget(label(QStringLiteral("Swap channels:")), 1, 2);
+        settings->addWidget(soundSwap, 1, 3);
+        settings->addWidget(label(QStringLiteral("Stereo delay:")), 1, 4);
+        settings->addWidget(soundStereoDelay, 1, 5);
+        settings->addWidget(label(QStringLiteral("Audio filter:")), 2, 4);
+        settings->addWidget(soundFilter, 2, 5);
+        root->addWidget(groupBox(QStringLiteral("Settings"), settings));
+
+        QHBoxLayout *bottom = new QHBoxLayout;
+        QGridLayout *floppy = new QGridLayout;
+        floppy->setColumnStretch(1, 1);
+        floppySoundEmptyVolume = new QSlider(Qt::Horizontal);
+        floppySoundEmptyVolume->setRange(0, 100);
+        floppySoundEmptyVolumeValue = new QLabel;
+        floppySoundEmptyVolumeValue->setMinimumWidth(44);
+        floppySoundDiskVolume = new QSlider(Qt::Horizontal);
+        floppySoundDiskVolume->setRange(0, 100);
+        floppySoundDiskVolumeValue = new QLabel;
+        floppySoundDiskVolumeValue->setMinimumWidth(44);
+        floppySoundType = combo({ QStringLiteral("No sound"), QStringLiteral("Built-in A500") }, QStringLiteral("No sound"));
+        floppySoundDrive = combo({ QStringLiteral("DF0:"), QStringLiteral("DF1:"), QStringLiteral("DF2:"), QStringLiteral("DF3:") }, QStringLiteral("DF0:"));
+        floppy->addWidget(label(QStringLiteral("Empty drive")), 0, 0);
+        floppy->addWidget(floppySoundEmptyVolume, 0, 1);
+        floppy->addWidget(floppySoundEmptyVolumeValue, 0, 2);
+        floppy->addWidget(label(QStringLiteral("Disk in drive")), 1, 0);
+        floppy->addWidget(floppySoundDiskVolume, 1, 1);
+        floppy->addWidget(floppySoundDiskVolumeValue, 1, 2);
+        floppy->addWidget(floppySoundType, 2, 0, 1, 2);
+        floppy->addWidget(floppySoundDrive, 2, 2);
+        bottom->addWidget(groupBox(QStringLiteral("Floppy Drive Sound Emulation"), floppy), 3);
+
+        QVBoxLayout *drivers = new QVBoxLayout;
+        QCheckBox *sdlDriver = new QCheckBox(QStringLiteral("SDL"));
+        sdlDriver->setChecked(true);
+        sdlDriver->setEnabled(false);
+        drivers->addWidget(sdlDriver);
+        drivers->addStretch();
+        bottom->addWidget(groupBox(QStringLiteral("Drivers"), drivers), 1);
+        root->addLayout(bottom);
+
+        connect(soundOutputButtons, &QButtonGroup::idClicked, this, [this](int) { updateSoundControlState(); });
+        connect(soundMasterVolume, &QSlider::valueChanged, this, [this](int) { updateSoundVolumeLabels(); });
+        connect(soundVolumeSelect, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index) {
+            if (soundVolumeUpdating) {
+                return;
+            }
+            storeSelectedSoundVolume();
+            currentSoundVolume = qBound(0, index, SoundVolumeCount - 1);
+            loadSelectedSoundVolume();
+        });
+        connect(soundSelectedVolume, &QSlider::valueChanged, this, [this](int) { updateSoundVolumeLabels(); });
+        connect(soundBufferSize, &QSlider::valueChanged, this, [this](int) { updateSoundBufferLabel(); });
+        connect(soundChannels, &QComboBox::currentTextChanged, this, [this](const QString &) { updateSoundControlState(); });
+        connect(floppySoundDrive, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index) {
+            if (floppySoundUpdating) {
+                return;
+            }
+            storeSelectedFloppySound();
+            currentFloppySoundDrive = qBound(0, index, FloppySoundDriveCount - 1);
+            loadSelectedFloppySound();
+        });
+        connect(floppySoundType, &QComboBox::currentTextChanged, this, [this](const QString &) { storeSelectedFloppySound(); });
+        connect(floppySoundEmptyVolume, &QSlider::valueChanged, this, [this](int) {
+            updateFloppySoundVolumeLabels();
+            storeSelectedFloppySound();
+        });
+        connect(floppySoundDiskVolume, &QSlider::valueChanged, this, [this](int) {
+            updateFloppySoundVolumeLabels();
+            storeSelectedFloppySound();
+        });
+        updateSoundControlState();
         return page;
+    }
+
+    int soundVolumeAttenuationValue(int index) const
+    {
+        if (index == currentSoundVolume && soundSelectedVolume) {
+            return 100 - soundSelectedVolume->value();
+        }
+        return soundVolumeAttenuation[qBound(0, index, SoundVolumeCount - 1)];
+    }
+
+    int floppySoundTypeConfigValue(int drive) const
+    {
+        if (drive == currentFloppySoundDrive && floppySoundType) {
+            return floppySoundType->currentIndex();
+        }
+        return floppySoundTypeValue[qBound(0, drive, FloppySoundDriveCount - 1)];
+    }
+
+    int floppySoundEmptyAttenuationValue(int drive) const
+    {
+        if (drive == currentFloppySoundDrive && floppySoundEmptyVolume) {
+            return 100 - floppySoundEmptyVolume->value();
+        }
+        return floppySoundEmptyAttenuation[qBound(0, drive, FloppySoundDriveCount - 1)];
+    }
+
+    int floppySoundDiskAttenuationValue(int drive) const
+    {
+        if (drive == currentFloppySoundDrive && floppySoundDiskVolume) {
+            return 100 - floppySoundDiskVolume->value();
+        }
+        return floppySoundDiskAttenuation[qBound(0, drive, FloppySoundDriveCount - 1)];
+    }
+
+    void updateSoundControlState()
+    {
+        const bool enabled = soundOutputButtons && soundOutputButtons->checkedId() != 0;
+        const bool stereo = enabled && soundChannels && soundChannels->currentText() != QStringLiteral("Mono");
+        const QList<QWidget *> widgets = {
+            soundMasterVolume,
+            soundVolumeSelect,
+            soundSelectedVolume,
+            soundBufferSize,
+            soundChannels,
+            soundInterpolation,
+            soundFrequency,
+            soundSwap,
+            soundFilter,
+            floppySoundDrive,
+            floppySoundType,
+            floppySoundEmptyVolume,
+            floppySoundDiskVolume
+        };
+        for (QWidget *widget : widgets) {
+            if (widget) {
+                widget->setEnabled(enabled);
+            }
+        }
+        if (soundStereoSeparation) {
+            soundStereoSeparation->setEnabled(stereo);
+        }
+        if (soundStereoDelay) {
+            soundStereoDelay->setEnabled(stereo);
+        }
+        updateSoundVolumeLabels();
+        updateSoundBufferLabel();
+        updateFloppySoundVolumeLabels();
+    }
+
+    void updateSoundVolumeLabels()
+    {
+        if (soundMasterVolumeValue && soundMasterVolume) {
+            soundMasterVolumeValue->setText(QStringLiteral("%1%").arg(soundMasterVolume->value()));
+        }
+        if (soundSelectedVolumeValue && soundSelectedVolume) {
+            soundSelectedVolumeValue->setText(QStringLiteral("%1%").arg(soundSelectedVolume->value()));
+        }
+    }
+
+    void updateSoundBufferLabel()
+    {
+        if (!soundBufferSizeValue || !soundBufferSize) {
+            return;
+        }
+        const int index = soundBufferSize->value();
+        soundBufferSizeValue->setText(index <= 0 ? QStringLiteral("Min") : QString::number(index));
+    }
+
+    void storeSelectedSoundVolume()
+    {
+        if (!soundSelectedVolume || soundVolumeUpdating) {
+            return;
+        }
+        soundVolumeAttenuation[qBound(0, currentSoundVolume, SoundVolumeCount - 1)] = 100 - soundSelectedVolume->value();
+    }
+
+    void loadSelectedSoundVolume()
+    {
+        if (!soundSelectedVolume) {
+            return;
+        }
+        QSignalBlocker blocker(soundSelectedVolume);
+        soundVolumeUpdating = true;
+        soundSelectedVolume->setValue(100 - soundVolumeAttenuation[qBound(0, currentSoundVolume, SoundVolumeCount - 1)]);
+        soundVolumeUpdating = false;
+        updateSoundVolumeLabels();
+    }
+
+    void updateFloppySoundVolumeLabels()
+    {
+        if (floppySoundEmptyVolumeValue && floppySoundEmptyVolume) {
+            floppySoundEmptyVolumeValue->setText(QStringLiteral("%1%").arg(floppySoundEmptyVolume->value()));
+        }
+        if (floppySoundDiskVolumeValue && floppySoundDiskVolume) {
+            floppySoundDiskVolumeValue->setText(QStringLiteral("%1%").arg(floppySoundDiskVolume->value()));
+        }
+    }
+
+    void storeSelectedFloppySound()
+    {
+        if (!floppySoundType || !floppySoundEmptyVolume || !floppySoundDiskVolume || floppySoundUpdating) {
+            return;
+        }
+        const int drive = qBound(0, currentFloppySoundDrive, FloppySoundDriveCount - 1);
+        floppySoundTypeValue[drive] = floppySoundType->currentIndex();
+        floppySoundEmptyAttenuation[drive] = 100 - floppySoundEmptyVolume->value();
+        floppySoundDiskAttenuation[drive] = 100 - floppySoundDiskVolume->value();
+    }
+
+    void loadSelectedFloppySound()
+    {
+        if (!floppySoundType || !floppySoundEmptyVolume || !floppySoundDiskVolume) {
+            return;
+        }
+        const int drive = qBound(0, currentFloppySoundDrive, FloppySoundDriveCount - 1);
+        floppySoundUpdating = true;
+        floppySoundType->setCurrentIndex(qBound(0, floppySoundTypeValue[drive], 1));
+        floppySoundEmptyVolume->setValue(100 - floppySoundEmptyAttenuation[drive]);
+        floppySoundDiskVolume->setValue(100 - floppySoundDiskAttenuation[drive]);
+        floppySoundUpdating = false;
+        updateFloppySoundVolumeLabels();
+    }
+
+    void setSoundSwapBit(bool paula, bool enabled)
+    {
+        if (!soundSwap) {
+            return;
+        }
+        const int index = soundSwap->currentIndex();
+        bool paulaEnabled = (index & 1) != 0;
+        bool ahiEnabled = (index & 2) != 0;
+        if (paula) {
+            paulaEnabled = enabled;
+        } else {
+            ahiEnabled = enabled;
+        }
+        soundSwap->setCurrentText(soundSwapText(paulaEnabled, ahiEnabled));
     }
 
     QWidget *makeGamePortsPage()
@@ -2029,7 +2520,34 @@ private:
         if (QAbstractButton *button = displayLineModeButtons->button(1)) {
             button->setChecked(true);
         }
-        soundOutput->setCurrentText(QStringLiteral("normal"));
+        if (QAbstractButton *button = soundOutputButtons->button(2)) {
+            button->setChecked(true);
+        }
+        soundAutomatic->setChecked(false);
+        soundMasterVolume->setValue(100);
+        for (int i = 0; i < SoundVolumeCount; i++) {
+            soundVolumeAttenuation[i] = 0;
+        }
+        currentSoundVolume = 0;
+        soundVolumeSelect->setCurrentIndex(0);
+        loadSelectedSoundVolume();
+        soundBufferSize->setValue(soundBufferIndexFromSize(16384));
+        soundChannels->setCurrentText(QStringLiteral("Stereo"));
+        soundStereoSeparation->setCurrentText(QStringLiteral("70%"));
+        soundInterpolation->setCurrentText(QStringLiteral("Anti"));
+        soundFrequency->setCurrentText(QStringLiteral("44100"));
+        soundSwap->setCurrentText(QStringLiteral("-"));
+        soundStereoDelay->setCurrentText(QStringLiteral("-"));
+        soundFilter->setCurrentText(QStringLiteral("Emulated (A500)"));
+        for (int i = 0; i < FloppySoundDriveCount; i++) {
+            floppySoundTypeValue[i] = 0;
+            floppySoundEmptyAttenuation[i] = 33;
+            floppySoundDiskAttenuation[i] = 33;
+        }
+        currentFloppySoundDrive = 0;
+        floppySoundDrive->setCurrentIndex(0);
+        loadSelectedFloppySound();
+        updateSoundControlState();
         cdSpeedTurbo->setChecked(false);
         portDevice[0]->setCurrentText(QStringLiteral("Mouse"));
         portDevice[1]->setCurrentText(QStringLiteral("Keyboard Layout A"));
@@ -3004,7 +3522,35 @@ private:
             settings.insert(QStringLiteral("z3mem_size"), QString::number(megabytesFromText(z3Fast->currentText())));
         }
         settings.insert(QStringLiteral("cachesize"), jit->isChecked() ? QStringLiteral("8") : QStringLiteral("0"));
-        settings.insert(QStringLiteral("sound_output"), soundOutput->currentText());
+        settings.insert(QStringLiteral("sound_output"), soundOutputConfigValue(soundOutputButtons->checkedId()));
+        settings.insert(QStringLiteral("sound_auto"), soundAutomatic->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
+        settings.insert(QStringLiteral("sound_volume"), QString::number(100 - soundMasterVolume->value()));
+        settings.insert(QStringLiteral("sound_volume_paula"), QString::number(soundVolumeAttenuationValue(0)));
+        settings.insert(QStringLiteral("sound_volume_cd"), QString::number(soundVolumeAttenuationValue(1)));
+        settings.insert(QStringLiteral("sound_volume_ahi"), QString::number(soundVolumeAttenuationValue(2)));
+        settings.insert(QStringLiteral("sound_volume_midi"), QString::number(soundVolumeAttenuationValue(3)));
+        settings.insert(QStringLiteral("sound_volume_genlock"), QString::number(soundVolumeAttenuationValue(4)));
+        settings.insert(QStringLiteral("sound_max_buff"), QString::number(soundBufferSizeFromIndex(soundBufferSize->value())));
+        settings.insert(QStringLiteral("sound_channels"), soundChannelConfigValue(soundChannels->currentText()));
+        if (soundChannels->currentText() == QStringLiteral("Mono")) {
+            settings.insert(QStringLiteral("sound_stereo_separation"), QStringLiteral("0"));
+            settings.insert(QStringLiteral("sound_stereo_mixing_delay"), QStringLiteral("0"));
+        } else {
+            settings.insert(QStringLiteral("sound_stereo_separation"), QString::number(qBound(0, 10 - soundStereoSeparation->currentIndex(), 10)));
+            settings.insert(QStringLiteral("sound_stereo_mixing_delay"), soundStereoDelay->currentText() == QStringLiteral("-") ? QStringLiteral("0") : soundStereoDelay->currentText());
+        }
+        settings.insert(QStringLiteral("sound_frequency"), QString::number(qBound(8000, soundFrequency->currentText().toInt(), 768000)));
+        settings.insert(QStringLiteral("sound_interpol"), soundInterpolationConfigValue(soundInterpolation->currentText()));
+        settings.insert(QStringLiteral("sound_filter"), soundFilterConfigValue(soundFilter->currentText()));
+        settings.insert(QStringLiteral("sound_filter_type"), soundFilterTypeConfigValue(soundFilter->currentText()));
+        const int swapIndex = soundSwap->currentIndex();
+        settings.insert(QStringLiteral("sound_stereo_swap_paula"), (swapIndex & 1) ? QStringLiteral("true") : QStringLiteral("false"));
+        settings.insert(QStringLiteral("sound_stereo_swap_ahi"), (swapIndex & 2) ? QStringLiteral("true") : QStringLiteral("false"));
+        for (int i = 0; i < FloppySoundDriveCount; i++) {
+            settings.insert(QStringLiteral("floppy%1sound").arg(i), QString::number(floppySoundTypeConfigValue(i)));
+            settings.insert(QStringLiteral("floppy%1soundvolume_empty").arg(i), QString::number(floppySoundEmptyAttenuationValue(i)));
+            settings.insert(QStringLiteral("floppy%1soundvolume_disk").arg(i), QString::number(floppySoundDiskAttenuationValue(i)));
+        }
         if (rtgMem->currentText() != QStringLiteral("None")) {
             settings.insert(QStringLiteral("gfxcard_size"), QString::number(megabytesFromText(rtgMem->currentText())));
             settings.insert(QStringLiteral("gfxcard_type"), rtgType->currentText());
@@ -3098,6 +3644,35 @@ private:
             QStringLiteral("z3mem_size"),
             QStringLiteral("cachesize"),
             QStringLiteral("sound_output"),
+            QStringLiteral("sound_auto"),
+            QStringLiteral("sound_volume"),
+            QStringLiteral("sound_volume_paula"),
+            QStringLiteral("sound_volume_cd"),
+            QStringLiteral("sound_volume_ahi"),
+            QStringLiteral("sound_volume_midi"),
+            QStringLiteral("sound_volume_genlock"),
+            QStringLiteral("sound_max_buff"),
+            QStringLiteral("sound_channels"),
+            QStringLiteral("sound_stereo_separation"),
+            QStringLiteral("sound_stereo_mixing_delay"),
+            QStringLiteral("sound_frequency"),
+            QStringLiteral("sound_interpol"),
+            QStringLiteral("sound_filter"),
+            QStringLiteral("sound_filter_type"),
+            QStringLiteral("sound_stereo_swap_paula"),
+            QStringLiteral("sound_stereo_swap_ahi"),
+            QStringLiteral("floppy0sound"),
+            QStringLiteral("floppy1sound"),
+            QStringLiteral("floppy2sound"),
+            QStringLiteral("floppy3sound"),
+            QStringLiteral("floppy0soundvolume_empty"),
+            QStringLiteral("floppy1soundvolume_empty"),
+            QStringLiteral("floppy2soundvolume_empty"),
+            QStringLiteral("floppy3soundvolume_empty"),
+            QStringLiteral("floppy0soundvolume_disk"),
+            QStringLiteral("floppy1soundvolume_disk"),
+            QStringLiteral("floppy2soundvolume_disk"),
+            QStringLiteral("floppy3soundvolume_disk"),
             QStringLiteral("gfxcard_size"),
             QStringLiteral("gfxcard_type"),
             QStringLiteral("gfx_width_windowed"),
@@ -3219,30 +3794,18 @@ private:
             romFile->setCurrentText(value);
         } else if (key == QStringLiteral("kickstart_ext_rom_file")) {
             extendedRomFile->setCurrentText(value);
-        } else if (key.startsWith(QStringLiteral("floppy")) && key.endsWith(QStringLiteral("type"))) {
-            bool ok = false;
-            const int drive = key.mid(6, 1).toInt(&ok);
-            if (ok && drive >= 0 && drive < 4) {
-                const int driveType = value.toInt();
-                dfEnable[drive]->setChecked(driveType >= 0);
-                dfType[drive]->setCurrentText(floppyTypeText(driveType));
-                syncFloppyDriveToQuick(drive);
-            }
-        } else if (key.startsWith(QStringLiteral("floppy")) && key.endsWith(QStringLiteral("wp"))) {
-            bool ok = false;
-            const int drive = key.mid(6, 1).toInt(&ok);
-            if (ok && drive >= 0 && drive < 4) {
-                dfWriteProtect[drive]->setChecked(configBoolValue(value));
-                syncFloppyDriveToQuick(drive);
-            }
-        } else if (key.startsWith(QStringLiteral("floppy"))) {
-            bool ok = false;
-            const int drive = key.mid(6, 1).toInt(&ok);
-            if (ok && drive >= 0 && drive < 4) {
-                dfEnable[drive]->setChecked(true);
-                dfPath[drive]->setCurrentText(value);
-                syncFloppyDriveToQuick(drive);
-            }
+        } else if (const int drive = floppyKeyDrive(key, QStringLiteral("type")); drive >= 0) {
+            const int driveType = value.toInt();
+            dfEnable[drive]->setChecked(driveType >= 0);
+            dfType[drive]->setCurrentText(floppyTypeText(driveType));
+            syncFloppyDriveToQuick(drive);
+        } else if (const int drive = floppyKeyDrive(key, QStringLiteral("wp")); drive >= 0) {
+            dfWriteProtect[drive]->setChecked(configBoolValue(value));
+            syncFloppyDriveToQuick(drive);
+        } else if (const int drive = floppyKeyDrive(key); drive >= 0) {
+            dfEnable[drive]->setChecked(true);
+            dfPath[drive]->setCurrentText(value);
+            syncFloppyDriveToQuick(drive);
         } else if (key.startsWith(QStringLiteral("uaehf"))) {
             WinUaeQtMountEntry entry;
             if (parseWinUaeQtUaehfMountValue(value, &entry)) {
@@ -3293,7 +3856,75 @@ private:
         } else if (key == QStringLiteral("gfxcard_type")) {
             rtgType->setCurrentText(value);
         } else if (key == QStringLiteral("sound_output")) {
-            soundOutput->setCurrentText(value);
+            if (QAbstractButton *button = soundOutputButtons->button(soundOutputId(value))) {
+                button->setChecked(true);
+            }
+            updateSoundControlState();
+        } else if (key == QStringLiteral("sound_auto")) {
+            soundAutomatic->setChecked(configBoolValue(value));
+        } else if (key == QStringLiteral("sound_volume")) {
+            soundMasterVolume->setValue(100 - qBound(0, value.toInt(), 100));
+        } else if (key == QStringLiteral("sound_volume_paula")
+            || key == QStringLiteral("sound_volume_cd")
+            || key == QStringLiteral("sound_volume_ahi")
+            || key == QStringLiteral("sound_volume_midi")
+            || key == QStringLiteral("sound_volume_genlock")) {
+            const QMap<QString, int> volumeIndex = {
+                { QStringLiteral("sound_volume_paula"), 0 },
+                { QStringLiteral("sound_volume_cd"), 1 },
+                { QStringLiteral("sound_volume_ahi"), 2 },
+                { QStringLiteral("sound_volume_midi"), 3 },
+                { QStringLiteral("sound_volume_genlock"), 4 }
+            };
+            const int index = volumeIndex.value(key, 0);
+            soundVolumeAttenuation[index] = qBound(0, value.toInt(), 100);
+            if (index == currentSoundVolume) {
+                loadSelectedSoundVolume();
+            }
+        } else if (key == QStringLiteral("sound_max_buff")) {
+            soundBufferSize->setValue(soundBufferIndexFromSize(value.toInt()));
+        } else if (key == QStringLiteral("sound_channels")) {
+            soundChannels->setCurrentText(soundChannelText(value));
+            updateSoundControlState();
+        } else if (key == QStringLiteral("sound_stereo_separation")) {
+            soundStereoSeparation->setCurrentText(QStringLiteral("%1%").arg(qBound(0, value.toInt(), 10) * 10));
+        } else if (key == QStringLiteral("sound_stereo_mixing_delay")) {
+            const int delay = qBound(0, value.toInt(), 10);
+            soundStereoDelay->setCurrentText(delay > 0 ? QString::number(delay) : QStringLiteral("-"));
+        } else if (key == QStringLiteral("sound_frequency")) {
+            soundFrequency->setCurrentText(QString::number(qBound(8000, value.toInt(), 768000)));
+        } else if (key == QStringLiteral("sound_interpol")) {
+            soundInterpolation->setCurrentText(soundInterpolationText(value));
+        } else if (key == QStringLiteral("sound_filter")) {
+            soundFilter->setCurrentText(soundFilterText(value, soundFilterTypeConfigValue(soundFilter->currentText())));
+        } else if (key == QStringLiteral("sound_filter_type")) {
+            soundFilter->setCurrentText(soundFilterText(soundFilterConfigValue(soundFilter->currentText()), value));
+        } else if (key == QStringLiteral("sound_stereo_swap_paula")) {
+            setSoundSwapBit(true, configBoolValue(value));
+        } else if (key == QStringLiteral("sound_stereo_swap_ahi")) {
+            setSoundSwapBit(false, configBoolValue(value));
+        } else if (key == QStringLiteral("floppy_volume")) {
+            const int attenuation = qBound(0, value.toInt(), 100);
+            for (int i = 0; i < FloppySoundDriveCount; i++) {
+                floppySoundEmptyAttenuation[i] = attenuation;
+                floppySoundDiskAttenuation[i] = attenuation;
+            }
+            loadSelectedFloppySound();
+        } else if (const int drive = floppyKeyDrive(key, QStringLiteral("sound")); drive >= 0) {
+            floppySoundTypeValue[drive] = qBound(0, value.toInt(), 1);
+            if (drive == currentFloppySoundDrive) {
+                loadSelectedFloppySound();
+            }
+        } else if (const int drive = floppyKeyDrive(key, QStringLiteral("soundvolume_empty")); drive >= 0) {
+            floppySoundEmptyAttenuation[drive] = qBound(0, value.toInt(), 100);
+            if (drive == currentFloppySoundDrive) {
+                loadSelectedFloppySound();
+            }
+        } else if (const int drive = floppyKeyDrive(key, QStringLiteral("soundvolume_disk")); drive >= 0) {
+            floppySoundDiskAttenuation[drive] = qBound(0, value.toInt(), 100);
+            if (drive == currentFloppySoundDrive) {
+                loadSelectedFloppySound();
+            }
         } else if (key.startsWith(QStringLiteral("joyport")) && key.size() == 8) {
             bool ok = false;
             const int port = key.mid(7, 1).toInt(&ok);
