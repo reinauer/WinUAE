@@ -1562,6 +1562,15 @@ static const ConfigChoice filterAspectChoices[] = {
     { "TV", "tv" }
 };
 
+static const ConfigChoice rtgAspectRatioChoices[] = {
+    { "Disabled", "0:0" },
+    { "Automatic", "-1:-1" },
+    { "4:3", "4:3" },
+    { "5:4", "5:4" },
+    { "16:9", "16:9" },
+    { "16:10", "16:10" }
+};
+
 static QIcon resourceIcon(const QString &name)
 {
     const QString path = sourceFile(QStringLiteral("od-win32/resources/") + name);
@@ -2152,6 +2161,7 @@ public:
         addPage(QStringLiteral("Disk Swapper"), QStringLiteral("diskimage.ico"), makeDiskSwapperPage());
         addPage(QStringLiteral("Hard drives"), QStringLiteral("drive.ico"), makeHardDrivesPage());
         addPage(QStringLiteral("Expansion boards"), QStringLiteral("expansion.ico"), makeExpansionPage());
+        addPage(QStringLiteral("Expansions"), QStringLiteral("expansion.ico"), makeExpansionsPage());
         addPage(QStringLiteral("Hardware info"), QStringLiteral("expansion.ico"), makeHardwareInfoPage());
         addPage(QStringLiteral("Display"), QStringLiteral("screen.ico"), makeDisplayPage());
         addPage(QStringLiteral("Filter"), QStringLiteral("screen.ico"), makeFilterPage());
@@ -2346,6 +2356,7 @@ private:
     QComboBox *rtgType = nullptr;
     QComboBox *rtgMonitor = nullptr;
     QCheckBox *rtgScale = nullptr;
+    QCheckBox *rtgScaleAllow = nullptr;
     QCheckBox *rtgCenter = nullptr;
     QCheckBox *rtgIntegerScale = nullptr;
     QCheckBox *rtgMultithread = nullptr;
@@ -2357,8 +2368,13 @@ private:
     QComboBox *rtg16Bit = nullptr;
     QComboBox *rtg24Bit = nullptr;
     QComboBox *rtg32Bit = nullptr;
+    QComboBox *rtgDisplay = nullptr;
     QComboBox *rtgRefreshRate = nullptr;
     QComboBox *rtgBuffers = nullptr;
+    QComboBox *rtgAspectRatio = nullptr;
+    QCheckBox *expansionBsdsocket = nullptr;
+    QCheckBox *expansionScsiDevice = nullptr;
+    QCheckBox *expansionSana2 = nullptr;
     QTreeWidget *hardwareBoardList = nullptr;
     QCheckBox *hardwareCustomBoardOrder = nullptr;
     QPushButton *hardwareMoveUp = nullptr;
@@ -3911,6 +3927,9 @@ private:
         rtgType = combo({ QStringLiteral("ZorroII"), QStringLiteral("ZorroIII") }, QStringLiteral("ZorroIII"));
         rtgMonitor = combo({ QStringLiteral("1"), QStringLiteral("2"), QStringLiteral("3"), QStringLiteral("4") }, QStringLiteral("1"));
         rtgScale = new QCheckBox(QStringLiteral("Scale if smaller than display size setting"));
+        rtgScaleAllow = new QCheckBox(QStringLiteral("Always scale in windowed mode"));
+        rtgScaleAllow->setEnabled(false);
+        rtgScaleAllow->setToolTip(QStringLiteral("Windows display-backend option; Unix scaling is controlled by the RTG filter settings."));
         rtgCenter = new QCheckBox(QStringLiteral("Always center"));
         rtgIntegerScale = new QCheckBox(QStringLiteral("Integer scaling"));
         rtgMultithread = new QCheckBox(QStringLiteral("Multithreaded"));
@@ -3922,9 +3941,13 @@ private:
         rtg16Bit = combo({ QStringLiteral("(15/16bit)"), QStringLiteral("All 15/16-bit"), QStringLiteral("R5G6B5PC (*)"), QStringLiteral("R5G5B5PC"), QStringLiteral("R5G6B5"), QStringLiteral("R5G5B5"), QStringLiteral("B5G6R5PC"), QStringLiteral("B5G5R5PC") }, QStringLiteral("R5G6B5PC (*)"));
         rtg24Bit = combo({ QStringLiteral("(24bit)"), QStringLiteral("All 24-bit"), QStringLiteral("R8G8B8"), QStringLiteral("B8G8R8") }, QStringLiteral("(24bit)"));
         rtg32Bit = combo({ QStringLiteral("(32bit)"), QStringLiteral("All 32-bit"), QStringLiteral("A8R8G8B8"), QStringLiteral("A8B8G8R8"), QStringLiteral("R8G8B8A8"), QStringLiteral("B8G8R8A8 (*)") }, QStringLiteral("B8G8R8A8 (*)"));
+        rtgDisplay = combo({ QStringLiteral("Default display") }, QStringLiteral("Default display"));
+        rtgDisplay->setEnabled(false);
+        rtgDisplay->setToolTip(QStringLiteral("Unix display enumeration is not connected to the Qt launcher yet."));
         rtgRefreshRate = combo({ QStringLiteral("Chipset"), QStringLiteral("Default"), QStringLiteral("50"), QStringLiteral("60"), QStringLiteral("70"), QStringLiteral("75") }, QStringLiteral("Chipset"));
         rtgRefreshRate->setEditable(true);
         rtgBuffers = combo({ QStringLiteral("Double"), QStringLiteral("Triple") }, QStringLiteral("Double"));
+        rtgAspectRatio = combo(configChoiceDisplays(rtgAspectRatioChoices, int(sizeof(rtgAspectRatioChoices) / sizeof(rtgAspectRatioChoices[0]))), QStringLiteral("Automatic"));
 
         QGridLayout *rtg = new QGridLayout;
         rtg->setColumnStretch(1, 2);
@@ -3937,26 +3960,29 @@ private:
         rtg->addWidget(rtgMem, 1, 1);
         rtg->addWidget(rtgAutoswitch, 2, 0, 1, 2);
         rtg->addWidget(rtgScale, 3, 0, 1, 2);
-        rtg->addWidget(rtgCenter, 4, 0, 1, 2);
-        rtg->addWidget(rtgIntegerScale, 5, 0, 1, 2);
+        rtg->addWidget(rtgScaleAllow, 4, 0, 1, 2);
+        rtg->addWidget(rtgCenter, 5, 0, 1, 2);
+        rtg->addWidget(rtgIntegerScale, 6, 0, 1, 2);
         rtg->addWidget(rtgMultithread, 3, 2, 1, 2);
         rtg->addWidget(rtgHardwareSprite, 4, 2, 1, 2);
         rtg->addWidget(rtgHardwareVBlank, 5, 2, 1, 2);
-        rtg->addWidget(label(QStringLiteral("8-bit:")), 6, 0);
-        rtg->addWidget(rtg8Bit, 6, 1);
-        rtg->addWidget(label(QStringLiteral("16-bit:")), 6, 2);
-        rtg->addWidget(rtg16Bit, 6, 3);
-        rtg->addWidget(label(QStringLiteral("24-bit:")), 7, 0);
-        rtg->addWidget(rtg24Bit, 7, 1);
-        rtg->addWidget(label(QStringLiteral("32-bit:")), 7, 2);
-        rtg->addWidget(rtg32Bit, 7, 3);
-        rtg->addWidget(label(QStringLiteral("Refresh rate:")), 8, 0);
-        rtg->addWidget(rtgRefreshRate, 8, 1);
-        rtg->addWidget(label(QStringLiteral("Buffer mode:")), 8, 2);
-        rtg->addWidget(rtgBuffers, 8, 3);
-        rtg->addWidget(rtgInitialMonitor, 9, 2, 1, 2);
+        rtg->addWidget(label(QStringLiteral("8-bit:")), 7, 0);
+        rtg->addWidget(rtg8Bit, 7, 1);
+        rtg->addWidget(label(QStringLiteral("16-bit:")), 7, 2);
+        rtg->addWidget(rtg16Bit, 7, 3);
+        rtg->addWidget(label(QStringLiteral("24-bit:")), 8, 0);
+        rtg->addWidget(rtg24Bit, 8, 1);
+        rtg->addWidget(label(QStringLiteral("32-bit:")), 8, 2);
+        rtg->addWidget(rtg32Bit, 8, 3);
+        rtg->addWidget(rtgDisplay, 9, 0, 1, 4);
+        rtg->addWidget(label(QStringLiteral("Refresh rate:")), 10, 0);
+        rtg->addWidget(rtgRefreshRate, 10, 1);
+        rtg->addWidget(label(QStringLiteral("Buffer mode:")), 10, 2);
+        rtg->addWidget(rtgBuffers, 10, 3);
+        rtg->addWidget(label(QStringLiteral("Aspect ratio:")), 11, 0);
+        rtg->addWidget(rtgAspectRatio, 11, 1);
+        rtg->addWidget(rtgInitialMonitor, 11, 2, 1, 2);
         root->addWidget(groupBox(QStringLiteral("RTG Graphics Card"), rtg));
-        root->addWidget(groupBox(QStringLiteral("Expansion boards"), new QVBoxLayout), 1);
 
         connect(rtgScale, &QCheckBox::toggled, this, [this](bool checked) {
             if (checked) {
@@ -3976,6 +4002,95 @@ private:
                 rtgCenter->setChecked(false);
             }
         });
+        return page;
+    }
+
+    QWidget *makeExpansionsPage()
+    {
+        QWidget *page = makePage();
+        QVBoxLayout *root = new QVBoxLayout(page);
+        root->setContentsMargins(4, 4, 4, 4);
+
+        QGridLayout *board = new QGridLayout;
+        QComboBox *romCategory = combo({ QStringLiteral("Expansion board ROMs") });
+        QComboBox *romBoard = combo({ QStringLiteral("None") });
+        QComboBox *romSubtype = combo({ QStringLiteral("Default") });
+        QComboBox *romSlot = combo({ QStringLiteral("1") });
+        QComboBox *romId = combo({ QStringLiteral("7") });
+        QComboBox *romFile = pathCombo();
+        QComboBox *boardOption = combo({ QStringLiteral("None") });
+        QCheckBox *rom24BitDma = new QCheckBox(QStringLiteral("24-bit DMA"));
+        QCheckBox *romEnabled = new QCheckBox(QStringLiteral("Enabled"));
+        QCheckBox *romAutobootDisabled = new QCheckBox(QStringLiteral("Autoboot disabled"));
+        QCheckBox *romPcmciaInserted = new QCheckBox(QStringLiteral("PCMCIA inserted"));
+        QCheckBox *boardOptionCheck = new QCheckBox(QStringLiteral("Enabled"));
+        QPushButton *romBrowse = new QPushButton(QStringLiteral("..."));
+        QWidget *boardControls[] = {
+            romCategory, romBoard, romSubtype, romSlot, romId, romFile, boardOption,
+            rom24BitDma, romEnabled, romAutobootDisabled, romPcmciaInserted, boardOptionCheck, romBrowse
+        };
+        for (QWidget *w : boardControls) {
+            w->setEnabled(false);
+        }
+        board->setColumnStretch(2, 1);
+        board->addWidget(romCategory, 0, 0, 1, 2);
+        board->addWidget(rom24BitDma, 0, 2);
+        board->addWidget(label(QStringLiteral("Controller ID:")), 0, 3);
+        board->addWidget(romId, 0, 4);
+        board->addWidget(romBoard, 1, 0);
+        board->addWidget(romSlot, 1, 1);
+        board->addWidget(romFile, 1, 2, 1, 2);
+        board->addWidget(romBrowse, 1, 4);
+        board->addWidget(romSubtype, 2, 0, 1, 2);
+        board->addWidget(romAutobootDisabled, 2, 2);
+        board->addWidget(romPcmciaInserted, 2, 3, 1, 2);
+        board->addWidget(boardOption, 3, 0, 1, 2);
+        board->addWidget(romEnabled, 3, 2);
+        board->addWidget(boardOptionCheck, 3, 3, 1, 2);
+        root->addWidget(groupBox(QStringLiteral("Expansion Board Settings"), board));
+
+        QGridLayout *accelerator = new QGridLayout;
+        QComboBox *cpuBoardType = combo({ QStringLiteral("None") });
+        QComboBox *cpuBoardSubtype = combo({ QStringLiteral("Default") });
+        QComboBox *cpuBoardRom = pathCombo();
+        QComboBox *acceleratorOption = combo({ QStringLiteral("None") });
+        QComboBox *acceleratorSelector = combo({ QStringLiteral("None") });
+        QComboBox *cpuBoardMem = combo({ QStringLiteral("None") });
+        QCheckBox *acceleratorOptionCheck = new QCheckBox(QStringLiteral("Enabled"));
+        QPushButton *cpuBoardBrowse = new QPushButton(QStringLiteral("..."));
+        QWidget *acceleratorControls[] = {
+            cpuBoardType, cpuBoardSubtype, cpuBoardRom, acceleratorOption,
+            acceleratorSelector, cpuBoardMem, acceleratorOptionCheck, cpuBoardBrowse
+        };
+        for (QWidget *w : acceleratorControls) {
+            w->setEnabled(false);
+        }
+        accelerator->setColumnStretch(2, 1);
+        accelerator->addWidget(cpuBoardType, 0, 0);
+        accelerator->addWidget(cpuBoardSubtype, 1, 0);
+        accelerator->addWidget(new QLabel(QStringLiteral("Accelerator board ROM file:")), 0, 2, 1, 2);
+        accelerator->addWidget(cpuBoardRom, 1, 2);
+        accelerator->addWidget(cpuBoardBrowse, 1, 3);
+        accelerator->addWidget(label(QStringLiteral("Accelerator board memory:")), 2, 1);
+        accelerator->addWidget(cpuBoardMem, 2, 2, 1, 2);
+        accelerator->addWidget(acceleratorOption, 3, 0);
+        accelerator->addWidget(acceleratorSelector, 3, 2);
+        accelerator->addWidget(acceleratorOptionCheck, 3, 3);
+        root->addWidget(groupBox(QStringLiteral("Accelerator Board Settings"), accelerator));
+
+        QGridLayout *misc = new QGridLayout;
+        expansionBsdsocket = new QCheckBox(QStringLiteral("bsdsocket.library"));
+        expansionScsiDevice = new QCheckBox(QStringLiteral("uaescsi.device"));
+        expansionSana2 = new QCheckBox(QStringLiteral("uaenet.device"));
+        expansionSana2->setEnabled(false);
+        expansionSana2->setToolTip(QStringLiteral("Unix SANA-II backend is not enabled in this build yet."));
+        misc->addWidget(expansionBsdsocket, 0, 0);
+        misc->addWidget(expansionScsiDevice, 1, 0);
+        misc->addWidget(expansionSana2, 0, 1);
+        misc->setColumnStretch(0, 1);
+        misc->setColumnStretch(1, 1);
+        root->addWidget(groupBox(QStringLiteral("Miscellaneous Expansions"), misc));
+        root->addStretch();
         return page;
     }
 
@@ -6703,6 +6818,12 @@ private:
         rtgBuffers->setCurrentText(QStringLiteral("Double"));
         hardwareCustomBoardOrder->setChecked(false);
         refreshHardwareInfoPage();
+        rtgScaleAllow->setChecked(false);
+        rtgDisplay->setCurrentText(QStringLiteral("Default display"));
+        rtgAspectRatio->setCurrentText(QStringLiteral("Automatic"));
+        expansionBsdsocket->setChecked(false);
+        expansionScsiDevice->setChecked(false);
+        expansionSana2->setChecked(false);
 
         romFile->setCurrentText(envString("WINUAE_KICKSTART_ROM"));
         extendedRomFile->setCurrentText(QString());
@@ -8196,6 +8317,8 @@ private:
             }
         }
         settings.insert(QStringLiteral("gfx_filter_autoscale_rtg"), rtgScaleConfigValue(rtgScale->isChecked(), rtgCenter->isChecked(), rtgIntegerScale->isChecked()));
+        settings.insert(QStringLiteral("gfx_filter_aspect_ratio_rtg"),
+            configChoiceValue(rtgAspectRatioChoices, int(sizeof(rtgAspectRatioChoices) / sizeof(rtgAspectRatioChoices[0])), rtgAspectRatio->currentText()));
         settings.insert(QStringLiteral("gfx_backbuffers_rtg"), rtgBufferConfigValue(rtgBuffers->currentText()));
         if (rtgRefreshRate->currentText() == QStringLiteral("Chipset")) {
             settings.insert(QStringLiteral("gfx_refreshrate_rtg"), QStringLiteral("0"));
@@ -8206,6 +8329,9 @@ private:
         settings.insert(QStringLiteral("gfxcard_hardware_sprite"), rtgHardwareSprite->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
         settings.insert(QStringLiteral("gfxcard_multithread"), rtgMultithread->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
         settings.insert(QStringLiteral("rtg_modes"), QStringLiteral("0x%1").arg(rtgModeMask(), 0, 16));
+        settings.insert(QStringLiteral("bsdsocket_emu"), expansionBsdsocket->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
+        settings.insert(QStringLiteral("scsi"), expansionScsiDevice->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
+        settings.insert(QStringLiteral("sana2"), expansionSana2->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
         if (!windowWidth->text().isEmpty()) {
             settings.insert(QStringLiteral("gfx_width_windowed"), windowWidth->text());
         }
@@ -8543,6 +8669,10 @@ private:
             QStringLiteral("gfxcard_hardware_sprite"),
             QStringLiteral("gfxcard_multithread"),
             QStringLiteral("rtg_modes"),
+            QStringLiteral("gfx_filter_aspect_ratio_rtg"),
+            QStringLiteral("bsdsocket_emu"),
+            QStringLiteral("scsi"),
+            QStringLiteral("sana2"),
             QStringLiteral("gfx_width_windowed"),
             QStringLiteral("gfx_height_windowed"),
             QStringLiteral("gfx_width_fullscreen"),
@@ -9204,6 +9334,8 @@ private:
             if (currentFilterTarget == 1) {
                 loadFilterStateToUi(1);
             }
+        } else if (key == QStringLiteral("gfx_filter_aspect_ratio_rtg")) {
+            rtgAspectRatio->setCurrentText(configChoiceDisplay(rtgAspectRatioChoices, int(sizeof(rtgAspectRatioChoices) / sizeof(rtgAspectRatioChoices[0])), value));
         } else if (key == QStringLiteral("gfx_backbuffers_rtg")) {
             rtgBuffers->setCurrentText(rtgBufferText(value));
         } else if (key == QStringLiteral("gfx_refreshrate_rtg")) {
@@ -9228,6 +9360,13 @@ private:
             rtg16Bit->setCurrentText(rtg16BitText(mask));
             rtg24Bit->setCurrentText(rtg24BitText(mask));
             rtg32Bit->setCurrentText(rtg32BitText(mask));
+        } else if (key == QStringLiteral("bsdsocket_emu")) {
+            expansionBsdsocket->setChecked(configBoolValue(value));
+        } else if (key == QStringLiteral("scsi")) {
+            const QString lower = value.toLower();
+            expansionScsiDevice->setChecked(lower != QStringLiteral("false") && lower != QStringLiteral("0") && !lower.isEmpty());
+        } else if (key == QStringLiteral("sana2")) {
+            expansionSana2->setChecked(configBoolValue(value));
         } else if (key == QStringLiteral("sound_output")) {
             if (QAbstractButton *button = soundOutputButtons->button(soundOutputId(value))) {
                 button->setChecked(true);
