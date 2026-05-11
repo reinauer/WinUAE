@@ -129,6 +129,7 @@ static bool testRepresentativeConfig()
     settings.insert(QStringLiteral("floppy0wp"), QStringLiteral("true"));
     settings.insert(QStringLiteral("floppy1wp"), QStringLiteral("false"));
     settings.insert(QStringLiteral("floppy2wp"), QStringLiteral("yes"));
+    settings.insert(QStringLiteral("uaehf0"), QStringLiteral("dir,rw,DH0:System:/tmp/System,0"));
     settings.insert(QStringLiteral("nr_floppies"), QStringLiteral("2"));
     settings.insert(QStringLiteral("chipset"), QStringLiteral("aga"));
     settings.insert(QStringLiteral("chipset_compatible"), QStringLiteral("A1200"));
@@ -161,6 +162,7 @@ static bool testRepresentativeConfig()
     ok = require(parsedLines.contains(QStringLiteral("chipset_compatible=A1200")), "chipset compatibility was not delegated") && ok;
     ok = require(parsedLines.contains(QStringLiteral("floppy1type=1")), "floppy drive type was not delegated") && ok;
     ok = require(parsedLines.contains(QStringLiteral("floppy0wp=true")), "floppy write protect was not delegated") && ok;
+    ok = require(parsedLines.contains(QStringLiteral("uaehf0=dir,rw,DH0:System:/tmp/System,0")), "hard drive mount was not delegated") && ok;
     ok = require(parsedLines.contains(QStringLiteral("fpu_model=68882")), "fpu model was not delegated") && ok;
     ok = require(parsedLines.contains(QStringLiteral("sound_output=normal")), "sound output was not delegated") && ok;
 
