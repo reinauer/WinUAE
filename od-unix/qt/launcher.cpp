@@ -1051,6 +1051,20 @@ static QStringList contributorLines()
     };
 }
 
+struct AboutLink {
+    const char *display;
+    const char *url;
+};
+
+static const AboutLink aboutLinks[] = {
+    { "Cloanto's Amiga Forever", "https://www.amigaforever.com/" },
+    { "Amiga Corporation", "https://amiga.com/" },
+    { "WinUAE Home Page", "http://www.winuae.net/" },
+    { "abime.net", "http://www.abime.net/" },
+    { "SPS", "http://www.softpres.org/" },
+    { "AmiKit", "http://amikit.amiga.sk/" }
+};
+
 static QIcon resourceIcon(const QString &name)
 {
     const QString path = sourceFile(QStringLiteral("od-win32/resources/") + name);
@@ -3298,6 +3312,19 @@ private:
         buttonRow->addWidget(contributors);
         buttonRow->addStretch();
         root->addLayout(buttonRow);
+        QGridLayout *links = new QGridLayout;
+        links->setHorizontalSpacing(24);
+        links->setVerticalSpacing(16);
+        for (int i = 0; i < int(sizeof(aboutLinks) / sizeof(aboutLinks[0])); i++) {
+            QLabel *link = new QLabel(QStringLiteral("<a href=\"%1\">%2</a>")
+                .arg(QString::fromLatin1(aboutLinks[i].url), QString::fromLatin1(aboutLinks[i].display)));
+            link->setAlignment(Qt::AlignCenter);
+            link->setOpenExternalLinks(true);
+            link->setTextInteractionFlags(Qt::TextBrowserInteraction);
+            links->addWidget(link, i / 3, i % 3);
+        }
+        root->addSpacing(20);
+        root->addLayout(links);
         root->addStretch();
         return page;
     }
