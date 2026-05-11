@@ -39,6 +39,14 @@ brew install qt
 
 The system zlib is normally enough on macOS.
 
+The macOS build defaults to `CMAKE_OSX_DEPLOYMENT_TARGET=14.0` so the app is not accidentally tied to the build machine's current macOS release. Bundled libraries and frameworks must support the same or an older deployment target. The packaging script checks every bundled Mach-O file and fails if, for example, Homebrew SDL2 was built with `minos 26.0` while the app target is `14.0`. The current Homebrew Qt on this machine reports `minos 14.0`, so packaged Qt builds made with it require macOS 14 or newer. To target older macOS releases, configure with an older deployment target and build/bundle SDL2 and Qt with a matching target:
+
+```sh
+cmake -S . -B /tmp/winuae_cmake_build \
+  -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+  -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0
+```
+
 ### Debian/Ubuntu
 
 ```sh
@@ -85,6 +93,20 @@ If Qt Widgets is available, CMake links the Windows-style configuration UI into 
 cmake --build /tmp/winuae_cmake_build --target winuae_unix_qt -j
 /tmp/winuae_cmake_build/winuae_unix_qt
 ```
+
+On macOS, a local `WinUAE.app` bundle can be created from the same build:
+
+```sh
+cmake --build /tmp/winuae_cmake_build --target winuae_unix_macos_app -j
+```
+
+The app bundle is written to:
+
+```sh
+/tmp/winuae_cmake_build/package/WinUAE.app
+```
+
+The bundling script copies the Qt UI resources and runs `macdeployqt` when it is available. It does not bundle Kickstart ROMs, disks, or other Amiga system media.
 
 To force a configure from scratch:
 
