@@ -10670,11 +10670,16 @@ int runWinUaeQtLauncher(int argc, char **argv)
 
 WinUaeQtLauncherResult runWinUaeQtLauncherForConfig(QApplication &app)
 {
+    return runWinUaeQtLauncherForConfig(app, QString());
+}
+
+WinUaeQtLauncherResult runWinUaeQtLauncherForConfig(QApplication &app, const QString &initialConfigPath)
+{
     setupApplicationStyle(app);
     WinUaeQtDialog dialog(
         WinUaeQtDialog::StartMode::ReturnConfig,
         nullptr,
-        initialConfigPathFromArguments(app.arguments()));
+        initialConfigPath.isEmpty() ? initialConfigPathFromArguments(app.arguments()) : initialConfigPath);
     if (WinUaeQtApplication *qtApp = dynamic_cast<WinUaeQtApplication *>(&app)) {
         qtApp->setConfigOpenHandler([&dialog](const QString &path) {
             dialog.openConfigFile(path);
@@ -10691,6 +10696,11 @@ WinUaeQtLauncherResult runWinUaeQtLauncherForConfig(QApplication &app)
 
 WinUaeQtLauncherResult runWinUaeQtLauncherForConfig(int argc, char **argv)
 {
+    return runWinUaeQtLauncherForConfig(argc, argv, QString());
+}
+
+WinUaeQtLauncherResult runWinUaeQtLauncherForConfig(int argc, char **argv, const QString &initialConfigPath)
+{
     WinUaeQtApplication app(argc, argv);
-    return runWinUaeQtLauncherForConfig(app);
+    return runWinUaeQtLauncherForConfig(app, initialConfigPath);
 }

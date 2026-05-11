@@ -4,12 +4,21 @@
 #include "prefs_adapter.h"
 
 #include <QByteArray>
+#include <QString>
 
 #include <stdio.h>
 
 int runWinUaeQtLauncherForPrefs(int argc, char **argv, struct uae_prefs *prefs, int *exitCode)
 {
-    WinUaeQtLauncherResult result = runWinUaeQtLauncherForConfig(argc, argv);
+    return runWinUaeQtLauncherForPrefsWithConfig(argc, argv, prefs, nullptr, exitCode);
+}
+
+int runWinUaeQtLauncherForPrefsWithConfig(int argc, char **argv, struct uae_prefs *prefs, const char *initialConfigPath, int *exitCode)
+{
+    const QString initialPath = initialConfigPath && initialConfigPath[0]
+        ? QString::fromLocal8Bit(initialConfigPath)
+        : QString();
+    WinUaeQtLauncherResult result = runWinUaeQtLauncherForConfig(argc, argv, initialPath);
     if (result.status == WinUaeQtLauncherStatus::StartRequested) {
         if (!applyWinUaeQtConfigToPrefs(result.config, prefs)) {
             fprintf(stderr, "Unix Qt UI failed: no preferences target available\n");
