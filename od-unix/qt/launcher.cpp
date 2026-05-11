@@ -1883,6 +1883,7 @@ public:
         addPage(QStringLiteral("Paths"), QStringLiteral("paths.ico"), makePathsPage());
         addPage(QStringLiteral("Miscellaneous"), QStringLiteral("misc.ico"), makeMiscPage());
         addPage(QStringLiteral("Pri. & Extensions"), QStringLiteral("misc.ico"), makeExtensionsPage());
+        addPage(QStringLiteral("Frontend"), QStringLiteral("quickstart.ico"), makeFrontendPage());
         addPage(QStringLiteral("About"), QStringLiteral("amigainfo.ico"), makeAboutPage());
 
         connect(navigation, &QTreeWidget::currentItemChanged, this, [this](QTreeWidgetItem *item) {
@@ -1892,6 +1893,8 @@ public:
             pageStack->setCurrentIndex(item->data(0, Qt::UserRole).toInt());
             if (item->text(0) == QStringLiteral("Hardware info")) {
                 refreshHardwareInfoPage();
+            } else if (item->text(0) == QStringLiteral("Frontend")) {
+                refreshFrontendPage();
             }
         });
 
@@ -2266,6 +2269,9 @@ private:
     QCheckBox *extensionMinimizedNoSound = nullptr;
     QCheckBox *extensionMinimizedNoJoy = nullptr;
     QTreeWidget *extensionAssociationList = nullptr;
+    QTreeWidget *frontendConfigList = nullptr;
+    QLabel *frontendScreenshot = nullptr;
+    QLabel *frontendInfo = nullptr;
     WinUaeQtLauncherBackend launcherBackend;
     WinUaeQtConfig loadedConfig;
     WinUaeQtLauncherResult result;
@@ -4619,6 +4625,7 @@ private:
         root->addWidget(groupBox(QStringLiteral("Debug logging"), logging));
         root->addStretch(1);
         connect(configsPath, &QLineEdit::textChanged, this, [this]() { refreshConfigList(); });
+        connect(configsPath, &QLineEdit::textChanged, this, [this]() { refreshFrontendPage(); });
         connect(configsPath, &QLineEdit::textChanged, this, [this]() { updateLogPathText(); });
         connect(setPath, &QPushButton::clicked, this, [this]() { applySelectedPathDefaults(); });
         connect(logSelect, &QComboBox::currentTextChanged, this, [this](const QString &) { updateLogPathText(); });
@@ -4965,6 +4972,173 @@ private:
     int extensionPriorityValue(QComboBox *box) const
     {
         return box ? activityPriorityValue(box->currentText()) : 0;
+    }
+
+    QWidget *makeFrontendPage()
+    {
+        QWidget *page = makePage();
+        QHBoxLayout *root = new QHBoxLayout(page);
+        root->setContentsMargins(4, 4, 4, 4);
+        root->setSpacing(8);
+
+        frontendConfigList = new QTreeWidget;
+        frontendConfigList->setRootIsDecorated(false);
+        frontendConfigList->setAlternatingRowColors(true);
+        frontendConfigList->setSelectionMode(QAbstractItemView::SingleSelection);
+        frontendConfigList->setEditTriggers(QAbstractItemView::NoEditTriggers);
+        frontendConfigList->setHeaderLabels({ QStringLiteral("Configuration"), QStringLiteral("Description") });
+        root->addWidget(frontendConfigList, 3);
+
+        QVBoxLayout *right = new QVBoxLayout;
+        QVBoxLayout *screenshotLayout = new QVBoxLayout;
+        frontendScreenshot = new QLabel;
+        frontendScreenshot->setFrameShape(QFrame::Box);
+        frontendScreenshot->setAlignment(Qt::AlignCenter);
+        frontendScreenshot->setMinimumSize(160, 128);
+        screenshotLayout->addWidget(frontendScreenshot, 1);
+        right->addWidget(groupBox(QString(), screenshotLayout), 3);
+
+        QVBoxLayout *infoLayout = new QVBoxLayout;
+        frontendInfo = new QLabel;
+        frontendInfo->setAlignment(Qt::AlignTop | Qt::AlignLeft);
+        frontendInfo->setWordWrap(true);
+        frontendInfo->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        infoLayout->addWidget(frontendInfo, 1);
+        right->addWidget(groupBox(QString(), infoLayout), 2);
+        root->addLayout(right, 2);
+
+        connect(frontendConfigList, &QTreeWidget::itemSelectionChanged, this, [this]() { updateFrontendSelection(); });
+        connect(frontendConfigList, &QTreeWidget::itemDoubleClicked, this, [this](QTreeWidgetItem *item, int) {
+            const QString path = item ? item->data(0, Qt::UserRole).toString() : QString();
+            if (!path.isEmpty()) {
+                loadConfig(path);
+            }
+        });
+        return page;
+    }
+
+    QString frontendMediaArtDirectory(const QString &mediaPath) const
+    {
+        if (mediaPath.trimmed().isEmpty()) {
+            return QString();
+        }
+        QDir dir(QFileInfo(mediaPath).absolutePath());
+        if (QFileInfo::exists(dir.filePath(QStringLiteral("___Title.png")))) {
+            return dir.absolutePath();
+        }
+        return QString();
+    }
+
+    QString frontendArtDirectory(const WinUaeQtConfig &config) const
+    {
+        const QString floppy = config.value(QStringLiteral("floppy0"));
+        QString path = frontendMediaArtDirectory(floppy);
+        if (!path.isEmpty()) {
+            return path;
+        }
+
+        const QString cd = config.value(QStringLiteral("cdimage0"));
+        if (!cd.isEmpty()
+            && cd.compare(QStringLiteral("autodetect"), Qt::CaseInsensitive) != 0
+            && cd.compare(QStringLiteral("empty"), Qt::CaseInsensitive) != 0) {
+            const QStringList fields = winUaeQtConfigFieldList(cd);
+            path = frontendMediaArtDirectory(fields.value(0));
+            if (!path.isEmpty()) {
+                return path;
+            }
+        }
+        return QString();
+    }
+
+    QString frontendArtImage(const QString &artDirectory) const
+    {
+        if (artDirectory.isEmpty()) {
+            return QString();
+        }
+        const QStringList names = {
+            QStringLiteral("___Title.png"),
+            QStringLiteral("___SShot.png"),
+            QStringLiteral("___Boxart.png")
+        };
+        const QDir dir(artDirectory);
+        for (const QString &name : names) {
+            const QString path = dir.filePath(name);
+            if (QFileInfo::exists(path)) {
+                return path;
+            }
+        }
+        return QString();
+    }
+
+    void refreshFrontendPage()
+    {
+        if (!frontendConfigList) {
+            return;
+        }
+        const QString selectedPath = frontendConfigList->currentItem()
+            ? frontendConfigList->currentItem()->data(0, Qt::UserRole).toString()
+            : (configPath ? configPath->text() : QString());
+        QSignalBlocker blocker(frontendConfigList);
+        frontendConfigList->clear();
+
+        QDir dir(configurationDirectory());
+        const QFileInfoList files = dir.entryInfoList({ QStringLiteral("*.uae") }, QDir::Files, QDir::Name | QDir::IgnoreCase);
+        QTreeWidgetItem *selected = nullptr;
+        for (const QFileInfo &info : files) {
+            WinUaeQtConfig config;
+            config.load(info.absoluteFilePath());
+            const QString description = config.value(QStringLiteral("config_description"));
+            const QString artDirectory = frontendArtDirectory(config);
+            QTreeWidgetItem *item = new QTreeWidgetItem(frontendConfigList);
+            item->setText(0, info.completeBaseName());
+            item->setText(1, description);
+            item->setData(0, Qt::UserRole, info.absoluteFilePath());
+            item->setData(0, Qt::UserRole + 1, description);
+            item->setData(0, Qt::UserRole + 2, artDirectory);
+            if (info.absoluteFilePath() == selectedPath) {
+                selected = item;
+            }
+        }
+        for (int i = 0; i < frontendConfigList->columnCount(); i++) {
+            frontendConfigList->resizeColumnToContents(i);
+        }
+        if (selected) {
+            frontendConfigList->setCurrentItem(selected);
+        } else if (frontendConfigList->topLevelItemCount() > 0) {
+            frontendConfigList->setCurrentItem(frontendConfigList->topLevelItem(0));
+        }
+        updateFrontendSelection();
+    }
+
+    void updateFrontendSelection()
+    {
+        if (!frontendConfigList || !frontendScreenshot || !frontendInfo) {
+            return;
+        }
+        QTreeWidgetItem *item = frontendConfigList->currentItem();
+        if (!item) {
+            frontendScreenshot->clear();
+            frontendInfo->clear();
+            return;
+        }
+
+        const QString path = item->data(0, Qt::UserRole).toString();
+        const QString description = item->data(0, Qt::UserRole + 1).toString();
+        const QString artImage = frontendArtImage(item->data(0, Qt::UserRole + 2).toString());
+        if (!artImage.isEmpty()) {
+            QPixmap image(artImage);
+            frontendScreenshot->setPixmap(image.scaled(frontendScreenshot->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
+        } else {
+            frontendScreenshot->clear();
+        }
+
+        QStringList lines;
+        lines.append(QFileInfo(path).completeBaseName());
+        if (!description.isEmpty()) {
+            lines.append(description);
+        }
+        lines.append(path);
+        frontendInfo->setText(lines.join(QLatin1Char('\n')));
     }
 
     QWidget *makeAboutPage()
