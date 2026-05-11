@@ -1087,6 +1087,27 @@ static QComboBox *pathCombo()
     return w;
 }
 
+static QStringList floppyTypeItems(int drive, bool quickstart)
+{
+    QStringList items = {
+        QStringLiteral("3.5 DD"),
+        QStringLiteral("3.5 HD"),
+        QStringLiteral("Disabled")
+    };
+    if (quickstart) {
+        return items;
+    }
+    items.insert(2, QStringLiteral("5.25 SD"));
+    items.insert(3, QStringLiteral("5.25 (80)"));
+    items.insert(4, QStringLiteral("3.5 DD (Escom)"));
+    if (drive >= 2) {
+        items.insert(5, QStringLiteral("Bridgeboard 5.25 40"));
+        items.insert(6, QStringLiteral("Bridgeboard 5.25 80"));
+        items.insert(7, QStringLiteral("Bridgeboard 3.5 80"));
+    }
+    return items;
+}
+
 static int floppyTypeConfigValue(const QString &text)
 {
     if (text == QStringLiteral("Disabled")) {
@@ -1094,6 +1115,24 @@ static int floppyTypeConfigValue(const QString &text)
     }
     if (text == QStringLiteral("3.5 HD")) {
         return 1;
+    }
+    if (text == QStringLiteral("5.25 SD")) {
+        return 2;
+    }
+    if (text == QStringLiteral("3.5 DD (Escom)")) {
+        return 3;
+    }
+    if (text == QStringLiteral("Bridgeboard 5.25 40")) {
+        return 4;
+    }
+    if (text == QStringLiteral("Bridgeboard 3.5 80")) {
+        return 5;
+    }
+    if (text == QStringLiteral("Bridgeboard 5.25 80")) {
+        return 6;
+    }
+    if (text == QStringLiteral("5.25 (80)")) {
+        return 7;
     }
     return 0;
 }
@@ -1106,7 +1145,61 @@ static QString floppyTypeText(int value)
     if (value == 1) {
         return QStringLiteral("3.5 HD");
     }
+    if (value == 2) {
+        return QStringLiteral("5.25 SD");
+    }
+    if (value == 3) {
+        return QStringLiteral("3.5 DD (Escom)");
+    }
+    if (value == 4) {
+        return QStringLiteral("Bridgeboard 5.25 40");
+    }
+    if (value == 5) {
+        return QStringLiteral("Bridgeboard 3.5 80");
+    }
+    if (value == 6) {
+        return QStringLiteral("Bridgeboard 5.25 80");
+    }
+    if (value == 7) {
+        return QStringLiteral("5.25 (80)");
+    }
     return QStringLiteral("3.5 DD");
+}
+
+static int floppySpeedConfigValue(int sliderPosition)
+{
+    if (sliderPosition <= 0) {
+        return 0;
+    }
+    return 100 << qBound(0, sliderPosition - 1, 3);
+}
+
+static int floppySpeedSliderPosition(int value)
+{
+    if (value <= 0) {
+        return 0;
+    }
+    if (value <= 100) {
+        return 1;
+    }
+    if (value <= 200) {
+        return 2;
+    }
+    if (value <= 400) {
+        return 3;
+    }
+    return 4;
+}
+
+static QString floppySpeedText(int value)
+{
+    if (value <= 0) {
+        return QStringLiteral("Turbo");
+    }
+    if (value == 100) {
+        return QStringLiteral("100% (Compatible)");
+    }
+    return QStringLiteral("%1%").arg(value);
 }
 
 static bool configBoolValue(const QString &value)
@@ -1343,6 +1436,8 @@ private:
     QComboBox *dfType[4] = {};
     QComboBox *dfPath[4] = {};
     QCheckBox *dfWriteProtect[4] = {};
+    QSlider *floppySpeed = nullptr;
+    QLineEdit *floppySpeedLabel = nullptr;
     QTreeWidget *mountedDrives = nullptr;
     QPushButton *addDirectoryMountButton = nullptr;
     QPushButton *addHardfileMountButton = nullptr;
@@ -1560,7 +1655,7 @@ private:
     {
         quickDfEnable[drive] = new QCheckBox(QStringLiteral("Floppy drive DF%1:").arg(drive));
         QPushButton *select = new QPushButton(QStringLiteral("Select image file"));
-        quickDfType[drive] = combo({ QStringLiteral("3.5 DD"), QStringLiteral("3.5 HD"), QStringLiteral("Disabled") });
+        quickDfType[drive] = combo(floppyTypeItems(drive, true));
         quickDfWriteProtect[drive] = new QCheckBox;
         QPushButton *info = smallButton(QStringLiteral("?"));
         QPushButton *eject = new QPushButton(QStringLiteral("Eject"));
@@ -1837,19 +1932,28 @@ private:
             addFloppyRow(drives, i);
         }
         root->addWidget(groupBox(QStringLiteral("Floppy Drives"), drives), 1);
-        QHBoxLayout *speed = new QHBoxLayout;
-        speed->addWidget(new QRadioButton(QStringLiteral("100%")));
-        speed->addWidget(new QRadioButton(QStringLiteral("Turbo")));
-        speed->addWidget(new QCheckBox(QStringLiteral("Accurate disk access")));
-        speed->addStretch();
+        floppySpeed = new QSlider(Qt::Horizontal);
+        floppySpeed->setRange(0, 4);
+        floppySpeed->setTickInterval(1);
+        floppySpeed->setTickPosition(QSlider::TicksAbove);
+        floppySpeedLabel = new QLineEdit;
+        floppySpeedLabel->setReadOnly(true);
+        floppySpeedLabel->setAlignment(Qt::AlignCenter);
+        floppySpeedLabel->setMinimumWidth(130);
+        QGridLayout *speed = new QGridLayout;
+        speed->addWidget(floppySpeed, 0, 0);
+        speed->addWidget(floppySpeedLabel, 0, 1);
         root->addWidget(groupBox(QStringLiteral("Floppy Drive Emulation Speed"), speed));
+        connect(floppySpeed, &QSlider::valueChanged, this, [this]() {
+            updateFloppySpeedLabel();
+        });
         return page;
     }
 
     void addFloppyRow(QGridLayout *layout, int drive)
     {
         dfEnable[drive] = new QCheckBox(QStringLiteral("DF%1:").arg(drive));
-        dfType[drive] = combo({ QStringLiteral("3.5 DD"), QStringLiteral("3.5 HD"), QStringLiteral("Disabled") });
+        dfType[drive] = combo(floppyTypeItems(drive, false));
         dfPath[drive] = pathCombo();
         dfWriteProtect[drive] = new QCheckBox;
         QPushButton *info = smallButton(QStringLiteral("?"));
@@ -2931,6 +3035,14 @@ private:
         }
     }
 
+    void updateFloppySpeedLabel()
+    {
+        if (!floppySpeed || !floppySpeedLabel) {
+            return;
+        }
+        floppySpeedLabel->setText(floppySpeedText(floppySpeedConfigValue(floppySpeed->value())));
+    }
+
     void resetDefaults()
     {
         loadedConfig = WinUaeQtConfig();
@@ -2998,6 +3110,8 @@ private:
             dfWriteProtect[i]->setChecked(false);
             dfPath[i]->setCurrentText(i == 0 ? envString("WINUAE_FLOPPY0") : QString());
         }
+        floppySpeed->setValue(floppySpeedSliderPosition(100));
+        updateFloppySpeedLabel();
         for (int i = 0; i < 2; i++) {
             quickDfEnable[i]->setChecked(i == 0);
             quickDfType[i]->setCurrentText(QStringLiteral("3.5 DD"));
@@ -4093,6 +4207,7 @@ private:
             }
         }
         settings.insert(QStringLiteral("nr_floppies"), QString::number(enabledFloppyCount()));
+        settings.insert(QStringLiteral("floppy_speed"), QString::number(floppySpeedConfigValue(floppySpeed->value())));
         settings.insert(QStringLiteral("chipset"), chipset->currentText().toLower());
         settings.insert(QStringLiteral("chipset_compatible"), chipsetCompatible->currentText());
         settings.insert(QStringLiteral("cpu_model"), QString::number(cpu));
@@ -4251,6 +4366,7 @@ private:
             QStringLiteral("floppy2wp"),
             QStringLiteral("floppy3wp"),
             QStringLiteral("nr_floppies"),
+            QStringLiteral("floppy_speed"),
             QStringLiteral("chipset"),
             QStringLiteral("chipset_compatible"),
             QStringLiteral("cpu_model"),
@@ -4449,6 +4565,9 @@ private:
             }
         } else if (romBoardIndexFromKey(key) >= 0) {
             applyCustomRomBoard(romBoardIndexFromKey(key), value);
+        } else if (key == QStringLiteral("floppy_speed")) {
+            floppySpeed->setValue(floppySpeedSliderPosition(value.toInt()));
+            updateFloppySpeedLabel();
         } else if (const int drive = floppyKeyDrive(key, QStringLiteral("type")); drive >= 0) {
             const int driveType = value.toInt();
             dfEnable[drive]->setChecked(driveType >= 0);
