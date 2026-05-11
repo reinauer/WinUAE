@@ -117,8 +117,8 @@ bool applyWinUaeQtConfigToPrefs(const WinUaeQtConfig &config, struct uae_prefs *
     }
 
     const WinUaeQtConfig::Settings &settings = config.settings();
-    for (auto it = settings.constBegin(); it != settings.constEnd(); ++it) {
-        parseSettingLine(prefs, it.key(), it.value());
+    for (const WinUaeQtConfig::Setting &setting : config.orderedSettings()) {
+        parseSettingLine(prefs, setting.key, setting.value);
     }
     applyDirectSettings(settings, prefs);
     return true;

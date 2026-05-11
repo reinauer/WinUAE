@@ -217,11 +217,38 @@ static bool testNativeWindowSize()
     return ok;
 }
 
+static bool testRepeatedMountDelegation()
+{
+    WinUaeQtConfig config;
+    config.applyRepeatedSettings({
+        { QStringLiteral("filesystem2"), QStringLiteral("rw,DH0:System:/tmp/System,0") },
+        { QStringLiteral("filesystem2"), QStringLiteral("ro,DH1:Work:/tmp/Work,5") }
+    }, {
+        QStringLiteral("filesystem2")
+    });
+
+    struct uae_prefs *prefs = allocPrefs();
+    if (!prefs) {
+        qWarning().noquote() << "failed to allocate preferences";
+        return false;
+    }
+
+    parsedLines.clear();
+    bool ok = applyWinUaeQtConfigToPrefs(config, prefs);
+    ok = require(ok, "adapter rejected repeated mount config") && ok;
+    ok = requireInt(parsedLines.size(), 2, "repeated mount parsed line count") && ok;
+    ok = require(parsedLines.contains(QStringLiteral("filesystem2=rw,DH0:System:/tmp/System,0")), "first repeated mount was not delegated") && ok;
+    ok = require(parsedLines.contains(QStringLiteral("filesystem2=ro,DH1:Work:/tmp/Work,5")), "second repeated mount was not delegated") && ok;
+    free(prefs);
+    return ok;
+}
+
 int main()
 {
     bool ok = true;
     ok = require(!applyWinUaeQtConfigToPrefs(WinUaeQtConfig(), nullptr), "null prefs should fail") && ok;
     ok = testRepresentativeConfig() && ok;
     ok = testNativeWindowSize() && ok;
+    ok = testRepeatedMountDelegation() && ok;
     return ok ? 0 : 1;
 }

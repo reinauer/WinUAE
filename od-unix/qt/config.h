@@ -8,13 +8,21 @@
 class WinUaeQtConfig {
 public:
     using Settings = QMap<QString, QString>;
+    struct Setting {
+        QString key;
+        QString value;
+    };
+    using OrderedSettings = QList<Setting>;
 
     WinUaeQtConfig() = default;
     explicit WinUaeQtConfig(Settings settings);
 
     const Settings &settings() const;
+    const OrderedSettings &orderedSettings() const;
+    QStringList values(const QString &key) const;
     void setSettings(Settings settings);
     void applySettings(const Settings &settings, const QStringList &ownedKeys);
+    void applyRepeatedSettings(const OrderedSettings &settings, const QStringList &ownedKeys);
 
     QString value(const QString &key, const QString &defaultValue = QString()) const;
     void setValue(const QString &key, const QString &value);
@@ -35,8 +43,13 @@ private:
     };
 
     static DocumentLine makeSettingLine(const QString &key, const QString &value);
+    static OrderedSettings orderedFromSettings(const Settings &settings);
+
+    void rebuildSettingsFromDocumentLines();
+    void rebuildSettingsFromOrderedSettings();
 
     Settings configSettings;
+    OrderedSettings orderedConfigSettings;
     QList<DocumentLine> documentLines;
     bool documentLoaded = false;
 };

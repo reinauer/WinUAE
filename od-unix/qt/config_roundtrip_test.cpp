@@ -46,6 +46,25 @@ static bool requireNotContains(const QString &text, const QString &needle)
     return false;
 }
 
+static bool requireCount(const QString &text, const QString &needle, int expected)
+{
+    int count = 0;
+    int offset = 0;
+    for (;;) {
+        offset = text.indexOf(needle, offset);
+        if (offset < 0) {
+            break;
+        }
+        count++;
+        offset += needle.size();
+    }
+    if (count == expected) {
+        return true;
+    }
+    qWarning().noquote() << needle << "expected count" << expected << "got" << count;
+    return false;
+}
+
 int main()
 {
     QTemporaryDir tempDir;
@@ -63,7 +82,11 @@ int main()
         + QStringLiteral("kickstart_ext_rom_file=/old-ext.rom\n")
         + QStringLiteral("malformed line without separator\n")
         + QStringLiteral("# keep this too\n")
-        + QStringLiteral("chipset=ecs\n");
+        + QStringLiteral("chipset=ecs\n")
+        + QStringLiteral("filesystem2=rw,DH0:Old:/old/System,0\n")
+        + QStringLiteral("; keep mount comment\n")
+        + QStringLiteral("filesystem2=rw,DH1:Old2:/old/Work,0\n")
+        + QStringLiteral("hardfile2=rw,DH2:/old/disk.hdf,32,1,2,512,0,,uae0\n");
 
     if (!writeText(inputPath, input)) {
         return 1;
@@ -86,6 +109,14 @@ int main()
         QStringLiteral("chipset"),
         QStringLiteral("cpu_model")
     });
+    config.applyRepeatedSettings({
+        { QStringLiteral("filesystem2"), QStringLiteral("rw,DH0:System:/new/System,0") },
+        { QStringLiteral("filesystem2"), QStringLiteral("ro,DH1:Work:\"/new/Work,Disk\",5") }
+    }, {
+        QStringLiteral("filesystem2"),
+        QStringLiteral("hardfile2"),
+        QStringLiteral("uaehf0")
+    });
 
     if (!config.save(outputPath, &error)) {
         qWarning().noquote() << error;
@@ -98,16 +129,25 @@ int main()
     ok = requireContains(output, QStringLiteral("unknown_setting=keep-me\n")) && ok;
     ok = requireContains(output, QStringLiteral("malformed line without separator\n")) && ok;
     ok = requireContains(output, QStringLiteral("# keep this too\n")) && ok;
+    ok = requireContains(output, QStringLiteral("; keep mount comment\n")) && ok;
     ok = requireContains(output, QStringLiteral("kickstart_rom_file=/new.rom\n")) && ok;
     ok = requireContains(output, QStringLiteral("chipset=aga\n")) && ok;
     ok = requireContains(output, QStringLiteral("cpu_model=68020\n")) && ok;
+    ok = requireContains(output, QStringLiteral("filesystem2=rw,DH0:System:/new/System,0\n")) && ok;
+    ok = requireContains(output, QStringLiteral("filesystem2=ro,DH1:Work:\"/new/Work,Disk\",5\n")) && ok;
+    ok = requireCount(output, QStringLiteral("filesystem2="), 2) && ok;
     ok = requireNotContains(output, QStringLiteral("kickstart_ext_rom_file=")) && ok;
     ok = requireNotContains(output, QStringLiteral("/old.rom")) && ok;
+    ok = requireNotContains(output, QStringLiteral("/old/System")) && ok;
+    ok = requireNotContains(output, QStringLiteral("hardfile2=")) && ok;
 
     const QStringList args = config.commandArguments();
     ok = args.contains(QStringLiteral("unknown_setting=keep-me")) && ok;
     ok = args.contains(QStringLiteral("kickstart_rom_file=/new.rom")) && ok;
+    ok = args.contains(QStringLiteral("filesystem2=rw,DH0:System:/new/System,0")) && ok;
+    ok = args.contains(QStringLiteral("filesystem2=ro,DH1:Work:\"/new/Work,Disk\",5")) && ok;
     ok = !args.contains(QStringLiteral("kickstart_ext_rom_file=/old-ext.rom")) && ok;
+    ok = requireCount(args.join(QLatin1Char('\n')), QStringLiteral("filesystem2="), 2) && ok;
 
     return ok ? 0 : 1;
 }
