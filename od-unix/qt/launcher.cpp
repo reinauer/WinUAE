@@ -1807,6 +1807,135 @@ static quint32 crc32ForBytes(const QByteArray &bytes)
     return crc ^ 0xffffffffu;
 }
 
+static bool crc32ForFile(const QString &path, quint32 *out, QString *error = nullptr)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        if (error) {
+            *error = file.errorString();
+        }
+        return false;
+    }
+
+    quint32 crc = 0xffffffffu;
+    for (;;) {
+        const QByteArray chunk = file.read(1024 * 1024);
+        if (chunk.isEmpty()) {
+            break;
+        }
+        for (char ch : chunk) {
+            crc ^= quint8(ch);
+            for (int bit = 0; bit < 8; bit++) {
+                crc = (crc >> 1) ^ (0xedb88320u & (0u - (crc & 1u)));
+            }
+        }
+    }
+    if (file.error() != QFileDevice::NoError) {
+        if (error) {
+            *error = file.errorString();
+        }
+        return false;
+    }
+    if (out) {
+        *out = crc ^ 0xffffffffu;
+    }
+    return true;
+}
+
+static quint32 readBe32(const QByteArray &data, int offset)
+{
+    if (offset < 0 || offset + 4 > data.size()) {
+        return 0;
+    }
+    return (quint32(quint8(data[offset])) << 24)
+        | (quint32(quint8(data[offset + 1])) << 16)
+        | (quint32(quint8(data[offset + 2])) << 8)
+        | quint32(quint8(data[offset + 3]));
+}
+
+static QString hex32(quint32 value)
+{
+    return QStringLiteral("%1").arg(value, 8, 16, QLatin1Char('0')).toUpper();
+}
+
+static QString formatByteSize(qint64 bytes)
+{
+    const double mib = double(bytes) / (1024.0 * 1024.0);
+    if (mib >= 1.0) {
+        return QStringLiteral("%1 bytes (%2 MiB)").arg(bytes).arg(mib, 0, 'f', 2);
+    }
+    return QStringLiteral("%1 bytes").arg(bytes);
+}
+
+static bool isPlainSectorFloppyImage(const QFileInfo &info)
+{
+    const QString suffix = info.suffix().toLower();
+    return suffix == QStringLiteral("adf")
+        || info.size() == 901120
+        || info.size() == 1802240;
+}
+
+static bool amigaBootBlockChecksumValid(const QByteArray &bootBlock)
+{
+    if (bootBlock.size() < 1024) {
+        return false;
+    }
+
+    quint32 sum = 0;
+    for (int i = 0; i < 1024; i += 4) {
+        quint32 value = readBe32(bootBlock, i);
+        if (i == 4) {
+            value = 0;
+        }
+        const quint32 old = sum;
+        sum += value;
+        if (sum < old) {
+            sum++;
+        }
+    }
+    return (sum ^ 0xffffffffu) == readBe32(bootBlock, 4);
+}
+
+static QString amigaBootBlockType(const QByteArray &bootBlock)
+{
+    if (bootBlock.size() < 1024) {
+        return QStringLiteral("Unavailable");
+    }
+
+    QByteArray zeroed = bootBlock;
+    zeroed[4] = 0;
+    zeroed[5] = 0;
+    zeroed[6] = 0;
+    zeroed[7] = 0;
+
+    const quint32 dos = readBe32(bootBlock, 0);
+    if (crc32ForBytes(zeroed.left(0x31)) == 0xae5e282cu) {
+        return QStringLiteral("Standard 1.x");
+    }
+    if (dos >= 0x444f5300u && dos <= 0x444f5307u
+        && crc32ForBytes(zeroed.mid(8, 0x5c - 8)) == 0xe158ca4bu) {
+        return QStringLiteral("Standard 2.x+");
+    }
+    if (dos == 0x4b49434bu) {
+        return QStringLiteral("Kickstart");
+    }
+    return QStringLiteral("Custom");
+}
+
+static QString amigaRootBlockLabel(const QByteArray &rootBlock)
+{
+    if (rootBlock.size() < 512 || readBe32(rootBlock, 0) != 2 || readBe32(rootBlock, 508) != 1) {
+        return QString();
+    }
+
+    const int nameOffset = 512 - 20 * 4;
+    const int nameLength = quint8(rootBlock[nameOffset]);
+    if (nameLength <= 0 || nameOffset + 1 + nameLength > rootBlock.size()) {
+        return QString();
+    }
+    return QString::fromLatin1(rootBlock.constData() + nameOffset + 1, nameLength);
+}
+
 static void currentDosDateTime(quint16 *dosDate, quint16 *dosTime)
 {
     const QDateTime now = QDateTime::currentDateTime();
@@ -3242,7 +3371,9 @@ private:
         layout->addWidget(eject, row, 6);
         layout->addWidget(quickDfPath[drive], row + 1, 0, 1, 7);
         quickDfEnable[drive]->setChecked(drive == 0);
-        info->setEnabled(false);
+        connect(info, &QPushButton::clicked, this, [this, drive]() {
+            showFloppyInfo(quickDfPath[drive] ? quickDfPath[drive]->currentText() : QString(), drive);
+        });
         connect(select, &QPushButton::clicked, this, [this, drive]() {
             addBrowse(quickDfPath[drive], this, QStringLiteral("Select floppy image"), QStringLiteral("Amiga disk images (*.adf *.adz *.ipf *.dms);;All files (*)"));
         });
@@ -3865,7 +3996,9 @@ private:
         layout->addWidget(browse, row, 6);
         layout->addWidget(dfPath[drive], row + 1, 0, 1, 7);
         dfEnable[drive]->setChecked(drive == 0);
-        info->setEnabled(false);
+        connect(info, &QPushButton::clicked, this, [this, drive]() {
+            showFloppyInfo(dfPath[drive] ? dfPath[drive]->currentText() : QString(), drive);
+        });
         connect(browse, &QPushButton::clicked, this, [this, drive]() {
             addBrowse(dfPath[drive], this, QStringLiteral("Select floppy image"), QStringLiteral("Amiga disk images (*.adf *.adz *.ipf *.dms);;All files (*)"));
         });
@@ -3901,6 +4034,114 @@ private:
                 syncQuickDriveToFloppy(drive);
             });
         }
+    }
+
+    QString floppyInfoText(const QString &path, int drive) const
+    {
+        QStringList lines;
+        lines << QStringLiteral("'%1'").arg(path);
+
+        QFileInfo info(path);
+        if (!info.exists()) {
+            lines << QStringLiteral("Disk readable: No");
+            lines << QStringLiteral("Error: File does not exist");
+            return lines.join(QLatin1Char('\n'));
+        }
+
+        lines << QStringLiteral("Drive: DF%1").arg(drive);
+        lines << QStringLiteral("Size: %1").arg(formatByteSize(info.size()));
+        lines << QStringLiteral("Modified: %1").arg(QLocale().toString(info.lastModified(), QLocale::ShortFormat));
+
+        QFile file(path);
+        if (!file.open(QIODevice::ReadOnly)) {
+            lines << QStringLiteral("Disk readable: No");
+            lines << QStringLiteral("Error: %1").arg(file.errorString());
+            return lines.join(QLatin1Char('\n'));
+        }
+
+        lines << QStringLiteral("Disk readable: Yes");
+
+        quint32 imageCrc = 0;
+        QString imageCrcError;
+        if (crc32ForFile(path, &imageCrc, &imageCrcError)) {
+            lines << QStringLiteral("Disk CRC32: %1").arg(hex32(imageCrc));
+        } else {
+            lines << QStringLiteral("Disk CRC32: unavailable (%1)").arg(imageCrcError);
+        }
+
+        if (!isPlainSectorFloppyImage(info)) {
+            lines << QStringLiteral("Boot block: unsupported image container");
+            return lines.join(QLatin1Char('\n'));
+        }
+
+        const QByteArray bootBlock = file.read(1024);
+        if (bootBlock.size() < 1024) {
+            lines << QStringLiteral("Boot block: unavailable");
+            return lines.join(QLatin1Char('\n'));
+        }
+
+        lines << QStringLiteral("Boot block CRC32: %1").arg(hex32(crc32ForBytes(bootBlock)));
+        lines << QStringLiteral("Boot block checksum valid: %1").arg(amigaBootBlockChecksumValid(bootBlock) ? QStringLiteral("Yes") : QStringLiteral("No"));
+        lines << QStringLiteral("Boot block type: %1").arg(amigaBootBlockType(bootBlock));
+
+        const quint32 rootBlock = readBe32(bootBlock, 8);
+        if (rootBlock > 0 && file.seek(qint64(rootBlock) * 512)) {
+            const QString label = amigaRootBlockLabel(file.read(512));
+            if (!label.isEmpty()) {
+                lines << QStringLiteral("Label: '%1'").arg(label);
+            }
+        }
+
+        lines << QString();
+        for (int i = 0; i < bootBlock.size(); i += 32) {
+            QString hex;
+            QString ascii;
+            for (int j = 0; j < 32; j++) {
+                const int index = i + j;
+                if (index >= bootBlock.size()) {
+                    hex += QStringLiteral("  ");
+                    ascii += QLatin1Char(' ');
+                    continue;
+                }
+                const quint8 value = quint8(bootBlock[index]);
+                hex += QStringLiteral("%1").arg(value, 2, 16, QLatin1Char('0')).toUpper();
+                ascii += (value >= 32 && value < 127) ? QChar(ushort(value)) : QLatin1Char('.');
+            }
+            lines << QStringLiteral("%1 %2").arg(hex, -64).arg(ascii);
+        }
+
+        return lines.join(QLatin1Char('\n'));
+    }
+
+    void showFloppyInfo(const QString &rawPath, int drive)
+    {
+        const QString path = rawPath.trimmed();
+        if (path.isEmpty()) {
+            QMessageBox::information(this, windowTitle(), QStringLiteral("No disk image is selected for DF%1.").arg(drive));
+            return;
+        }
+
+        QDialog dialog(this);
+        dialog.setWindowTitle(QStringLiteral("Disk information"));
+        dialog.resize(760, 540);
+
+        QVBoxLayout *layout = new QVBoxLayout(&dialog);
+        QPlainTextEdit *text = new QPlainTextEdit(&dialog);
+        text->setReadOnly(true);
+        text->setLineWrapMode(QPlainTextEdit::NoWrap);
+        text->setPlainText(floppyInfoText(path, drive));
+        QFont fixed = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+        if (fixed.pointSize() > 0) {
+            fixed.setPointSize(fixed.pointSize() + 1);
+        }
+        text->setFont(fixed);
+        layout->addWidget(text, 1);
+
+        QDialogButtonBox *buttons = new QDialogButtonBox(QDialogButtonBox::Close, &dialog);
+        connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+        layout->addWidget(buttons);
+
+        dialog.exec();
     }
 
     QWidget *makeDiskSwapperPage()
