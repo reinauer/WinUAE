@@ -314,6 +314,57 @@ static QString cdSlotConfigValue(const WinUaeQtCdSlot &slot)
     return winUaeQtConfigEscapeMin(slot.path);
 }
 
+static QString fullscreenModeConfigValue(const QString &text)
+{
+    if (text == QStringLiteral("Fullscreen")) {
+        return QStringLiteral("true");
+    }
+    if (text == QStringLiteral("Full-window")) {
+        return QStringLiteral("fullwindow");
+    }
+    return QStringLiteral("false");
+}
+
+static QString fullscreenModeText(const QString &value)
+{
+    if (value.compare(QStringLiteral("true"), Qt::CaseInsensitive) == 0) {
+        return QStringLiteral("Fullscreen");
+    }
+    if (value.compare(QStringLiteral("fullwindow"), Qt::CaseInsensitive) == 0) {
+        return QStringLiteral("Full-window");
+    }
+    return QStringLiteral("Windowed");
+}
+
+static QString lineModeConfigValue(int id)
+{
+    switch (id) {
+    case 0:
+        return QStringLiteral("none");
+    case 2:
+        return QStringLiteral("scanlines");
+    case 5:
+        return QStringLiteral("double2");
+    case 1:
+    default:
+        return QStringLiteral("double");
+    }
+}
+
+static int lineModeId(const QString &value)
+{
+    if (value.compare(QStringLiteral("none"), Qt::CaseInsensitive) == 0) {
+        return 0;
+    }
+    if (value.compare(QStringLiteral("scanlines"), Qt::CaseInsensitive) == 0) {
+        return 2;
+    }
+    if (value.compare(QStringLiteral("double2"), Qt::CaseInsensitive) == 0) {
+        return 5;
+    }
+    return 1;
+}
+
 static QString sourceFile(const QString &relative)
 {
     return QDir(QString::fromUtf8(WINUAE_UNIX_SOURCE_DIR)).filePath(relative);
@@ -646,8 +697,15 @@ private:
     QLineEdit *windowWidth = nullptr;
     QLineEdit *windowHeight = nullptr;
     QCheckBox *windowResize = nullptr;
+    QComboBox *fullscreenResolution = nullptr;
     QComboBox *nativeMode = nullptr;
     QComboBox *rtgMode = nullptr;
+    QComboBox *displayResolution = nullptr;
+    QCheckBox *displayCenterHorizontal = nullptr;
+    QCheckBox *displayCenterVertical = nullptr;
+    QCheckBox *displayFlickerFixer = nullptr;
+    QCheckBox *displayLoresSmoothed = nullptr;
+    QButtonGroup *displayLineModeButtons = nullptr;
     QComboBox *soundOutput = nullptr;
     QComboBox *port0 = nullptr;
     QComboBox *port1 = nullptr;
@@ -1242,38 +1300,57 @@ private:
         windowWidth = new QLineEdit(QStringLiteral("720"));
         windowHeight = new QLineEdit(QStringLiteral("568"));
         windowResize = new QCheckBox(QStringLiteral("Window resize"));
+        fullscreenResolution = combo({ QStringLiteral("Native"), QStringLiteral("640x480"), QStringLiteral("800x600"), QStringLiteral("1024x768"), QStringLiteral("1280x720"), QStringLiteral("1920x1080") });
+        fullscreenResolution->setEditable(true);
         QGridLayout *screen = new QGridLayout;
         screen->addWidget(combo({ QStringLiteral("Default display") }), 0, 0, 1, 3);
         screen->addWidget(label(QStringLiteral("Fullscreen:")), 1, 0);
-        screen->addWidget(combo({ QStringLiteral("Native"), QStringLiteral("640x480"), QStringLiteral("800x600"), QStringLiteral("1024x768") }), 1, 1, 1, 2);
+        screen->addWidget(fullscreenResolution, 1, 1, 1, 2);
         screen->addWidget(label(QStringLiteral("Windowed:")), 2, 0);
         screen->addWidget(windowWidth, 2, 1);
         screen->addWidget(windowHeight, 2, 2);
         screen->addWidget(windowResize, 3, 1, 1, 2);
         left->addWidget(groupBox(QStringLiteral("Screen"), screen));
 
-        nativeMode = combo({ QStringLiteral("Windowed"), QStringLiteral("Fullscreen") }, QStringLiteral("Windowed"));
-        rtgMode = combo({ QStringLiteral("Windowed"), QStringLiteral("Fullscreen") }, QStringLiteral("Windowed"));
+        nativeMode = combo({ QStringLiteral("Windowed"), QStringLiteral("Fullscreen"), QStringLiteral("Full-window") }, QStringLiteral("Windowed"));
+        rtgMode = combo({ QStringLiteral("Windowed"), QStringLiteral("Fullscreen"), QStringLiteral("Full-window") }, QStringLiteral("Windowed"));
+        displayResolution = combo({ QStringLiteral("lores"), QStringLiteral("hires"), QStringLiteral("superhires") }, QStringLiteral("hires"));
+        displayFlickerFixer = new QCheckBox(QStringLiteral("Remove interlace artifacts"));
+        displayLoresSmoothed = new QCheckBox(QStringLiteral("Filtered low resolution"));
         QGridLayout *settings = new QGridLayout;
         settings->addWidget(label(QStringLiteral("Native:")), 0, 0);
         settings->addWidget(nativeMode, 0, 1);
         settings->addWidget(combo({ QStringLiteral("Default"), QStringLiteral("PAL"), QStringLiteral("NTSC") }), 0, 2);
         settings->addWidget(label(QStringLiteral("RTG:")), 1, 0);
         settings->addWidget(rtgMode, 1, 1);
-        settings->addWidget(new QCheckBox(QStringLiteral("Remove interlace artifacts")), 2, 1, 1, 2);
-        settings->addWidget(new QCheckBox(QStringLiteral("Filtered low resolution")), 3, 1, 1, 2);
+        settings->addWidget(label(QStringLiteral("Resolution:")), 2, 0);
+        settings->addWidget(displayResolution, 2, 1);
+        settings->addWidget(displayFlickerFixer, 3, 1, 1, 2);
+        settings->addWidget(displayLoresSmoothed, 4, 1, 1, 2);
         left->addWidget(groupBox(QStringLiteral("Settings"), settings), 1);
 
         QVBoxLayout *right = new QVBoxLayout;
         QVBoxLayout *center = new QVBoxLayout;
-        center->addWidget(new QCheckBox(QStringLiteral("Horizontal")));
-        center->addWidget(new QCheckBox(QStringLiteral("Vertical")));
+        displayCenterHorizontal = new QCheckBox(QStringLiteral("Horizontal"));
+        displayCenterVertical = new QCheckBox(QStringLiteral("Vertical"));
+        center->addWidget(displayCenterHorizontal);
+        center->addWidget(displayCenterVertical);
         right->addWidget(groupBox(QStringLiteral("Centering"), center));
         QVBoxLayout *lineMode = new QVBoxLayout;
-        lineMode->addWidget(new QRadioButton(QStringLiteral("Single")));
-        lineMode->addWidget(new QRadioButton(QStringLiteral("Double")));
-        lineMode->addWidget(new QRadioButton(QStringLiteral("Scanlines")));
-        lineMode->addWidget(new QRadioButton(QStringLiteral("Double, fields")));
+        displayLineModeButtons = new QButtonGroup(this);
+        QRadioButton *singleLine = new QRadioButton(QStringLiteral("Single"));
+        QRadioButton *doubleLine = new QRadioButton(QStringLiteral("Double"));
+        QRadioButton *scanlines = new QRadioButton(QStringLiteral("Scanlines"));
+        QRadioButton *doubleFields = new QRadioButton(QStringLiteral("Double, fields"));
+        displayLineModeButtons->addButton(singleLine, 0);
+        displayLineModeButtons->addButton(doubleLine, 1);
+        displayLineModeButtons->addButton(scanlines, 2);
+        displayLineModeButtons->addButton(doubleFields, 5);
+        doubleLine->setChecked(true);
+        lineMode->addWidget(singleLine);
+        lineMode->addWidget(doubleLine);
+        lineMode->addWidget(scanlines);
+        lineMode->addWidget(doubleFields);
         right->addWidget(groupBox(QStringLiteral("Line mode"), lineMode));
         right->addStretch();
 
@@ -1625,8 +1702,19 @@ private:
         windowWidth->setText(QStringLiteral("720"));
         windowHeight->setText(QStringLiteral("568"));
         windowResize->setChecked(true);
+        fullscreenResolution->setProperty("winuae_width", QString());
+        fullscreenResolution->setProperty("winuae_height", QString());
+        fullscreenResolution->setCurrentText(QStringLiteral("Native"));
         nativeMode->setCurrentText(QStringLiteral("Windowed"));
         rtgMode->setCurrentText(QStringLiteral("Windowed"));
+        displayResolution->setCurrentText(QStringLiteral("hires"));
+        displayCenterHorizontal->setChecked(false);
+        displayCenterVertical->setChecked(false);
+        displayFlickerFixer->setChecked(false);
+        displayLoresSmoothed->setChecked(false);
+        if (QAbstractButton *button = displayLineModeButtons->button(1)) {
+            button->setChecked(true);
+        }
         soundOutput->setCurrentText(QStringLiteral("normal"));
         cdSpeedTurbo->setChecked(false);
         port0->setCurrentText(QStringLiteral("Mouse"));
@@ -2599,6 +2687,26 @@ private:
         if (!windowHeight->text().isEmpty()) {
             settings.insert(QStringLiteral("gfx_height_windowed"), windowHeight->text());
         }
+        const QString fullscreenText = fullscreenResolution->currentText();
+        if (fullscreenText == QStringLiteral("Native")) {
+            settings.insert(QStringLiteral("gfx_width_fullscreen"), QStringLiteral("native"));
+            settings.insert(QStringLiteral("gfx_height_fullscreen"), QStringLiteral("native"));
+        } else {
+            const QStringList parts = fullscreenText.split(QLatin1Char('x'));
+            if (parts.size() == 2) {
+                settings.insert(QStringLiteral("gfx_width_fullscreen"), parts.value(0));
+                settings.insert(QStringLiteral("gfx_height_fullscreen"), parts.value(1));
+            }
+        }
+        settings.insert(QStringLiteral("gfx_resize_windowed"), windowResize->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
+        settings.insert(QStringLiteral("gfx_fullscreen_amiga"), fullscreenModeConfigValue(nativeMode->currentText()));
+        settings.insert(QStringLiteral("gfx_fullscreen_picasso"), fullscreenModeConfigValue(rtgMode->currentText()));
+        settings.insert(QStringLiteral("gfx_resolution"), displayResolution->currentText());
+        settings.insert(QStringLiteral("gfx_linemode"), lineModeConfigValue(displayLineModeButtons->checkedId()));
+        settings.insert(QStringLiteral("gfx_center_horizontal"), displayCenterHorizontal->isChecked() ? QStringLiteral("simple") : QStringLiteral("none"));
+        settings.insert(QStringLiteral("gfx_center_vertical"), displayCenterVertical->isChecked() ? QStringLiteral("simple") : QStringLiteral("none"));
+        settings.insert(QStringLiteral("gfx_flickerfixer"), displayFlickerFixer->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
+        settings.insert(QStringLiteral("gfx_lores_mode"), displayLoresSmoothed->isChecked() ? QStringLiteral("filtered") : QStringLiteral("normal"));
         for (int i = 0; i < MaxCdSlots; i++) {
             const QString value = cdSlotConfigValue(cdSlotState(i));
             if (!value.isEmpty()) {
@@ -2642,6 +2750,17 @@ private:
             QStringLiteral("gfxcard_type"),
             QStringLiteral("gfx_width_windowed"),
             QStringLiteral("gfx_height_windowed"),
+            QStringLiteral("gfx_width_fullscreen"),
+            QStringLiteral("gfx_height_fullscreen"),
+            QStringLiteral("gfx_resize_windowed"),
+            QStringLiteral("gfx_fullscreen_amiga"),
+            QStringLiteral("gfx_fullscreen_picasso"),
+            QStringLiteral("gfx_resolution"),
+            QStringLiteral("gfx_linemode"),
+            QStringLiteral("gfx_center_horizontal"),
+            QStringLiteral("gfx_center_vertical"),
+            QStringLiteral("gfx_flickerfixer"),
+            QStringLiteral("gfx_lores_mode"),
             QStringLiteral("cdimage0"),
             QStringLiteral("cdimage1"),
             QStringLiteral("cdimage2"),
@@ -2812,6 +2931,44 @@ private:
             windowWidth->setText(value);
         } else if (key == QStringLiteral("gfx_height_windowed")) {
             windowHeight->setText(value);
+        } else if (key == QStringLiteral("gfx_width_fullscreen")) {
+            fullscreenResolution->setProperty("winuae_width", value);
+            if (value == QStringLiteral("native")) {
+                fullscreenResolution->setCurrentText(QStringLiteral("Native"));
+            } else {
+                const QString currentHeight = fullscreenResolution->property("winuae_height").toString();
+                if (!currentHeight.isEmpty() && currentHeight != QStringLiteral("native")) {
+                    fullscreenResolution->setCurrentText(value + QStringLiteral("x") + currentHeight);
+                }
+            }
+        } else if (key == QStringLiteral("gfx_height_fullscreen")) {
+            fullscreenResolution->setProperty("winuae_height", value);
+            const QString currentWidth = fullscreenResolution->property("winuae_width").toString();
+            if (value == QStringLiteral("native") || currentWidth == QStringLiteral("native")) {
+                fullscreenResolution->setCurrentText(QStringLiteral("Native"));
+            } else if (!currentWidth.isEmpty()) {
+                fullscreenResolution->setCurrentText(currentWidth + QStringLiteral("x") + value);
+            }
+        } else if (key == QStringLiteral("gfx_resize_windowed")) {
+            windowResize->setChecked(configBoolValue(value));
+        } else if (key == QStringLiteral("gfx_fullscreen_amiga")) {
+            nativeMode->setCurrentText(fullscreenModeText(value));
+        } else if (key == QStringLiteral("gfx_fullscreen_picasso")) {
+            rtgMode->setCurrentText(fullscreenModeText(value));
+        } else if (key == QStringLiteral("gfx_resolution")) {
+            displayResolution->setCurrentText(value);
+        } else if (key == QStringLiteral("gfx_linemode")) {
+            if (QAbstractButton *button = displayLineModeButtons->button(lineModeId(value))) {
+                button->setChecked(true);
+            }
+        } else if (key == QStringLiteral("gfx_center_horizontal")) {
+            displayCenterHorizontal->setChecked(value.compare(QStringLiteral("none"), Qt::CaseInsensitive) != 0 && !value.isEmpty());
+        } else if (key == QStringLiteral("gfx_center_vertical")) {
+            displayCenterVertical->setChecked(value.compare(QStringLiteral("none"), Qt::CaseInsensitive) != 0 && !value.isEmpty());
+        } else if (key == QStringLiteral("gfx_flickerfixer")) {
+            displayFlickerFixer->setChecked(configBoolValue(value));
+        } else if (key == QStringLiteral("gfx_lores_mode")) {
+            displayLoresSmoothed->setChecked(value.compare(QStringLiteral("filtered"), Qt::CaseInsensitive) == 0);
         }
     }
 
