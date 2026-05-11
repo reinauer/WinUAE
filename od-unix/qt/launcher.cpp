@@ -6246,8 +6246,15 @@ private:
         extensionAssociationList->setHeaderLabels({ QStringLiteral("Extension"), QStringLiteral("Associated") });
         for (int i = 0; i < int(sizeof(associationChoices) / sizeof(associationChoices[0])); i++) {
             QTreeWidgetItem *item = new QTreeWidgetItem(extensionAssociationList);
-            item->setText(0, QString::fromLatin1(associationChoices[i].extension));
-            item->setText(1, QString());
+            const QString extension = QString::fromLatin1(associationChoices[i].extension);
+            item->setText(0, extension);
+            if (extension == QStringLiteral(".uae")) {
+                item->setText(1, QStringLiteral("Declared by app bundle"));
+                item->setToolTip(1, QStringLiteral("The macOS app bundle declares .uae files and the Qt frontend handles document-open events."));
+            } else {
+                item->setText(1, QStringLiteral("Deferred"));
+                item->setToolTip(1, QStringLiteral("Windows starts these files through extension-specific command lines; Unix needs matching startup mapping before declaring them."));
+            }
         }
         extensionAssociationList->resizeColumnToContents(0);
         associations->addWidget(extensionAssociationList, 1);
@@ -6258,6 +6265,8 @@ private:
         QPushButton *deassociateAll = new QPushButton(QStringLiteral("Deassociate all"));
         associateAll->setEnabled(false);
         deassociateAll->setEnabled(false);
+        associateAll->setToolTip(QStringLiteral("Unix file-association install/uninstall is not implemented; macOS uses bundle document declarations."));
+        deassociateAll->setToolTip(QStringLiteral("Unix file-association install/uninstall is not implemented; macOS uses bundle document declarations."));
         associationActions->addWidget(associateAll);
         associationActions->addWidget(deassociateAll);
         associationActions->addStretch();
