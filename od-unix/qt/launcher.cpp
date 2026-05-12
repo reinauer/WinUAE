@@ -10704,3 +10704,70 @@ WinUaeQtLauncherResult runWinUaeQtLauncherForConfig(int argc, char **argv, const
     WinUaeQtApplication app(argc, argv);
     return runWinUaeQtLauncherForConfig(app, initialConfigPath);
 }
+
+static QString runtimeDialogDirectory(const QString &initialPath)
+{
+    if (initialPath.isEmpty()) {
+        return QDir::homePath();
+    }
+    QFileInfo info(initialPath);
+    if (info.isDir()) {
+        return info.absoluteFilePath();
+    }
+    const QString parent = info.absolutePath();
+    return parent.isEmpty() ? QDir::homePath() : parent;
+}
+
+static QString runtimeDialogSavePath(const QString &initialPath, const QString &fallbackName)
+{
+    if (!initialPath.isEmpty()) {
+        return initialPath;
+    }
+    return QDir(QDir::homePath()).filePath(fallbackName);
+}
+
+WinUaeQtRuntimeFileDialogResult runWinUaeQtRuntimeFileDialog(QApplication &app, int shortcut, const QString &initialPath)
+{
+    setupApplicationStyle(app);
+
+    QString selected;
+    if (shortcut >= 0 && shortcut < 4) {
+        selected = QFileDialog::getOpenFileName(
+            nullptr,
+            QStringLiteral("Select disk image for DF%1:").arg(shortcut),
+            runtimeDialogDirectory(initialPath),
+            QStringLiteral("Amiga disk images (*.adf *.adz *.dms *.ipf *.fdi *.scp *.hdf *.zip *.7z *.lha *.lzx);;All files (*)"));
+    } else if (shortcut == 4) {
+        selected = QFileDialog::getOpenFileName(
+            nullptr,
+            QStringLiteral("Restore state"),
+            runtimeDialogDirectory(initialPath),
+            QStringLiteral("WinUAE state files (*.uss);;All files (*)"));
+    } else if (shortcut == 5) {
+        selected = QFileDialog::getSaveFileName(
+            nullptr,
+            QStringLiteral("Save state"),
+            runtimeDialogSavePath(initialPath, QStringLiteral("state.uss")),
+            QStringLiteral("WinUAE state files (*.uss);;All files (*)"));
+        if (!selected.isEmpty() && QFileInfo(selected).suffix().isEmpty()) {
+            selected += QStringLiteral(".uss");
+        }
+    } else if (shortcut == 6) {
+        selected = QFileDialog::getOpenFileName(
+            nullptr,
+            QStringLiteral("Select CD image"),
+            runtimeDialogDirectory(initialPath),
+            QStringLiteral("CD images (*.cue *.iso *.ccd *.chd *.mds *.nrg);;All files (*)"));
+    }
+
+    WinUaeQtRuntimeFileDialogResult result;
+    result.accepted = !selected.isEmpty();
+    result.path = selected;
+    return result;
+}
+
+WinUaeQtRuntimeFileDialogResult runWinUaeQtRuntimeFileDialog(int argc, char **argv, int shortcut, const QString &initialPath)
+{
+    WinUaeQtApplication app(argc, argv);
+    return runWinUaeQtRuntimeFileDialog(app, shortcut, initialPath);
+}

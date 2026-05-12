@@ -12,6 +12,7 @@
 #include "inputdevice.h"
 #include "gui.h"
 #include "gui_unix.h"
+#include "savestate.h"
 #include "sounddep/sound.h"
 
 #ifdef WINUAE_UNIX_WITH_INTEGRATED_QT_UI
@@ -153,6 +154,62 @@ static bool write_runtime_config_snapshot(TCHAR *path, size_t path_len)
     }
     return true;
 }
+
+static const TCHAR *runtime_shortcut_initial_path(int shortcut)
+{
+    if (shortcut >= 0 && shortcut < 4) {
+        return changed_prefs.floppyslots[shortcut].df[0]
+            ? changed_prefs.floppyslots[shortcut].df
+            : currprefs.floppyslots[shortcut].df;
+    }
+    if (shortcut == 4 || shortcut == 5) {
+        if (savestate_fname[0]) {
+            return savestate_fname;
+        }
+        if (changed_prefs.statefile[0]) {
+            return changed_prefs.statefile;
+        }
+        return currprefs.statefile;
+    }
+    if (shortcut == 6) {
+        return changed_prefs.cdslots[0].name[0]
+            ? changed_prefs.cdslots[0].name
+            : currprefs.cdslots[0].name;
+    }
+    return "";
+}
+
+static bool apply_runtime_shortcut_selection(int shortcut, const TCHAR *path)
+{
+    if (!path || !path[0]) {
+        return false;
+    }
+
+    if (shortcut >= 0 && shortcut < 4) {
+        _tcsncpy(changed_prefs.floppyslots[shortcut].df, path, MAX_DPATH);
+        changed_prefs.floppyslots[shortcut].df[MAX_DPATH - 1] = 0;
+        set_config_changed();
+        return true;
+    }
+    if (shortcut == 4) {
+        savestate_initsave(path, 1, true, false);
+        savestate_state = STATE_DORESTORE;
+        return true;
+    }
+    if (shortcut == 5) {
+        savestate_initsave(path, 1, true, true);
+        save_state(savestate_fname, STATE_SAVE_DESCRIPTION);
+        return true;
+    }
+    if (shortcut == 6) {
+        _tcsncpy(changed_prefs.cdslots[0].name, path, MAX_DPATH);
+        changed_prefs.cdslots[0].name[MAX_DPATH - 1] = 0;
+        changed_prefs.cdslots[0].inuse = true;
+        set_config_changed();
+        return true;
+    }
+    return false;
+}
 #endif
 
 void gui_display(int shortcut)
@@ -162,16 +219,12 @@ void gui_display(int shortcut)
     if (active) {
         return;
     }
-    if (shortcut != -1) {
+    if (shortcut != -1 && (shortcut < 0 || shortcut > 6)) {
         write_log("Unix Qt runtime UI: shortcut %d is not implemented yet\n", shortcut);
         return;
     }
 
     active = true;
-
-    TCHAR snapshot_path[MAX_DPATH];
-    snapshot_path[0] = 0;
-    const bool have_snapshot = write_runtime_config_snapshot(snapshot_path, sizeof snapshot_path / sizeof snapshot_path[0]);
 
     const int old_pause = pause_emulation;
     pause_emulation = 1;
@@ -179,26 +232,49 @@ void gui_display(int shortcut)
     inputdevice_unacquire();
     pause_sound();
 
-    int exit_code = 0;
-    const int action = runWinUaeQtLauncherForPrefsWithConfig(
-        unix_gui_argc,
-        unix_gui_argv,
-        &changed_prefs,
-        have_snapshot ? snapshot_path : nullptr,
-        &exit_code);
+    if (shortcut == -1) {
+        TCHAR snapshot_path[MAX_DPATH];
+        snapshot_path[0] = 0;
+        const bool have_snapshot = write_runtime_config_snapshot(snapshot_path, sizeof snapshot_path / sizeof snapshot_path[0]);
 
-    if (have_snapshot) {
-        unlink(snapshot_path);
-    }
+        int exit_code = 0;
+        const int action = runWinUaeQtLauncherForPrefsWithConfig(
+            unix_gui_argc,
+            unix_gui_argv,
+            &changed_prefs,
+            have_snapshot ? snapshot_path : nullptr,
+            &exit_code);
 
-    if (action == WINUAE_QT_LAUNCHER_START) {
-        fixup_prefs(&changed_prefs, true);
-        reset_sound();
-        inputdevice_copyconfig(&changed_prefs, &currprefs);
-        inputdevice_config_change_test();
-        set_config_changed();
-    } else if (action == WINUAE_QT_LAUNCHER_ERROR) {
-        write_log("Unix Qt runtime UI exited with error code %d\n", exit_code);
+        if (have_snapshot) {
+            unlink(snapshot_path);
+        }
+
+        if (action == WINUAE_QT_LAUNCHER_START) {
+            fixup_prefs(&changed_prefs, true);
+            reset_sound();
+            inputdevice_copyconfig(&changed_prefs, &currprefs);
+            inputdevice_config_change_test();
+            set_config_changed();
+        } else if (action == WINUAE_QT_LAUNCHER_ERROR) {
+            write_log("Unix Qt runtime UI exited with error code %d\n", exit_code);
+        }
+    } else {
+        TCHAR selected_path[MAX_DPATH];
+        selected_path[0] = 0;
+        int exit_code = 0;
+        const int action = runWinUaeQtRuntimeFileDialog(
+            unix_gui_argc,
+            unix_gui_argv,
+            shortcut,
+            runtime_shortcut_initial_path(shortcut),
+            selected_path,
+            sizeof selected_path / sizeof selected_path[0],
+            &exit_code);
+        if (action == WINUAE_QT_LAUNCHER_START) {
+            apply_runtime_shortcut_selection(shortcut, selected_path);
+        } else if (action == WINUAE_QT_LAUNCHER_ERROR) {
+            write_log("Unix Qt runtime file dialog exited with error code %d\n", exit_code);
+        }
     }
 
     pause_emulation = old_pause;
