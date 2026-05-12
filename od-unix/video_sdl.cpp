@@ -8,8 +8,15 @@
 #include <vector>
 
 #include "statusline.h"
+#include "disk.h"
+#include "gui.h"
 #include "input.h"
+#include "options.h"
+#include "uae.h"
 #include "video.h"
+
+extern int pause_emulation;
+extern void pausemode(int mode);
 
 static SDL_Window *s_window;
 static SDL_Renderer *s_renderer;
@@ -28,6 +35,7 @@ static uae_u32 s_status_rc[256];
 static uae_u32 s_status_gc[256];
 static uae_u32 s_status_bc[256];
 static bool s_status_colors_ready;
+static Uint8 s_status_click_button;
 
 static constexpr int UnixStatusScale = 2;
 
@@ -162,6 +170,104 @@ static int unix_mouse_button_from_sdl(Uint8 button)
     default:
         return -1;
     }
+}
+
+static bool statusbar_logical_position(int window_x, int window_y, int *logical_x, int *logical_y)
+{
+    if (!s_window || s_texture_width <= 0 || s_texture_height <= 0) {
+        return false;
+    }
+
+    int window_width = 0;
+    int window_height = 0;
+    SDL_GetWindowSize(s_window, &window_width, &window_height);
+    if (window_width <= 0 || window_height <= 0) {
+        return false;
+    }
+
+    const int logical_width = s_texture_width;
+    const int logical_height = s_texture_height + statusbar_display_height();
+    const int lx = window_x * logical_width / window_width;
+    const int ly = window_y * logical_height / window_height;
+    if (ly < s_texture_height || ly >= logical_height) {
+        return false;
+    }
+    if (logical_x) {
+        *logical_x = lx;
+    }
+    if (logical_y) {
+        *logical_y = ly;
+    }
+    return true;
+}
+
+static int statusbar_hit_slot(int logical_x)
+{
+    if (s_status_width <= 0) {
+        return -1;
+    }
+
+    int mult = statusline_get_multiplier(0) / 100;
+    if (mult < 1) {
+        mult = 1;
+    }
+    const int x_start = (td_numbers_pos & TD_RIGHT)
+        ? s_status_width - (td_numbers_padx + VISIBLE_LEDS * td_width) * mult
+        : td_numbers_padx * mult;
+    const int slot_width = td_width * mult;
+    if (slot_width <= 0 || logical_x < x_start) {
+        return -1;
+    }
+    const int slot = (logical_x - x_start) / slot_width;
+    return slot >= 0 && slot < VISIBLE_LEDS ? slot : -1;
+}
+
+static bool handle_statusbar_click(int window_x, int window_y, Uint8 button)
+{
+    int logical_x = 0;
+    if (!statusbar_logical_position(window_x, window_y, &logical_x, NULL)) {
+        return false;
+    }
+
+    const int slot = statusbar_hit_slot(logical_x);
+    if (slot < 0) {
+        return true;
+    }
+
+    const bool right_click = button == SDL_BUTTON_RIGHT;
+    if (slot >= 8 && slot <= 11) {
+        const int drive = slot - 8;
+        if (right_click) {
+            disk_eject(drive);
+        } else if (changed_prefs.floppyslots[drive].dfxtype >= 0) {
+            gui_display(drive);
+        }
+        return true;
+    }
+    if (slot == 6) {
+        if (right_click) {
+            changed_prefs.cdslots[0].name[0] = 0;
+            changed_prefs.cdslots[0].inuse = false;
+            set_config_changed();
+        } else {
+            gui_display(6);
+        }
+        return true;
+    }
+    if (slot == 3) {
+        if (right_click) {
+            uae_reset(0, 1);
+        } else {
+            gui_display(-1);
+        }
+        return true;
+    }
+    if (slot == 2 && !right_click && pause_emulation) {
+        pausemode(0);
+        return true;
+    }
+
+    return true;
 }
 
 bool unix_video_setup(void)
@@ -318,6 +424,14 @@ int unix_video_poll(bool *quit_requested)
         {
             int button = unix_mouse_button_from_sdl(event.button.button);
             if (button >= 0) {
+                if (event.type == SDL_MOUSEBUTTONDOWN && handle_statusbar_click(event.button.x, event.button.y, event.button.button)) {
+                    s_status_click_button = event.button.button;
+                    break;
+                }
+                if (event.type == SDL_MOUSEBUTTONUP && s_status_click_button == event.button.button) {
+                    s_status_click_button = 0;
+                    break;
+                }
                 if (event.type == SDL_MOUSEBUTTONDOWN && !s_mouse_grabbed) {
                     unix_video_set_mouse_grab(true);
                 }
