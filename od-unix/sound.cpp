@@ -9,9 +9,10 @@
 #include "sounddep/sound.h"
 #include "gensound.h"
 
-#ifdef UAE_UNIX_WITH_SDL2
+#ifdef UAE_UNIX_WITH_SDL3
 #define SDL_MAIN_HANDLED
-#include <SDL.h>
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_main.h>
 #endif
 
 #define UNIX_SOUND_MAX_BUFFER_BYTES (65536 * 2 + 1024)
@@ -31,8 +32,8 @@ static float scaled_sample_evtime_orig;
 
 extern float sampler_evtime;
 
-#ifdef UAE_UNIX_WITH_SDL2
-static SDL_AudioDeviceID audio_device;
+#ifdef UAE_UNIX_WITH_SDL3
+static SDL_AudioStream *audio_stream;
 static SDL_AudioSpec audio_spec;
 static bool audio_subsystem_initialized;
 #endif
@@ -41,9 +42,9 @@ static void clearbuffer(void)
 {
     memset(paula_sndbuffer, 0, sizeof paula_sndbuffer);
     paula_sndbufpt = paula_sndbuffer;
-#ifdef UAE_UNIX_WITH_SDL2
-    if (audio_device) {
-        SDL_ClearQueuedAudio(audio_device);
+#ifdef UAE_UNIX_WITH_SDL3
+    if (audio_stream) {
+        SDL_ClearAudioStream(audio_stream);
     }
 #endif
 }
@@ -118,7 +119,7 @@ static void update_softvolume(void)
 
 int setup_sound(void)
 {
-#ifdef UAE_UNIX_WITH_SDL2
+#ifdef UAE_UNIX_WITH_SDL3
     sound_available = 1;
     return 1;
 #else
@@ -129,7 +130,7 @@ int setup_sound(void)
 
 void update_sound(float clk)
 {
-#ifdef UAE_UNIX_WITH_SDL2
+#ifdef UAE_UNIX_WITH_SDL3
     if (!have_sound || audio_spec.freq <= 0) {
         return;
     }
@@ -139,7 +140,7 @@ void update_sound(float clk)
 #endif
 }
 
-#ifdef UAE_UNIX_WITH_SDL2
+#ifdef UAE_UNIX_WITH_SDL3
 static bool ensure_audio_subsystem(void)
 {
     if (audio_subsystem_initialized) {
@@ -147,8 +148,8 @@ static bool ensure_audio_subsystem(void)
     }
 
     SDL_SetMainReady();
-    if (SDL_InitSubSystem(SDL_INIT_AUDIO) < 0) {
-        write_log(_T("SDL2: audio unavailable: %s\n"), SDL_GetError());
+    if (!SDL_InitSubSystem(SDL_INIT_AUDIO)) {
+        write_log(_T("SDL3: audio unavailable: %s\n"), SDL_GetError());
         return false;
     }
     audio_subsystem_initialized = true;
@@ -168,15 +169,15 @@ static bool open_sound_device(void)
 
     memset(&desired, 0, sizeof desired);
     desired.freq = freq;
-    desired.format = AUDIO_S16SYS;
-    desired.channels = (Uint8)channels;
-    desired.samples = (Uint16)frames;
+    desired.format = SDL_AUDIO_S16;
+    desired.channels = channels;
 
-    audio_device = SDL_OpenAudioDevice(NULL, 0, &desired, &audio_spec, SDL_AUDIO_ALLOW_FREQUENCY_CHANGE);
-    if (!audio_device) {
-        write_log(_T("SDL2: failed to open audio device: %s\n"), SDL_GetError());
+    audio_stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &desired, NULL, NULL);
+    if (!audio_stream) {
+        write_log(_T("SDL3: failed to open audio device stream: %s\n"), SDL_GetError());
         return false;
     }
+    audio_spec = desired;
 
     if (audio_spec.channels != channels) {
         active_sound_stereo = get_audio_stereomode(audio_spec.channels);
@@ -198,9 +199,9 @@ static bool open_sound_device(void)
 
     update_softvolume();
     clearbuffer();
-    SDL_PauseAudioDevice(audio_device, 0);
+    SDL_ResumeAudioStreamDevice(audio_stream);
     gui_data.sndbuf_avail = true;
-    write_log(_T("SDL2: audio initialized: %d Hz, %d channels, %d byte buffer\n"),
+    write_log(_T("SDL3: audio initialized: %d Hz, %d channels, %d byte buffer\n"),
         audio_spec.freq, audio_spec.channels, paula_sndbufsize);
     return true;
 }
@@ -208,7 +209,7 @@ static bool open_sound_device(void)
 
 int init_sound(void)
 {
-#ifdef UAE_UNIX_WITH_SDL2
+#ifdef UAE_UNIX_WITH_SDL3
     gui_data.sndbuf = 0;
     gui_data.sndbuf_status = 3;
     gui_data.sndbuf_avail = false;
@@ -239,12 +240,12 @@ void close_sound(void)
         return;
     }
 
-#ifdef UAE_UNIX_WITH_SDL2
-    if (audio_device) {
-        SDL_PauseAudioDevice(audio_device, 1);
-        SDL_ClearQueuedAudio(audio_device);
-        SDL_CloseAudioDevice(audio_device);
-        audio_device = 0;
+#ifdef UAE_UNIX_WITH_SDL3
+    if (audio_stream) {
+        SDL_PauseAudioStreamDevice(audio_stream);
+        SDL_ClearAudioStream(audio_stream);
+        SDL_DestroyAudioStream(audio_stream);
+        audio_stream = NULL;
     }
 #endif
     have_sound = 0;
@@ -276,8 +277,8 @@ void finish_sound_buffer(void)
 
     paula_sndbufpt = paula_sndbuffer;
 
-#ifdef UAE_UNIX_WITH_SDL2
-    if (!have_sound || !audio_device) {
+#ifdef UAE_UNIX_WITH_SDL3
+    if (!have_sound || !audio_stream) {
         return;
     }
 
@@ -288,16 +289,20 @@ void finish_sound_buffer(void)
         }
     }
 
-    if (SDL_QueueAudio(audio_device, paula_sndbuffer, (Uint32)bufsize) < 0) {
-        write_log(_T("SDL2: SDL_QueueAudio failed: %s\n"), SDL_GetError());
+    if (!SDL_PutAudioStreamData(audio_stream, paula_sndbuffer, bufsize)) {
+        write_log(_T("SDL3: SDL_PutAudioStreamData failed: %s\n"), SDL_GetError());
         gui_data.sndbuf_status = -1;
         return;
     }
 
-    Uint32 queued = SDL_GetQueuedAudioSize(audio_device);
-    Uint32 target = (Uint32)paula_sndbufsize * UNIX_SOUND_QUEUE_BUFFERS;
+    int queued = SDL_GetAudioStreamQueued(audio_stream);
+    if (queued < 0) {
+        gui_data.sndbuf_status = -1;
+        return;
+    }
+    int target = paula_sndbufsize * UNIX_SOUND_QUEUE_BUFFERS;
     if (queued > target * 3) {
-        SDL_ClearQueuedAudio(audio_device);
+        SDL_ClearAudioStream(audio_stream);
         gui_data.sndbuf_status = 2;
     } else {
         gui_data.sndbuf_status = 0;
@@ -318,18 +323,18 @@ void pause_sound_buffer(void)
 
 void resume_sound(void)
 {
-#ifdef UAE_UNIX_WITH_SDL2
-    if (have_sound && audio_device) {
-        SDL_PauseAudioDevice(audio_device, 0);
+#ifdef UAE_UNIX_WITH_SDL3
+    if (have_sound && audio_stream) {
+        SDL_ResumeAudioStreamDevice(audio_stream);
     }
 #endif
 }
 
 void pause_sound(void)
 {
-#ifdef UAE_UNIX_WITH_SDL2
-    if (have_sound && audio_device) {
-        SDL_PauseAudioDevice(audio_device, 1);
+#ifdef UAE_UNIX_WITH_SDL3
+    if (have_sound && audio_stream) {
+        SDL_PauseAudioStreamDevice(audio_stream);
     }
 #endif
 }
@@ -341,8 +346,8 @@ void reset_sound(void)
 
 bool sound_paused(void)
 {
-#ifdef UAE_UNIX_WITH_SDL2
-    return !have_sound || !audio_device || SDL_GetAudioDeviceStatus(audio_device) == SDL_AUDIO_PAUSED;
+#ifdef UAE_UNIX_WITH_SDL3
+    return !have_sound || !audio_stream || SDL_AudioStreamDevicePaused(audio_stream);
 #else
     return true;
 #endif
@@ -362,7 +367,7 @@ void sound_setadjust(float v)
 
 int enumerate_sound_devices(void)
 {
-#ifdef UAE_UNIX_WITH_SDL2
+#ifdef UAE_UNIX_WITH_SDL3
     return ensure_audio_subsystem() ? 1 : 0;
 #else
     return 0;

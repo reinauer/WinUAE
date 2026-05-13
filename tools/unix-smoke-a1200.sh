@@ -74,7 +74,7 @@ wait "$pid" || true
 trap - INT TERM EXIT
 
 grep -q "Known ROM" "$LOG"
-grep -q "SDL2: audio initialized" "$LOG"
+grep -q "SDL3: audio initialized" "$LOG"
 grep -q "hardreset, memory cleared" "$LOG"
 if [ "$A2065" = "1" ]; then
     grep -q "A2065" "$LOG"
