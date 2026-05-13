@@ -1,17 +1,17 @@
 # WinUAE Unix Port
 
-This is an early macOS/Linux port of the WinUAE source tree. The current Unix build is a native executable with SDL2 video/input support when SDL2 is available and an integrated Qt configuration UI when Qt Widgets is available.
+This is an early macOS/Linux port of the WinUAE source tree. The current Unix build is a native executable with SDL3 video/input support when SDL3 is available and an integrated Qt configuration UI when Qt Widgets is available.
 
 ## Current Status
 
 - Builds with CMake as `winuae_unix`.
 - Uses `od-unix/` host abstractions.
-- SDL2 provides the current window, framebuffer presentation, mouse input, keyboard input, and audio output.
+- SDL3 provides the current window, framebuffer presentation, mouse input, keyboard input, and audio output.
 - Qt Widgets provides an initial Windows-style configuration UI. When Qt is available, it is integrated into `winuae_unix` and the standalone `winuae_unix_qt` launcher is also built.
 - A2065 Ethernet can use the built-in SLIRP user-mode NAT backend.
 - UAE Zorro II/Zorro III RTG RAM can be configured and autoconfigured, with an initial Unix `uaegfx.card` install path; guest Picasso96 monitor-driver testing and accelerated RTG operations are still incomplete.
 - Full UI parity with the Windows configuration dialogs and platform packaging are still incomplete.
-- If SDL2 is not found, CMake currently builds a headless/null-video target.
+- If SDL3 is not found, CMake currently builds a headless/null-video target.
 
 ## Requirements
 
@@ -19,7 +19,7 @@ This is an early macOS/Linux port of the WinUAE source tree. The current Unix bu
 - C and C++ compiler with C++17 support
 - zlib development headers
 - pkg-config or pkgconf
-- SDL2 development headers and libraries, recommended for a usable windowed emulator
+- SDL3 development headers and libraries, recommended for a usable windowed emulator
 - Qt 6 or Qt 5 Widgets, recommended for the native Unix configuration UI
 
 ### macOS
@@ -28,7 +28,7 @@ Install Xcode Command Line Tools and Homebrew dependencies:
 
 ```sh
 xcode-select --install
-brew install cmake pkg-config sdl2
+brew install cmake pkg-config sdl3
 ```
 
 For the Qt frontend:
@@ -39,7 +39,7 @@ brew install qt
 
 The system zlib is normally enough on macOS.
 
-The macOS build defaults to `CMAKE_OSX_DEPLOYMENT_TARGET=14.0` so the app is not accidentally tied to the build machine's current macOS release. Bundled libraries and frameworks must support the same or an older deployment target. The packaging script checks every bundled Mach-O file and fails if, for example, Homebrew SDL2 was built with `minos 26.0` while the app target is `14.0`. The current Homebrew Qt on this machine reports `minos 14.0`, so packaged Qt builds made with it require macOS 14 or newer. To target older macOS releases, configure with an older deployment target and build/bundle SDL2 and Qt with a matching target:
+The macOS build defaults to `CMAKE_OSX_DEPLOYMENT_TARGET=14.0` so the app is not accidentally tied to the build machine's current macOS release. Bundled libraries and frameworks must support the same or an older deployment target. The packaging script checks every bundled Mach-O file and fails if, for example, Homebrew SDL3 was built with a newer `minos` than the app target. The current Homebrew Qt on this machine reports `minos 14.0`, so packaged Qt builds made with it require macOS 14 or newer. To target older macOS releases, configure with an older deployment target and build/bundle SDL3 and Qt with a matching target:
 
 ```sh
 cmake -S . -B /tmp/winuae_cmake_build \
@@ -51,7 +51,7 @@ cmake -S . -B /tmp/winuae_cmake_build \
 
 ```sh
 sudo apt update
-sudo apt install build-essential cmake pkg-config zlib1g-dev libsdl2-dev
+sudo apt install build-essential cmake pkg-config zlib1g-dev libsdl3-dev
 ```
 
 For the Qt frontend:
@@ -63,7 +63,7 @@ sudo apt install qt6-base-dev
 ### Fedora
 
 ```sh
-sudo dnf install gcc gcc-c++ cmake pkgconf-pkg-config zlib-devel SDL2-devel
+sudo dnf install gcc gcc-c++ cmake pkgconf-pkg-config zlib-devel SDL3-devel
 ```
 
 For the Qt frontend:
@@ -227,13 +227,13 @@ export WINUAE_SMOKE_LOG=/tmp/winuae_unix_smoke.log
 
 ```sh
 -DWINUAE_UNIX_BUILD_EXECUTABLE=ON
--DWINUAE_UNIX_WITH_SDL2=ON
+-DWINUAE_UNIX_WITH_SDL3=ON
 -DWINUAE_UNIX_WITH_SLIRP=ON
 -DWINUAE_UNIX_WITH_QT_UI=ON
 -DWINUAE_UNIX_WITH_INTEGRATED_QT_UI=ON
 ```
 
-`WINUAE_UNIX_WITH_SDL2` is enabled by default. If SDL2 is not found through pkg-config, the build currently falls back to the null video presenter.
+`WINUAE_UNIX_WITH_SDL3` is enabled by default. If SDL3 is not found through CMake package discovery or pkg-config, the build currently falls back to the null video presenter.
 `WINUAE_UNIX_WITH_SLIRP` is enabled by default and builds the bundled SLIRP backend plus A2065 emulation.
 `WINUAE_UNIX_WITH_QT_UI` is enabled by default, but the `winuae_unix_qt` target is skipped when Qt Widgets is not installed.
 `WINUAE_UNIX_WITH_INTEGRATED_QT_UI` is enabled by default. When Qt Widgets is not installed, the build continues without the integrated UI.

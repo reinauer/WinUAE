@@ -2,7 +2,8 @@
 #include "sysdeps.h"
 
 #define SDL_MAIN_HANDLED
-#include <SDL.h>
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_main.h>
 
 #include <algorithm>
 #include <vector>
@@ -50,7 +51,7 @@ static int clamp_window_dimension(int value, int fallback, int maxvalue)
     return value;
 }
 
-static Uint32 texture_format_for_pixbytes(int pixbytes)
+static SDL_PixelFormat texture_format_for_pixbytes(int pixbytes)
 {
     if (pixbytes == 2) {
         return SDL_PIXELFORMAT_RGB565;
@@ -97,7 +98,7 @@ static bool ensure_texture(int width, int height, int pixbytes)
 
     s_texture = SDL_CreateTexture(s_renderer, texture_format_for_pixbytes(pixbytes), SDL_TEXTUREACCESS_STREAMING, width, height);
     if (!s_texture) {
-        write_log(_T("SDL2: failed to create %dx%d texture: %s\n"), width, height, SDL_GetError());
+        write_log(_T("SDL3: failed to create %dx%d texture: %s\n"), width, height, SDL_GetError());
         return false;
     }
     SDL_SetTextureBlendMode(s_texture, SDL_BLENDMODE_NONE);
@@ -123,7 +124,7 @@ static bool ensure_status_texture(int width)
     }
     s_status_texture = SDL_CreateTexture(s_renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, width, height);
     if (!s_status_texture) {
-        write_log(_T("SDL2: failed to create %dx%d status texture: %s\n"), width, height, SDL_GetError());
+        write_log(_T("SDL3: failed to create %dx%d status texture: %s\n"), width, height, SDL_GetError());
         return false;
     }
     SDL_SetTextureBlendMode(s_status_texture, SDL_BLENDMODE_NONE);
@@ -277,8 +278,8 @@ bool unix_video_setup(void)
     }
 
     SDL_SetMainReady();
-    if (SDL_InitSubSystem(SDL_INIT_VIDEO | SDL_INIT_EVENTS) < 0) {
-        write_log(_T("SDL2: video unavailable: %s\n"), SDL_GetError());
+    if (!SDL_InitSubSystem(SDL_INIT_VIDEO | SDL_INIT_EVENTS)) {
+        write_log(_T("SDL3: video unavailable: %s\n"), SDL_GetError());
         s_setup_done = true;
         s_available = false;
         return false;
@@ -302,25 +303,27 @@ bool unix_video_init(int width, int height, int pixbytes)
     if (!s_window) {
         int window_width = clamp_window_dimension(width, 768, 960);
         int window_height = clamp_window_dimension(height + statusbar_display_height(), 576 + statusbar_display_height(), 720 + statusbar_display_height());
-        s_window = SDL_CreateWindow("WinUAE Unix", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-            window_width, window_height, SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
+        s_window = SDL_CreateWindow("WinUAE Unix", window_width, window_height,
+            SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
         if (!s_window) {
-            write_log(_T("SDL2: failed to create window: %s\n"), SDL_GetError());
+            write_log(_T("SDL3: failed to create window: %s\n"), SDL_GetError());
             s_available = false;
             return false;
         }
+        SDL_SetWindowPosition(s_window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
     }
 
     if (!s_renderer) {
-        s_renderer = SDL_CreateRenderer(s_window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+        s_renderer = SDL_CreateRenderer(s_window, NULL);
         if (!s_renderer) {
-            s_renderer = SDL_CreateRenderer(s_window, -1, SDL_RENDERER_SOFTWARE);
+            s_renderer = SDL_CreateRenderer(s_window, "software");
         }
         if (!s_renderer) {
-            write_log(_T("SDL2: failed to create renderer: %s\n"), SDL_GetError());
+            write_log(_T("SDL3: failed to create renderer: %s\n"), SDL_GetError());
             s_available = false;
             return false;
         }
+        SDL_SetRenderVSync(s_renderer, 1);
         SDL_SetRenderDrawColor(s_renderer, 0, 0, 0, 255);
         SDL_RenderClear(s_renderer);
         SDL_RenderPresent(s_renderer);
@@ -379,69 +382,69 @@ int unix_video_poll(bool *quit_requested)
     while (SDL_PollEvent(&event)) {
         got = 1;
         switch (event.type) {
-        case SDL_QUIT:
+        case SDL_EVENT_QUIT:
             if (quit_requested) {
                 *quit_requested = true;
             }
             break;
-        case SDL_WINDOWEVENT:
-            if (event.window.event == SDL_WINDOWEVENT_CLOSE && quit_requested) {
+        case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
+            if (quit_requested) {
                 *quit_requested = true;
             }
-            if (event.window.event == SDL_WINDOWEVENT_FOCUS_LOST) {
-                unix_input_release_keys();
-                unix_video_set_mouse_grab(false);
-            }
             break;
-        case SDL_KEYDOWN:
-        case SDL_KEYUP:
+        case SDL_EVENT_WINDOW_FOCUS_LOST:
+            unix_input_release_keys();
+            unix_video_set_mouse_grab(false);
+            break;
+        case SDL_EVENT_KEY_DOWN:
+        case SDL_EVENT_KEY_UP:
             if (event.key.repeat) {
                 break;
             }
-            if (event.key.keysym.sym == SDLK_q && (event.key.keysym.mod & (KMOD_CTRL | KMOD_GUI))) {
+            if (event.key.key == SDLK_Q && (event.key.mod & (SDL_KMOD_CTRL | SDL_KMOD_GUI))) {
                 if (quit_requested) {
                     *quit_requested = true;
                 }
                 break;
             }
-            if (event.key.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_g &&
-                (event.key.keysym.mod & (KMOD_CTRL | KMOD_GUI))) {
+            if (event.key.type == SDL_EVENT_KEY_DOWN && event.key.key == SDLK_G &&
+                (event.key.mod & (SDL_KMOD_CTRL | SDL_KMOD_GUI))) {
                 unix_video_set_mouse_grab(false);
                 break;
             }
-            if (event.key.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_ESCAPE && s_mouse_grabbed) {
+            if (event.key.type == SDL_EVENT_KEY_DOWN && event.key.key == SDLK_ESCAPE && s_mouse_grabbed) {
                 unix_video_set_mouse_grab(false);
             }
-            unix_input_keyboard_key((int)event.key.keysym.scancode, event.key.type == SDL_KEYDOWN);
+            unix_input_keyboard_key((int)event.key.scancode, event.key.type == SDL_EVENT_KEY_DOWN);
             break;
-        case SDL_MOUSEMOTION:
+        case SDL_EVENT_MOUSE_MOTION:
             if (s_mouse_grabbed) {
-                unix_input_mouse_motion(event.motion.xrel, event.motion.yrel);
+                unix_input_mouse_motion((int)event.motion.xrel, (int)event.motion.yrel);
             }
             break;
-        case SDL_MOUSEBUTTONDOWN:
-        case SDL_MOUSEBUTTONUP:
+        case SDL_EVENT_MOUSE_BUTTON_DOWN:
+        case SDL_EVENT_MOUSE_BUTTON_UP:
         {
             int button = unix_mouse_button_from_sdl(event.button.button);
             if (button >= 0) {
-                if (event.type == SDL_MOUSEBUTTONDOWN && handle_statusbar_click(event.button.x, event.button.y, event.button.button)) {
+                if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN && handle_statusbar_click((int)event.button.x, (int)event.button.y, event.button.button)) {
                     s_status_click_button = event.button.button;
                     break;
                 }
-                if (event.type == SDL_MOUSEBUTTONUP && s_status_click_button == event.button.button) {
+                if (event.type == SDL_EVENT_MOUSE_BUTTON_UP && s_status_click_button == event.button.button) {
                     s_status_click_button = 0;
                     break;
                 }
-                if (event.type == SDL_MOUSEBUTTONDOWN && !s_mouse_grabbed) {
+                if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN && !s_mouse_grabbed) {
                     unix_video_set_mouse_grab(true);
                 }
-                unix_input_mouse_button(button, event.type == SDL_MOUSEBUTTONDOWN);
+                unix_input_mouse_button(button, event.type == SDL_EVENT_MOUSE_BUTTON_DOWN);
             }
             break;
         }
-        case SDL_MOUSEWHEEL:
+        case SDL_EVENT_MOUSE_WHEEL:
             if (s_mouse_grabbed) {
-                unix_input_mouse_wheel(event.wheel.x, event.wheel.y);
+                unix_input_mouse_wheel(event.wheel.integer_x, event.wheel.integer_y);
             }
             break;
         default:
@@ -465,13 +468,13 @@ void unix_video_present(const struct unix_video_frame *frame)
     }
 
     SDL_UpdateTexture(s_texture, NULL, frame->pixels, frame->rowbytes);
-    SDL_RenderSetLogicalSize(s_renderer, frame->width, frame->height + statusbar_display_height());
+    SDL_SetRenderLogicalPresentation(s_renderer, frame->width, frame->height + statusbar_display_height(), SDL_LOGICAL_PRESENTATION_LETTERBOX);
     SDL_RenderClear(s_renderer);
-    SDL_Rect frame_dst = { 0, 0, frame->width, frame->height };
-    SDL_RenderCopy(s_renderer, s_texture, NULL, &frame_dst);
+    SDL_FRect frame_dst = { 0.0f, 0.0f, (float)frame->width, (float)frame->height };
+    SDL_RenderTexture(s_renderer, s_texture, NULL, &frame_dst);
     if (update_status_texture(frame->width)) {
-        SDL_Rect status_dst = { 0, frame->height, frame->width, statusbar_display_height() };
-        SDL_RenderCopy(s_renderer, s_status_texture, NULL, &status_dst);
+        SDL_FRect status_dst = { 0.0f, (float)frame->height, (float)frame->width, (float)statusbar_display_height() };
+        SDL_RenderTexture(s_renderer, s_status_texture, NULL, &status_dst);
     }
     SDL_RenderPresent(s_renderer);
 }
@@ -492,10 +495,10 @@ void unix_video_set_mouse_grab(bool grab)
         return;
     }
 
-    SDL_SetRelativeMouseMode(grab ? SDL_TRUE : SDL_FALSE);
     if (s_window) {
-        SDL_SetWindowGrab(s_window, grab ? SDL_TRUE : SDL_FALSE);
-        SDL_CaptureMouse(grab ? SDL_TRUE : SDL_FALSE);
+        SDL_SetWindowRelativeMouseMode(s_window, grab);
+        SDL_SetWindowMouseGrab(s_window, grab);
+        SDL_CaptureMouse(grab);
     }
 }
 
@@ -511,9 +514,8 @@ void unix_video_toggle_mouse_grab(void)
 
 void unix_video_get_desktop(int *dw, int *dh, int *x, int *y, int *w, int *h)
 {
-    SDL_DisplayMode mode;
     SDL_Rect usable;
-    int display = 0;
+    SDL_DisplayID display = SDL_GetPrimaryDisplay();
 
     if (x) {
         *x = 0;
@@ -521,12 +523,13 @@ void unix_video_get_desktop(int *dw, int *dh, int *x, int *y, int *w, int *h)
     if (y) {
         *y = 0;
     }
-    if (SDL_GetCurrentDisplayMode(display, &mode) == 0) {
+    const SDL_DisplayMode *mode = display ? SDL_GetCurrentDisplayMode(display) : NULL;
+    if (mode) {
         if (dw) {
-            *dw = mode.w;
+            *dw = mode->w;
         }
         if (dh) {
-            *dh = mode.h;
+            *dh = mode->h;
         }
     } else {
         if (dw) {
@@ -537,7 +540,7 @@ void unix_video_get_desktop(int *dw, int *dh, int *x, int *y, int *w, int *h)
         }
     }
 
-    if (SDL_GetDisplayUsableBounds(display, &usable) == 0) {
+    if (display && SDL_GetDisplayUsableBounds(display, &usable)) {
         if (x) {
             *x = usable.x;
         }
