@@ -2825,17 +2825,74 @@ static void setPathComboText(QComboBox *field, const QString &path)
     field->setCurrentText(path);
 }
 
-static void addBrowse(QComboBox *field, QWidget *parent, const QString &caption, const QString &filter)
-{
-    const QString path = QFileDialog::getOpenFileName(parent, caption, field->currentText(), filter);
-    if (!path.isEmpty()) {
-        setPathComboText(field, path);
-    }
-}
-
 static QString envString(const char *name)
 {
     return QString::fromLocal8Bit(qgetenv(name));
+}
+
+static QString expandUnixPath(QString path)
+{
+    if (path.isEmpty()) {
+        return path;
+    }
+
+    if (path.startsWith(QLatin1Char('~')) && (path.size() == 1 || path[1] == QLatin1Char('/'))) {
+        path = QDir::homePath() + path.mid(1);
+    }
+
+    for (int i = 0; i < path.size(); i++) {
+        if (path[i] != QLatin1Char('$')) {
+            continue;
+        }
+
+        int start = i + 1;
+        int end = start;
+        QString name;
+        if (start < path.size() && path[start] == QLatin1Char('{')) {
+            start++;
+            end = path.indexOf(QLatin1Char('}'), start);
+            if (end < 0) {
+                continue;
+            }
+            name = path.mid(start, end - start);
+            end++;
+        } else {
+            while (end < path.size()) {
+                const QChar c = path[end];
+                if (!c.isLetterOrNumber() && c != QLatin1Char('_')) {
+                    break;
+                }
+                end++;
+            }
+            name = path.mid(start, end - start);
+        }
+        if (name.isEmpty()) {
+            continue;
+        }
+
+        const QByteArray value = qgetenv(name.toLocal8Bit().constData());
+        if (value.isEmpty()) {
+            continue;
+        }
+        const QString replacement = QString::fromLocal8Bit(value);
+        path.replace(i, end - i, replacement);
+        i += replacement.size() - 1;
+    }
+
+    return path;
+}
+
+static QString expandedPathText(const QString &path)
+{
+    return expandUnixPath(path.trimmed());
+}
+
+static void addBrowse(QComboBox *field, QWidget *parent, const QString &caption, const QString &filter)
+{
+    const QString path = QFileDialog::getOpenFileName(parent, caption, expandedPathText(field->currentText()), filter);
+    if (!path.isEmpty()) {
+        setPathComboText(field, path);
+    }
 }
 
 static bool isConfigPath(const QString &path)
@@ -2850,7 +2907,7 @@ static QString initialConfigPathFromArguments(const QStringList &arguments)
         if ((arg == QStringLiteral("-f")
              || arg == QStringLiteral("-config")
              || arg == QStringLiteral("--config")) && i + 1 < arguments.size()) {
-            const QString path = arguments[i + 1];
+            const QString path = expandedPathText(arguments[i + 1]);
             if (isConfigPath(path)) {
                 return path;
             }
@@ -2861,14 +2918,15 @@ static QString initialConfigPathFromArguments(const QStringList &arguments)
         const QString longConfigPrefix = QStringLiteral("--config=");
         if (arg.startsWith(configPrefix) || arg.startsWith(longConfigPrefix)) {
             const int offset = arg.startsWith(configPrefix) ? configPrefix.size() : longConfigPrefix.size();
-            const QString path = arg.mid(offset);
+            const QString path = expandedPathText(arg.mid(offset));
             if (isConfigPath(path)) {
                 return path;
             }
             continue;
         }
-        if (!arg.startsWith(QLatin1Char('-')) && isConfigPath(arg)) {
-            return arg;
+        const QString path = expandedPathText(arg);
+        if (!arg.startsWith(QLatin1Char('-')) && isConfigPath(path)) {
+            return path;
         }
     }
     return QString();
@@ -4307,7 +4365,7 @@ private:
         connect(customRomEnd, &QLineEdit::textChanged, this, [this](const QString &) { storeCurrentCustomRomBoard(); });
         connect(customRomFile, &QLineEdit::textChanged, this, [this](const QString &) { storeCurrentCustomRomBoard(); });
         connect(customRomBrowse, &QPushButton::clicked, this, [this]() {
-            const QString selected = QFileDialog::getOpenFileName(this, QStringLiteral("Select custom ROM file"), customRomFile->text(), QStringLiteral("ROM files (*.rom *.bin);;All files (*)"));
+            const QString selected = QFileDialog::getOpenFileName(this, QStringLiteral("Select custom ROM file"), expandedPathText(customRomFile->text()), QStringLiteral("ROM files (*.rom *.bin);;All files (*)"));
             if (selected.isEmpty()) {
                 return;
             }
@@ -4712,7 +4770,7 @@ private:
 
     void browseDiskSwapperImage(int slot)
     {
-        const QString selected = QFileDialog::getOpenFileName(this, QStringLiteral("Select floppy image"), diskSwapperPathAt(slot), QStringLiteral("Amiga disk images (*.adf *.adz *.ipf *.dms);;All files (*)"));
+        const QString selected = QFileDialog::getOpenFileName(this, QStringLiteral("Select floppy image"), expandedPathText(diskSwapperPathAt(slot)), QStringLiteral("Amiga disk images (*.adf *.adz *.ipf *.dms);;All files (*)"));
         if (!selected.isEmpty()) {
             setPathComboText(diskSwapperPath, selected);
             setDiskSwapperPath(slot, selected);
@@ -4842,7 +4900,8 @@ private:
             }
         });
         connect(selectCdImage, &QPushButton::clicked, this, [this]() {
-            const QString selected = QFileDialog::getOpenFileName(this, QStringLiteral("Select CD image"), cdSlotPath->currentText().isEmpty() ? QDir::homePath() : cdSlotPath->currentText(), QStringLiteral("CD images (*.iso *.cue *.ccd *.mds *.chd);;All files (*)"));
+            const QString initialPath = cdSlotPath->currentText().isEmpty() ? QDir::homePath() : expandedPathText(cdSlotPath->currentText());
+            const QString selected = QFileDialog::getOpenFileName(this, QStringLiteral("Select CD image"), initialPath, QStringLiteral("CD images (*.iso *.cue *.ccd *.mds *.chd);;All files (*)"));
             if (!selected.isEmpty()) {
                 setPathComboText(cdSlotPath, selected);
                 setComboTextIfChanged(cdSlotType, QStringLiteral("Image file"));
@@ -6288,7 +6347,7 @@ private:
         root->addStretch(1);
 
         connect(browse, &QPushButton::clicked, this, [this]() {
-            const QString selected = QFileDialog::getSaveFileName(this, QStringLiteral("Select output file"), outputFile->text(), QStringLiteral("Video Clip (*.avi);;Wave Sound (*.wav);;All files (*)"));
+            const QString selected = QFileDialog::getSaveFileName(this, QStringLiteral("Select output file"), expandedPathText(outputFile->text()), QStringLiteral("Video Clip (*.avi);;Wave Sound (*.wav);;All files (*)"));
             if (!selected.isEmpty()) {
                 outputFile->setText(selected);
             }
@@ -7227,7 +7286,7 @@ private:
 
     void rescanRomPathCandidates(bool showResult)
     {
-        const QString root = romsPath ? romsPath->text().trimmed() : QString();
+        const QString root = romsPath ? expandedPathText(romsPath->text()) : QString();
         QStringList candidates;
         if (!root.isEmpty()) {
             collectRomCandidates(QDir(root), 0, &candidates);
@@ -7503,7 +7562,7 @@ private:
         root->addLayout(right, 1);
 
         const auto selectStateFile = [this]() {
-            const QString selected = QFileDialog::getOpenFileName(this, QStringLiteral("Select state file"), stateFileName->currentText(), QStringLiteral("WinUAE state files (*.uss);;All files (*)"));
+            const QString selected = QFileDialog::getOpenFileName(this, QStringLiteral("Select state file"), expandedPathText(stateFileName->currentText()), QStringLiteral("WinUAE state files (*.uss);;All files (*)"));
             if (!selected.isEmpty()) {
                 setPathComboText(stateFileName, selected);
                 stateFileClear->setChecked(false);
@@ -7962,11 +8021,12 @@ private:
         layout->addWidget(field, row, 1);
         layout->addWidget(browse, row, 2);
         connect(browse, &QPushButton::clicked, this, [this, field, directory, caption]() {
+            const QString initialPath = expandedPathText(field->text());
             QString path;
             if (directory) {
-                path = QFileDialog::getExistingDirectory(this, caption, field->text());
+                path = QFileDialog::getExistingDirectory(this, caption, initialPath);
             } else {
-                path = QFileDialog::getOpenFileName(this, caption, field->text(), QStringLiteral("All files (*)"));
+                path = QFileDialog::getOpenFileName(this, caption, initialPath, QStringLiteral("All files (*)"));
             }
             if (!path.isEmpty()) {
                 field->setText(path);
@@ -9400,7 +9460,8 @@ private:
         root->addWidget(buttons);
 
         connect(browse, &QPushButton::clicked, this, [this, path, volume]() {
-            const QString selected = QFileDialog::getExistingDirectory(this, QStringLiteral("Select directory"), path->text().isEmpty() ? QDir::homePath() : path->text());
+            const QString initialPath = path->text().isEmpty() ? QDir::homePath() : expandedPathText(path->text());
+            const QString selected = QFileDialog::getExistingDirectory(this, QStringLiteral("Select directory"), initialPath);
             if (!selected.isEmpty()) {
                 path->setText(selected);
                 if (volume->text().isEmpty()) {
@@ -9579,19 +9640,22 @@ private:
         setFeatureItems(hardfileFeatureText(*entry, controller->currentText()));
 
         connect(browse, &QPushButton::clicked, this, [this, path]() {
-            const QString selected = QFileDialog::getOpenFileName(this, QStringLiteral("Select hardfile"), path->text().isEmpty() ? QDir::homePath() : path->text(), QStringLiteral("Hardfiles (*.hdf *.vhd *.chd);;All files (*)"));
+            const QString initialPath = path->text().isEmpty() ? QDir::homePath() : expandedPathText(path->text());
+            const QString selected = QFileDialog::getOpenFileName(this, QStringLiteral("Select hardfile"), initialPath, QStringLiteral("Hardfiles (*.hdf *.vhd *.chd);;All files (*)"));
             if (!selected.isEmpty()) {
                 path->setText(selected);
             }
         });
         connect(geometryBrowse, &QPushButton::clicked, this, [this, geometryFile]() {
-            const QString selected = QFileDialog::getOpenFileName(this, QStringLiteral("Select geometry file"), geometryFile->text().isEmpty() ? QDir::homePath() : geometryFile->text(), QStringLiteral("Geometry files (*.geo);;All files (*)"));
+            const QString initialPath = geometryFile->text().isEmpty() ? QDir::homePath() : expandedPathText(geometryFile->text());
+            const QString selected = QFileDialog::getOpenFileName(this, QStringLiteral("Select geometry file"), initialPath, QStringLiteral("Geometry files (*.geo);;All files (*)"));
             if (!selected.isEmpty()) {
                 geometryFile->setText(selected);
             }
         });
         connect(filesysBrowse, &QPushButton::clicked, this, [this, filesys]() {
-            const QString selected = QFileDialog::getOpenFileName(this, QStringLiteral("Select filesystem"), filesys->text().isEmpty() ? QDir::homePath() : filesys->text(), QStringLiteral("Filesystem files (*.fs *.filesystem);;All files (*)"));
+            const QString initialPath = filesys->text().isEmpty() ? QDir::homePath() : expandedPathText(filesys->text());
+            const QString selected = QFileDialog::getOpenFileName(this, QStringLiteral("Select filesystem"), initialPath, QStringLiteral("Filesystem files (*.fs *.filesystem);;All files (*)"));
             if (!selected.isEmpty()) {
                 filesys->setText(selected);
             }
@@ -9786,13 +9850,15 @@ private:
         root->addWidget(buttons);
 
         connect(selectFile, &QPushButton::clicked, this, [this, path]() {
-            const QString selected = QFileDialog::getOpenFileName(this, QStringLiteral("Select tape image"), path->text().isEmpty() ? QDir::homePath() : path->text(), QStringLiteral("Tape images (*.tap *.raw);;All files (*)"));
+            const QString initialPath = path->text().isEmpty() ? QDir::homePath() : expandedPathText(path->text());
+            const QString selected = QFileDialog::getOpenFileName(this, QStringLiteral("Select tape image"), initialPath, QStringLiteral("Tape images (*.tap *.raw);;All files (*)"));
             if (!selected.isEmpty()) {
                 path->setText(selected);
             }
         });
         connect(selectDirectory, &QPushButton::clicked, this, [this, path]() {
-            const QString selected = QFileDialog::getExistingDirectory(this, QStringLiteral("Select tape directory"), path->text().isEmpty() ? QDir::homePath() : path->text());
+            const QString initialPath = path->text().isEmpty() ? QDir::homePath() : expandedPathText(path->text());
+            const QString selected = QFileDialog::getExistingDirectory(this, QStringLiteral("Select tape directory"), initialPath);
             if (!selected.isEmpty()) {
                 path->setText(selected);
             }
@@ -10802,7 +10868,7 @@ private:
     QString configurationDirectory() const
     {
         if (configsPath && !configsPath->text().trimmed().isEmpty()) {
-            return configsPath->text().trimmed();
+            return expandedPathText(configsPath->text());
         }
         return QDir::homePath();
     }
@@ -10838,7 +10904,7 @@ private:
         if (!configTree) {
             return;
         }
-        const QString selectedPath = configPath ? configPath->text() : QString();
+        const QString selectedPath = configPath ? expandedPathText(configPath->text()) : QString();
         const QString search = configSearch ? configSearch->text().trimmed() : QString();
         const QString filter = configFilter ? configFilter->currentText() : QStringLiteral("All configurations");
         QSignalBlocker blocker(configTree);
@@ -10898,6 +10964,7 @@ private:
         if (path.isEmpty()) {
             path = !configPath->text().trimmed().isEmpty() ? configPath->text().trimmed() : namedConfigPath();
         }
+        path = expandedPathText(path);
         if (path.isEmpty() || !QFileInfo::exists(path)) {
             QMessageBox::warning(this, windowTitle(), QStringLiteral("Select a configuration to load."));
             return;
@@ -10908,6 +10975,7 @@ private:
     void saveNamedConfig()
     {
         QString path = !configPath->text().trimmed().isEmpty() ? configPath->text().trimmed() : namedConfigPath();
+        path = expandedPathText(path);
         if (path.isEmpty()) {
             QMessageBox::warning(this, windowTitle(), QStringLiteral("Enter a configuration name before saving."));
             return;
@@ -10923,6 +10991,7 @@ private:
         if (path.isEmpty()) {
             path = configPath->text().trimmed();
         }
+        path = expandedPathText(path);
         if (path.isEmpty() || !QFileInfo::exists(path)) {
             QMessageBox::warning(this, windowTitle(), QStringLiteral("Select a configuration to delete."));
             return;
@@ -10935,7 +11004,7 @@ private:
             QMessageBox::warning(this, windowTitle(), QStringLiteral("Could not delete %1").arg(path));
             return;
         }
-        if (configPath->text() == path) {
+        if (expandedPathText(configPath->text()) == path) {
             configPath->clear();
         }
         refreshConfigList();
@@ -10944,7 +11013,7 @@ private:
 
     void loadConfigDialog()
     {
-        const QString path = QFileDialog::getOpenFileName(this, QStringLiteral("Load configuration"), configsPath->text(), QStringLiteral("WinUAE configuration (*.uae);;All files (*)"));
+        const QString path = QFileDialog::getOpenFileName(this, QStringLiteral("Load configuration"), configurationDirectory(), QStringLiteral("WinUAE configuration (*.uae);;All files (*)"));
         if (!path.isEmpty()) {
             loadConfig(path);
         }
@@ -10952,7 +11021,7 @@ private:
 
     void saveConfigDialog()
     {
-        const QString path = QFileDialog::getSaveFileName(this, QStringLiteral("Save configuration"), configsPath->text(), QStringLiteral("WinUAE configuration (*.uae);;All files (*)"));
+        const QString path = QFileDialog::getSaveFileName(this, QStringLiteral("Save configuration"), configurationDirectory(), QStringLiteral("WinUAE configuration (*.uae);;All files (*)"));
         if (!path.isEmpty()) {
             saveConfig(path);
         }
@@ -10960,9 +11029,10 @@ private:
 
     void loadConfig(const QString &path)
     {
+        const QString expandedPath = expandedPathText(path);
         WinUaeQtConfig config;
         QString error;
-        if (!config.load(path, &error)) {
+        if (!config.load(expandedPath, &error)) {
             QMessageBox::warning(this, windowTitle(), error);
             return;
         }
@@ -10984,10 +11054,10 @@ private:
         updateMountButtons();
         refreshHardwareInfoPage();
         loadedConfig = config;
-        configPath->setText(path);
-        configName->setCurrentText(QFileInfo(path).completeBaseName());
+        configPath->setText(expandedPath);
+        configName->setCurrentText(QFileInfo(expandedPath).completeBaseName());
         refreshConfigList();
-        status->setText(QStringLiteral("Loaded %1").arg(path));
+        status->setText(QStringLiteral("Loaded %1").arg(expandedPath));
     }
 
     void applySetting(const QString &key, const QString &value)
@@ -11714,17 +11784,18 @@ private:
 
     void saveConfig(const QString &path)
     {
+        const QString expandedPath = expandedPathText(path);
         WinUaeQtConfig config = mergedConfig();
         QString error;
-        if (!config.save(path, &error)) {
+        if (!config.save(expandedPath, &error)) {
             QMessageBox::warning(this, windowTitle(), error);
             return;
         }
         loadedConfig = config;
-        configPath->setText(path);
-        configName->setCurrentText(QFileInfo(path).completeBaseName());
+        configPath->setText(expandedPath);
+        configName->setCurrentText(QFileInfo(expandedPath).completeBaseName());
         refreshConfigList();
-        status->setText(QStringLiteral("Saved %1").arg(path));
+        status->setText(QStringLiteral("Saved %1").arg(expandedPath));
     }
 
     void startEmulator()
@@ -11744,7 +11815,7 @@ private:
             return;
         }
 
-        const QString program = emulatorPath->text();
+        const QString program = expandedPathText(emulatorPath->text());
         if (program.isEmpty() || !QFileInfo::exists(program)) {
             QMessageBox::warning(this, windowTitle(), QStringLiteral("Emulator executable not found."));
             return;
@@ -11860,10 +11931,11 @@ WinUaeQtLauncherResult runWinUaeQtLauncherForConfig(int argc, char **argv, const
 
 static QString runtimeDialogDirectory(const QString &initialPath)
 {
-    if (initialPath.isEmpty()) {
+    const QString expandedPath = expandedPathText(initialPath);
+    if (expandedPath.isEmpty()) {
         return QDir::homePath();
     }
-    QFileInfo info(initialPath);
+    QFileInfo info(expandedPath);
     if (info.isDir()) {
         return info.absoluteFilePath();
     }
@@ -11873,8 +11945,9 @@ static QString runtimeDialogDirectory(const QString &initialPath)
 
 static QString runtimeDialogSavePath(const QString &initialPath, const QString &fallbackName)
 {
-    if (!initialPath.isEmpty()) {
-        return initialPath;
+    const QString expandedPath = expandedPathText(initialPath);
+    if (!expandedPath.isEmpty()) {
+        return expandedPath;
     }
     return QDir(QDir::homePath()).filePath(fallbackName);
 }
