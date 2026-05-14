@@ -8,6 +8,9 @@
 #include "gui.h"
 #include "sounddep/sound.h"
 #include "gensound.h"
+#ifdef DRIVESOUND
+#include "driveclick.h"
+#endif
 
 #ifdef UAE_UNIX_WITH_SDL3
 #define SDL_MAIN_HANDLED
@@ -225,6 +228,9 @@ int init_sound(void)
     }
 
     have_sound = 1;
+#ifdef DRIVESOUND
+    driveclick_init();
+#endif
     return 1;
 #else
     return 0;
@@ -249,6 +255,9 @@ void close_sound(void)
     }
 #endif
     have_sound = 0;
+#ifdef DRIVESOUND
+    driveclick_reset();
+#endif
     clearbuffer();
 }
 

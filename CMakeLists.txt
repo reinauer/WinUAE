@@ -31,6 +31,7 @@ add_library(winuae_core OBJECT)
 target_compile_definitions(winuae_core PRIVATE
     UAE_TARGET_UNIX=1
     UAE_NOGUI=1
+    WINUAE_UNIX_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
 )
 
 target_include_directories(winuae_core PRIVATE
@@ -236,6 +237,7 @@ set(WINUAE_CORE_SOURCES
     softfloat/softfloat_fpsp.cpp
     od-unix/charset.cpp
     od-unix/config.cpp
+    od-unix/driveclick.cpp
     od-unix/filesys_host.cpp
     od-unix/graphics.cpp
     od-unix/gui.cpp
@@ -245,6 +247,7 @@ set(WINUAE_CORE_SOURCES
     od-unix/mman.cpp
     od-unix/parallel.cpp
     od-unix/rtg.cpp
+    od-unix/serial.cpp
     od-unix/sound.cpp
     od-unix/stubs.cpp
     od-unix/support.cpp
