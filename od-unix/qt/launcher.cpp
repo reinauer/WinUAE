@@ -1525,6 +1525,18 @@ static const ConfigChoice hvSyncChoices[] = {
     { "H/V Sync + Sync", "hvsync_s" }
 };
 
+static const ConfigChoice genlockModeChoices[] = {
+    { "-", "none" },
+    { "Noise (built-in)", "noise" },
+    { "Test card (built-in)", "testcard" },
+    { "Image file (png)", "image" },
+    { "Video file", "video" },
+    { "Capture device", "stream" },
+    { "American Laser Games/Picmatic LaserDisc Player", "ld" },
+    { "Sony LaserDisc Player", "sony_ld" },
+    { "Pioneer LaserDisc Player", "pioneer_ld" }
+};
+
 static const AdvancedCheckChoice advancedCheckChoices[] = {
     { "CIA ROM Overlay", "cia_overlay", true },
     { "CD32 CD", "cd32cd", false },
@@ -2774,6 +2786,19 @@ static QString configBoolText(bool value)
     return value ? QStringLiteral("true") : QStringLiteral("false");
 }
 
+static bool genlockModeUsesImageFile(const QString &mode)
+{
+    return mode == QStringLiteral("image");
+}
+
+static bool genlockModeUsesVideoFile(const QString &mode)
+{
+    return mode == QStringLiteral("video")
+        || mode == QStringLiteral("ld")
+        || mode == QStringLiteral("sony_ld")
+        || mode == QStringLiteral("pioneer_ld");
+}
+
 static void insertLineEditSetting(WinUaeQtConfig::Settings &settings, const QString &key, const QLineEdit *field)
 {
     if (!field) {
@@ -3205,6 +3230,16 @@ private:
     QComboBox *displayOptimization = nullptr;
     QComboBox *chipsetSyncMode = nullptr;
     QButtonGroup *collisionButtons = nullptr;
+    QCheckBox *genlockConnected = nullptr;
+    QComboBox *genlockMode = nullptr;
+    QComboBox *genlockMix = nullptr;
+    QCheckBox *genlockAlpha = nullptr;
+    QCheckBox *genlockKeepAspect = nullptr;
+    QComboBox *genlockFile = nullptr;
+    QPushButton *genlockFileBrowse = nullptr;
+    QString genlockImagePath;
+    QString genlockVideoPath;
+    bool genlockUpdating = false;
     QCheckBox *advancedCompatible = nullptr;
     QButtonGroup *advancedRtcButtons = nullptr;
     QLineEdit *advancedRtcAdjust = nullptr;
@@ -4120,7 +4155,37 @@ private:
             }
         }
         root->addWidget(groupBox(QStringLiteral("Collision Level"), collision), 1, 0, 1, 2);
-        root->setRowStretch(2, 1);
+
+        genlockConnected = new QCheckBox(QStringLiteral("Genlock connected"));
+        genlockMode = combo(configChoiceDisplays(genlockModeChoices, int(sizeof(genlockModeChoices) / sizeof(genlockModeChoices[0]))));
+        genlockMix = combo({
+            QStringLiteral("100%"),
+            QStringLiteral("90%"),
+            QStringLiteral("80%"),
+            QStringLiteral("70%"),
+            QStringLiteral("60%"),
+            QStringLiteral("50%"),
+            QStringLiteral("40%"),
+            QStringLiteral("30%"),
+            QStringLiteral("20%"),
+            QStringLiteral("10%"),
+            QStringLiteral("0%")
+        });
+        genlockAlpha = new QCheckBox(QStringLiteral("Include alpha channel in screenshots and video captures"));
+        genlockKeepAspect = new QCheckBox(QStringLiteral("Keep aspect ratio"));
+        genlockFile = pathCombo();
+        genlockFileBrowse = smallButton(QStringLiteral("..."));
+        QGridLayout *genlock = new QGridLayout;
+        genlock->setColumnStretch(1, 1);
+        genlock->addWidget(genlockConnected, 0, 0);
+        genlock->addWidget(genlockMode, 0, 1);
+        genlock->addWidget(genlockMix, 0, 2);
+        genlock->addWidget(genlockAlpha, 1, 0, 1, 3);
+        genlock->addWidget(genlockKeepAspect, 2, 0, 1, 3);
+        genlock->addWidget(genlockFile, 3, 0, 1, 2);
+        genlock->addWidget(genlockFileBrowse, 3, 2);
+        root->addWidget(groupBox(QStringLiteral("Genlock"), genlock), 2, 0, 1, 2);
+        root->setRowStretch(3, 1);
 
         connect(chipsetNtsc, &QCheckBox::toggled, this, [this](bool checked) {
             setCheckBoxIfChanged(ntsc, checked);
@@ -4148,7 +4213,75 @@ private:
                 immediateBlits->setChecked(false);
             }
         });
+        connect(genlockConnected, &QCheckBox::toggled, this, [this]() { updateGenlockControlState(); });
+        connect(genlockMode, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this]() { updateGenlockControlState(); });
+        connect(genlockFile, &QComboBox::currentTextChanged, this, [this]() { storeGenlockFilePath(); });
+        connect(genlockFileBrowse, &QPushButton::clicked, this, [this]() {
+            const QString mode = configChoiceValue(genlockModeChoices, int(sizeof(genlockModeChoices) / sizeof(genlockModeChoices[0])), genlockMode->currentText());
+            if (genlockModeUsesImageFile(mode)) {
+                addBrowse(genlockFile, this, QStringLiteral("Select genlock image"), QStringLiteral("Images (*.png *.bmp *.jpg *.jpeg);;All files (*)"));
+            } else if (genlockModeUsesVideoFile(mode)) {
+                addBrowse(genlockFile, this, QStringLiteral("Select genlock video"), QStringLiteral("Video files (*.avi *.mp4 *.mov *.mkv);;All files (*)"));
+            }
+            storeGenlockFilePath();
+        });
+        updateGenlockControlState();
         return page;
+    }
+
+    int genlockMixConfigValue() const
+    {
+        if (!genlockMix) {
+            return 0;
+        }
+        const int index = genlockMix->currentIndex();
+        return index >= 10 ? 255 : qBound(0, index, 10) * 25;
+    }
+
+    void setGenlockMixConfigValue(int value)
+    {
+        if (!genlockMix) {
+            return;
+        }
+        const int index = value >= 250 ? 10 : qBound(0, value / 25, 10);
+        genlockMix->setCurrentIndex(index);
+    }
+
+    void storeGenlockFilePath()
+    {
+        if (genlockUpdating || !genlockMode || !genlockFile) {
+            return;
+        }
+        const QString mode = configChoiceValue(genlockModeChoices, int(sizeof(genlockModeChoices) / sizeof(genlockModeChoices[0])), genlockMode->currentText());
+        if (genlockModeUsesImageFile(mode)) {
+            genlockImagePath = genlockFile->currentText().trimmed();
+        } else if (genlockModeUsesVideoFile(mode)) {
+            genlockVideoPath = genlockFile->currentText().trimmed();
+        }
+    }
+
+    void updateGenlockControlState()
+    {
+        if (!genlockConnected || !genlockMode || !genlockMix || !genlockAlpha || !genlockKeepAspect || !genlockFile || !genlockFileBrowse) {
+            return;
+        }
+
+        const bool connected = genlockConnected->isChecked();
+        const QString mode = configChoiceValue(genlockModeChoices, int(sizeof(genlockModeChoices) / sizeof(genlockModeChoices[0])), genlockMode->currentText());
+        const bool usesImage = genlockModeUsesImageFile(mode);
+        const bool usesVideo = genlockModeUsesVideoFile(mode);
+        const bool usesFile = connected && (usesImage || usesVideo);
+
+        genlockMode->setEnabled(connected);
+        genlockMix->setEnabled(connected);
+        genlockAlpha->setEnabled(connected);
+        genlockKeepAspect->setEnabled(connected);
+        genlockFile->setEnabled(usesFile);
+        genlockFileBrowse->setEnabled(usesFile);
+
+        genlockUpdating = true;
+        setPathComboText(genlockFile, usesImage ? genlockImagePath : (usesVideo ? genlockVideoPath : QString()));
+        genlockUpdating = false;
     }
 
     QWidget *makeAdvancedChipsetPage()
@@ -7294,6 +7427,7 @@ private:
         clearPathComboHistory(diskSwapperPath);
         clearPathComboHistory(cdSlotPath);
         clearPathComboHistory(stateFileName);
+        clearPathComboHistory(genlockFile);
         status->setText(QStringLiteral("Disk history cleared"));
     }
 
@@ -8713,6 +8847,14 @@ private:
         waitingBlits->setChecked(false);
         displayOptimization->setCurrentText(QStringLiteral("Full"));
         chipsetSyncMode->setCurrentText(QStringLiteral("Combined + Blanking"));
+        genlockConnected->setChecked(false);
+        genlockMode->setCurrentIndex(0);
+        genlockMix->setCurrentIndex(0);
+        genlockAlpha->setChecked(false);
+        genlockKeepAspect->setChecked(false);
+        genlockImagePath.clear();
+        genlockVideoPath.clear();
+        updateGenlockControlState();
         if (QAbstractButton *button = collisionButtons->button(3)) {
             button->setChecked(true);
         }
@@ -10108,6 +10250,26 @@ private:
         settings.insert(QStringLiteral("display_optimizations"), displayOptimizationConfigValue(displayOptimization->currentText()));
         settings.insert(QStringLiteral("hvcsync"),
             configChoiceValue(hvSyncChoices, int(sizeof(hvSyncChoices) / sizeof(hvSyncChoices[0])), chipsetSyncMode->currentText()));
+        settings.insert(QStringLiteral("genlock"), genlockConnected->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
+        settings.insert(QStringLiteral("genlockmode"),
+            configChoiceValue(genlockModeChoices, int(sizeof(genlockModeChoices) / sizeof(genlockModeChoices[0])), genlockMode->currentText()));
+        settings.insert(QStringLiteral("genlock_mix"), QString::number(genlockMixConfigValue()));
+        settings.insert(QStringLiteral("genlock_alpha"), genlockAlpha->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
+        settings.insert(QStringLiteral("genlock_aspect"), genlockKeepAspect->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
+        QString imagePath = genlockImagePath;
+        QString videoPath = genlockVideoPath;
+        const QString selectedGenlockMode = configChoiceValue(genlockModeChoices, int(sizeof(genlockModeChoices) / sizeof(genlockModeChoices[0])), genlockMode->currentText());
+        if (genlockModeUsesImageFile(selectedGenlockMode)) {
+            imagePath = genlockFile->currentText().trimmed();
+        } else if (genlockModeUsesVideoFile(selectedGenlockMode)) {
+            videoPath = genlockFile->currentText().trimmed();
+        }
+        if (!imagePath.isEmpty()) {
+            settings.insert(QStringLiteral("genlock_image"), imagePath);
+        }
+        if (!videoPath.isEmpty()) {
+            settings.insert(QStringLiteral("genlock_video"), videoPath);
+        }
         settings.insert(QStringLiteral("ciaatod"), advancedRadioValue(advancedCiaTodButtons, ciaTodChoices, int(sizeof(ciaTodChoices) / sizeof(ciaTodChoices[0]))));
         settings.insert(QStringLiteral("rtc"), advancedRadioValue(advancedRtcButtons, rtcChoices, int(sizeof(rtcChoices) / sizeof(rtcChoices[0]))));
         settings.insert(QStringLiteral("chipset_rtc_adjust"), advancedRtcAdjust->text().trimmed().isEmpty() ? QStringLiteral("0") : advancedRtcAdjust->text().trimmed());
@@ -10549,6 +10711,13 @@ private:
             QStringLiteral("collision_level"),
             QStringLiteral("display_optimizations"),
             QStringLiteral("hvcsync"),
+            QStringLiteral("genlock"),
+            QStringLiteral("genlockmode"),
+            QStringLiteral("genlock_mix"),
+            QStringLiteral("genlock_alpha"),
+            QStringLiteral("genlock_aspect"),
+            QStringLiteral("genlock_image"),
+            QStringLiteral("genlock_video"),
             QStringLiteral("ciaatod"),
             QStringLiteral("rtc"),
             QStringLiteral("chipset_rtc_adjust"),
@@ -11274,6 +11443,30 @@ private:
             displayOptimization->setCurrentText(displayOptimizationText(value));
         } else if (key == QStringLiteral("hvcsync")) {
             chipsetSyncMode->setCurrentText(configChoiceDisplay(hvSyncChoices, int(sizeof(hvSyncChoices) / sizeof(hvSyncChoices[0])), value));
+        } else if (key == QStringLiteral("genlock")) {
+            genlockConnected->setChecked(configBoolValue(value));
+            updateGenlockControlState();
+        } else if (key == QStringLiteral("genlockmode")) {
+            genlockMode->setCurrentText(configChoiceDisplay(genlockModeChoices, int(sizeof(genlockModeChoices) / sizeof(genlockModeChoices[0])), value));
+            updateGenlockControlState();
+        } else if (key == QStringLiteral("genlock_mix")) {
+            setGenlockMixConfigValue(value.toInt());
+        } else if (key == QStringLiteral("genlock_alpha")) {
+            genlockAlpha->setChecked(configBoolValue(value));
+        } else if (key == QStringLiteral("genlock_aspect")) {
+            genlockKeepAspect->setChecked(configBoolValue(value));
+        } else if (key == QStringLiteral("genlock_image")) {
+            genlockImagePath = value;
+            const QString mode = configChoiceValue(genlockModeChoices, int(sizeof(genlockModeChoices) / sizeof(genlockModeChoices[0])), genlockMode->currentText());
+            if (genlockModeUsesImageFile(mode)) {
+                setPathComboText(genlockFile, value);
+            }
+        } else if (key == QStringLiteral("genlock_video")) {
+            genlockVideoPath = value;
+            const QString mode = configChoiceValue(genlockModeChoices, int(sizeof(genlockModeChoices) / sizeof(genlockModeChoices[0])), genlockMode->currentText());
+            if (genlockModeUsesVideoFile(mode)) {
+                setPathComboText(genlockFile, value);
+            }
         } else if (key == QStringLiteral("ciaatod")) {
             setAdvancedRadioValue(advancedCiaTodButtons, ciaTodChoices, int(sizeof(ciaTodChoices) / sizeof(ciaTodChoices[0])), value);
         } else if (key == QStringLiteral("rtc")) {
