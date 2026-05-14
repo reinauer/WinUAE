@@ -3506,6 +3506,7 @@ private:
     QCheckBox *serialShared = nullptr;
     QCheckBox *serialCtsRts = nullptr;
     QCheckBox *serialDirect = nullptr;
+    QCheckBox *serialCrlf = nullptr;
     QCheckBox *uaeSerial = nullptr;
     QCheckBox *serialStatus = nullptr;
     QCheckBox *serialRingIndicator = nullptr;
@@ -7047,6 +7048,7 @@ private:
         serialShared = new QCheckBox(QStringLiteral("Shared"));
         serialCtsRts = new QCheckBox(QStringLiteral("Host RTS/CTS"));
         serialDirect = new QCheckBox(QStringLiteral("Direct"));
+        serialCrlf = new QCheckBox(QStringLiteral("CR/LF conversion"));
         uaeSerial = new QCheckBox(QStringLiteral("uaeserial.device"));
         serialStatus = new QCheckBox(QStringLiteral("Serial status (RTS/CTS/DTR/DTE/CD)"));
         serialRingIndicator = new QCheckBox(QStringLiteral("Serial status: Ring Indicator"));
@@ -7057,6 +7059,7 @@ private:
         serial->addWidget(uaeSerial, 1, 3);
         serial->addWidget(serialStatus, 2, 0, 1, 2);
         serial->addWidget(serialRingIndicator, 2, 2, 1, 2);
+        serial->addWidget(serialCrlf, 3, 0, 1, 2);
         root->addWidget(groupBox(QStringLiteral("Serial Port"), serial));
 
         QGridLayout *midi = new QGridLayout;
@@ -9115,6 +9118,7 @@ private:
         serialShared->setChecked(false);
         serialCtsRts->setChecked(true);
         serialDirect->setChecked(false);
+        serialCrlf->setChecked(false);
         uaeSerial->setChecked(false);
         serialStatus->setChecked(true);
         serialRingIndicator->setChecked(false);
@@ -10464,6 +10468,7 @@ private:
         settings.insert(QStringLiteral("serial_status"), serialStatus->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
         settings.insert(QStringLiteral("serial_ri"), serialRingIndicator->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
         settings.insert(QStringLiteral("serial_direct"), serialDirect->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
+        settings.insert(QStringLiteral("serial_translate"), serialCrlf->isChecked() ? QStringLiteral("crlf_cr") : QStringLiteral("disabled"));
         settings.insert(QStringLiteral("uaeserial"), uaeSerial->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
         const QString dongle = configChoiceValue(dongleChoices, int(sizeof(dongleChoices) / sizeof(dongleChoices[0])), protectionDongle->currentText());
         if (!dongle.isEmpty() && dongle != QStringLiteral("none")) {
@@ -10875,6 +10880,7 @@ private:
             QStringLiteral("serial_status"),
             QStringLiteral("serial_ri"),
             QStringLiteral("serial_direct"),
+            QStringLiteral("serial_translate"),
             QStringLiteral("uaeserial"),
             QStringLiteral("dongle"),
             QStringLiteral("use_gui"),
@@ -11838,6 +11844,8 @@ private:
             serialRingIndicator->setChecked(configBoolValue(value));
         } else if (key == QStringLiteral("serial_direct")) {
             serialDirect->setChecked(configBoolValue(value));
+        } else if (key == QStringLiteral("serial_translate")) {
+            serialCrlf->setChecked(value.compare(QStringLiteral("crlf_cr"), Qt::CaseInsensitive) == 0 || configBoolValue(value));
         } else if (key == QStringLiteral("uaeserial")) {
             uaeSerial->setChecked(configBoolValue(value));
         } else if (key == QStringLiteral("dongle")) {
