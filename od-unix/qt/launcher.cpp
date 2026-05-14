@@ -1549,6 +1549,12 @@ static const ConfigChoice keyboardModeChoices[] = {
     { "A2000/A3000/A4000 (6570-036 MCU)", "ax000_6570-036" }
 };
 
+static const ConfigChoice z3MappingChoices[] = {
+    { "Automatic", "auto" },
+    { "UAE", "uae" },
+    { "Real", "real" }
+};
+
 static const AdvancedCheckChoice advancedCheckChoices[] = {
     { "CIA ROM Overlay", "cia_overlay", true },
     { "CD32 CD", "cd32cd", false },
@@ -3280,6 +3286,7 @@ private:
     QComboBox *z3Fast = nullptr;
     QComboBox *z3ChipMem = nullptr;
     QComboBox *processorSlotMem = nullptr;
+    QComboBox *z3Mapping = nullptr;
     QComboBox *rtgMem = nullptr;
     QComboBox *rtgType = nullptr;
     QComboBox *rtgMonitor = nullptr;
@@ -3788,6 +3795,7 @@ private:
         z3Fast->setCurrentText(QStringLiteral("None"));
         z3ChipMem->setCurrentText(QStringLiteral("None"));
         processorSlotMem->setCurrentText(QStringLiteral("None"));
+        z3Mapping->setCurrentText(QStringLiteral("Automatic"));
         rtgMem->setCurrentText(QStringLiteral("None"));
 
         if (model == QStringLiteral("A500")) {
@@ -4588,7 +4596,12 @@ private:
         root->addWidget(groupBox(QStringLiteral("Memory Settings"), settings));
 
         QGridLayout *advanced = new QGridLayout;
+        z3Mapping = combo(configChoiceDisplays(z3MappingChoices, int(sizeof(z3MappingChoices) / sizeof(z3MappingChoices[0]))));
+        advanced->setColumnStretch(1, 1);
+        advanced->setColumnStretch(3, 1);
         advanced->addWidget(combo({ QStringLiteral("None"), QStringLiteral("Custom memory") }), 0, 0, 1, 2);
+        advanced->addWidget(label(QStringLiteral("Z3 mapping mode:")), 0, 2);
+        advanced->addWidget(z3Mapping, 0, 3);
         advanced->addWidget(label(QStringLiteral("Manufacturer")), 1, 0);
         advanced->addWidget(new QLineEdit, 1, 1);
         advanced->addWidget(label(QStringLiteral("Product")), 1, 2);
@@ -10386,6 +10399,8 @@ private:
         if (processorSlotMem->currentText() != QStringLiteral("None")) {
             settings.insert(QStringLiteral("mbresmem_size"), QString::number(megabytesFromText(processorSlotMem->currentText())));
         }
+        settings.insert(QStringLiteral("z3mapping"),
+            configChoiceValue(z3MappingChoices, int(sizeof(z3MappingChoices) / sizeof(z3MappingChoices[0])), z3Mapping->currentText()));
         settings.insert(QStringLiteral("cachesize"), QString::number(jit->isChecked() ? jitCacheSizeFromPosition(jitCache->value()) : 0));
         settings.insert(QStringLiteral("compfpu"), jitFpu->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
         settings.insert(QStringLiteral("comp_constjump"), jitConstJump->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
@@ -10807,6 +10822,7 @@ private:
             QStringLiteral("z3mem_size"),
             QStringLiteral("megachipmem_size"),
             QStringLiteral("mbresmem_size"),
+            QStringLiteral("z3mapping"),
             QStringLiteral("cachesize"),
             QStringLiteral("compfpu"),
             QStringLiteral("comp_constjump"),
@@ -11655,6 +11671,8 @@ private:
             z3ChipMem->setCurrentText(value == QStringLiteral("0") ? QStringLiteral("None") : value + QStringLiteral(" MB"));
         } else if (key == QStringLiteral("mbresmem_size")) {
             processorSlotMem->setCurrentText(value == QStringLiteral("0") ? QStringLiteral("None") : value + QStringLiteral(" MB"));
+        } else if (key == QStringLiteral("z3mapping")) {
+            z3Mapping->setCurrentText(configChoiceDisplay(z3MappingChoices, int(sizeof(z3MappingChoices) / sizeof(z3MappingChoices[0])), value));
         } else if (key == QStringLiteral("gfxcard_size")) {
             rtgMem->setCurrentText(value == QStringLiteral("0") ? QStringLiteral("None") : value + QStringLiteral(" MB"));
         } else if (key == QStringLiteral("gfxcard_type")) {
