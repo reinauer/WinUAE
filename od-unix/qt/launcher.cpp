@@ -139,6 +139,8 @@ struct WinUaeQtExpansionBoardState {
     bool present = false;
     QString romFile;
     QString rawOptions;
+    QString subtype;
+    QMap<QString, bool> optionBools;
     bool autobootDisabled = false;
     bool dma24Bit = false;
     bool inserted = false;
@@ -2128,6 +2130,25 @@ struct WinUaeQtExpansionBoardChoice {
     bool pcmcia;
 };
 
+struct WinUaeQtExpansionSubtypeChoice {
+    const char *boardKey;
+    const char *display;
+    const char *configValue;
+};
+
+struct WinUaeQtExpansionOptionChoice {
+    const char *boardKey;
+    const char *display;
+    const char *configValue;
+};
+
+struct WinUaeQtCpuBoardSubtypeChoice {
+    const char *type;
+    const char *display;
+    const char *configValue;
+    int maxMemoryMb;
+};
+
 static const char *expansionBoardCategoryNames[] = {
     "SCSI/IDE controllers",
     "RTG board ROMs",
@@ -2201,6 +2222,86 @@ static const WinUaeQtExpansionBoardChoice expansionBoardChoices[] = {
     { "uaeboard_z3", "UAEBOARD Z3", "Other expansions", false, false }
 };
 
+static const WinUaeQtExpansionSubtypeChoice expansionSubtypeChoices[] = {
+    { "a2091", "DMAC-01", "dmac01" },
+    { "a2091", "DMAC-02", "dmac02" },
+    { "gvp1", "Impact A2000-1/X", "a2000-1" },
+    { "gvp1", "Impact A2000-HC", "a2000-hc" },
+    { "gvp1", "Impact A2000-HC+2", "a2000-hc+" },
+    { "trifecta", "EC (IDE)", "ec" },
+    { "trifecta", "LX (IDE + SCSI)", "lx" },
+    { "supradrive", "A500 ByteSync/XP", "bytesync" },
+    { "supradrive", "A2000 Word Sync", "wordsync" },
+    { "supradrive", "A500 Autoboot", "500" },
+    { "supradrive", "Non Autoboot (4x4)", "4x4" },
+    { "supradrive", "2000 DMA", "dma" },
+    { "comspec", "Comspec SA-1000", "comspec1000" },
+    { "comspec", "Comspec SA-2000", "comspec2000" },
+    { "mediator", "1200", "1200" },
+    { "mediator", "1200SX", "1200sx" },
+    { "mediator", "1200TX", "1200tx" },
+    { "mediator", "4000MK2", "4000mkii" },
+    { nullptr, nullptr, nullptr }
+};
+
+static const WinUaeQtExpansionOptionChoice expansionOptionChoices[] = {
+    { "a2090a", "Disable ST-506 support", "nost506" },
+    { "a4091", "Fast Bus", "fastbus" },
+    { "comspec", "RTC", "rtc" },
+    { "mediator", "Full PCI DMA", "fulldma" },
+    { "mediator", "Win Size", "winsize" },
+    { "mediator", "Swap Config", "swapconfig" },
+    { "trifecta", "Buffers (C)", "jumper_c" },
+    { "trifecta", "Unused (D)", "jumper_d" },
+    { "trifecta", "Adspeed (E)", "jumper_e" },
+    { "trumpcard", "Interrupt support", "irq" },
+    { nullptr, nullptr, nullptr }
+};
+
+static const char *cpuBoardTypeChoices[] = {
+    "ACT",
+    "Commodore",
+    "DCE",
+    "Great Valley Products",
+    "Kupke",
+    "MacroSystem",
+    "Phase 5 - Blizzard",
+    "Phase 5 - CyberStorm",
+    "RCS Management",
+    "Interactive Video Systems",
+    "Computer System Associates",
+    "Hardital",
+    "Harms",
+    nullptr
+};
+
+static const WinUaeQtCpuBoardSubtypeChoice cpuBoardSubtypeChoices[] = {
+    { "ACT", "Apollo 1240/1260", "Apollo", 64 },
+    { "ACT", "Apollo 630", "Apollo630", 128 },
+    { "Commodore", "A2620/A2630", "A2630", 128 },
+    { "DCE", "SX32 Pro", "sx32pro", 128 },
+    { "Great Valley Products", "A3001 Series I", "A3001SI", 8 },
+    { "Great Valley Products", "A3001 Series II", "A3001SII", 8 },
+    { "Great Valley Products", "A530", "GVPA530", 8 },
+    { "Great Valley Products", "G-Force 030", "GVPGFORCE030", 128 },
+    { "Great Valley Products", "G-Force 040", "GVPGFORCE040", 128 },
+    { "Great Valley Products", "A1230 Turbo+", "A1230SI", 32 },
+    { "Great Valley Products", "A1230 Turbo+ Series II", "A1230SII", 32 },
+    { "Great Valley Products", "QuikPak", "quikpak", 128 },
+    { "Kupke", "Golem 030", "golem030", 16 },
+    { "MacroSystem", "Falcon 040", "Falcon040", 128 },
+    { "Phase 5 - Blizzard", "Blizzard 1230 III", "Blizzard1230III", 32 },
+    { "Phase 5 - Blizzard", "Blizzard 1230 IV", "Blizzard1230IV", 256 },
+    { "Phase 5 - Blizzard", "Blizzard 1260", "Blizzard1260", 256 },
+    { "Phase 5 - CyberStorm", "CyberStorm MK I", "CyberStormMK1", 128 },
+    { "RCS Management", "Fusion Forty", "FusionForty", 32 },
+    { "Interactive Video Systems", "Vector", "Vector", 32 },
+    { "Computer System Associates", "Twelve Gauge", "twelvegauge", 32 },
+    { "Hardital", "TQM", "tqm", 128 },
+    { "Harms", "Professional 3000", "harms3kp", 128 },
+    { nullptr, nullptr, nullptr, 0 }
+};
+
 static QStringList expansionBoardCategoryItems()
 {
     QStringList items;
@@ -2228,6 +2329,26 @@ static const WinUaeQtExpansionBoardChoice *expansionBoardChoiceByDisplay(const Q
         }
     }
     return nullptr;
+}
+
+static const WinUaeQtCpuBoardSubtypeChoice *cpuBoardSubtypeChoiceByConfig(const QString &configValue)
+{
+    for (const WinUaeQtCpuBoardSubtypeChoice *choice = cpuBoardSubtypeChoices; choice->type; choice++) {
+        if (configValue.compare(QString::fromLatin1(choice->configValue), Qt::CaseInsensitive) == 0) {
+            return choice;
+        }
+    }
+    return nullptr;
+}
+
+static bool cpuBoardTypeHasSubtypes(const QString &type)
+{
+    for (const WinUaeQtCpuBoardSubtypeChoice *choice = cpuBoardSubtypeChoices; choice->type; choice++) {
+        if (type == QString::fromLatin1(choice->type)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 static QString expansionBoardConfigName(const QString &key, int slot)
@@ -2306,7 +2427,8 @@ static QString expansionBoardOptionsValue(const WinUaeQtExpansionBoardState &sta
         QStringLiteral("autoboot_disabled"),
         QStringLiteral("dma24bit"),
         QStringLiteral("inserted"),
-        QStringLiteral("id")
+        QStringLiteral("id"),
+        QStringLiteral("subtype")
     };
     for (const QString &token : expansionOptionTokens(state.rawOptions)) {
         const QString name = token.section(QLatin1Char('='), 0, 0).trimmed();
@@ -2317,9 +2439,17 @@ static QString expansionBoardOptionsValue(const WinUaeQtExpansionBoardState &sta
                 break;
             }
         }
+        for (const WinUaeQtExpansionOptionChoice *choice = expansionOptionChoices; choice->boardKey && !known; choice++) {
+            if (name.compare(QString::fromLatin1(choice->configValue), Qt::CaseInsensitive) == 0) {
+                known = true;
+            }
+        }
         if (!known) {
             tokens.append(token);
         }
+    }
+    if (!state.subtype.isEmpty()) {
+        tokens.append(QStringLiteral("subtype=%1").arg(state.subtype));
     }
     if (state.autobootDisabled) {
         tokens.append(QStringLiteral("autoboot_disabled=true"));
@@ -2332,6 +2462,11 @@ static QString expansionBoardOptionsValue(const WinUaeQtExpansionBoardState &sta
     }
     if (state.id != 7 || !expansionOptionValue(state.rawOptions, QStringLiteral("id")).isEmpty()) {
         tokens.append(QStringLiteral("id=%1").arg(qBound(0, state.id, 7)));
+    }
+    for (auto it = state.optionBools.constBegin(); it != state.optionBools.constEnd(); ++it) {
+        if (it.value()) {
+            tokens.append(it.key());
+        }
     }
     return tokens.join(QLatin1Char(','));
 }
@@ -3029,6 +3164,16 @@ private:
     QCheckBox *expansionBsdsocket = nullptr;
     QCheckBox *expansionScsiDevice = nullptr;
     QCheckBox *expansionSana2 = nullptr;
+    QComboBox *cpuBoardType = nullptr;
+    QComboBox *cpuBoardSubtype = nullptr;
+    QComboBox *cpuBoardRom = nullptr;
+    QComboBox *cpuBoardMem = nullptr;
+    QComboBox *acceleratorOption = nullptr;
+    QComboBox *acceleratorSelector = nullptr;
+    QCheckBox *acceleratorOptionCheck = nullptr;
+    QPushButton *cpuBoardBrowse = nullptr;
+    QString cpuBoardSettingsRaw;
+    bool cpuBoardUpdating = false;
     QTreeWidget *hardwareBoardList = nullptr;
     QCheckBox *hardwareCustomBoardOrder = nullptr;
     QPushButton *hardwareMoveUp = nullptr;
@@ -4792,13 +4937,11 @@ private:
         expansionRomBoard->lineEdit()->setClearButtonEnabled(true);
         expansionRomSubtype = combo({ QStringLiteral("Default") });
         expansionRomSubtype->setEnabled(false);
-        expansionRomSubtype->setToolTip(QStringLiteral("Subtype selection is not connected yet; existing subtype options are preserved when possible."));
         expansionRomSlot = combo({ QStringLiteral("1"), QStringLiteral("2"), QStringLiteral("3"), QStringLiteral("4") });
         expansionRomId = combo({ QStringLiteral("0"), QStringLiteral("1"), QStringLiteral("2"), QStringLiteral("3"), QStringLiteral("4"), QStringLiteral("5"), QStringLiteral("6"), QStringLiteral("7") }, QStringLiteral("7"));
         expansionRomFile = pathCombo();
         expansionBoardOption = combo({ QStringLiteral("None") });
         expansionBoardOption->setEnabled(false);
-        expansionBoardOption->setToolTip(QStringLiteral("Board-specific option selectors still need per-board wiring."));
         expansionRom24BitDma = new QCheckBox(QStringLiteral("24-bit DMA"));
         expansionRomEnabled = new QCheckBox(QStringLiteral("Enabled"));
         expansionRomAutobootDisabled = new QCheckBox(QStringLiteral("Autoboot disabled"));
@@ -4850,6 +4993,12 @@ private:
         connect(expansionRom24BitDma, &QCheckBox::toggled, this, [this]() { storeCurrentExpansionBoardUiState(); });
         connect(expansionRomPcmciaInserted, &QCheckBox::toggled, this, [this]() { storeCurrentExpansionBoardUiState(); });
         connect(expansionRomId, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this]() { storeCurrentExpansionBoardUiState(); });
+        connect(expansionRomSubtype, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this]() { storeCurrentExpansionBoardUiState(); });
+        connect(expansionBoardOption, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this]() {
+            storeCurrentExpansionBoardUiState();
+            updateExpansionBoardOptionCheck();
+        });
+        connect(expansionBoardOptionCheck, &QCheckBox::toggled, this, [this]() { storeCurrentExpansionBoardUiState(); });
         connect(romBrowse, &QPushButton::clicked, this, [this]() {
             addBrowse(expansionRomFile, this, QStringLiteral("Expansion board ROM file"), QStringLiteral("ROM images (*.rom *.bin);;All files (*)"));
             if (!expansionRomFile->currentText().trimmed().isEmpty()) {
@@ -4859,21 +5008,18 @@ private:
         });
 
         QGridLayout *accelerator = new QGridLayout;
-        QComboBox *cpuBoardType = combo({ QStringLiteral("None") });
-        QComboBox *cpuBoardSubtype = combo({ QStringLiteral("Default") });
-        QComboBox *cpuBoardRom = pathCombo();
-        QComboBox *acceleratorOption = combo({ QStringLiteral("None") });
-        QComboBox *acceleratorSelector = combo({ QStringLiteral("None") });
-        QComboBox *cpuBoardMem = combo({ QStringLiteral("None") });
-        QCheckBox *acceleratorOptionCheck = new QCheckBox(QStringLiteral("Enabled"));
-        QPushButton *cpuBoardBrowse = new QPushButton(QStringLiteral("..."));
-        QWidget *acceleratorControls[] = {
-            cpuBoardType, cpuBoardSubtype, cpuBoardRom, acceleratorOption,
-            acceleratorSelector, cpuBoardMem, acceleratorOptionCheck, cpuBoardBrowse
-        };
-        for (QWidget *w : acceleratorControls) {
-            w->setEnabled(false);
-        }
+        cpuBoardType = combo({});
+        cpuBoardSubtype = combo({ QStringLiteral("Default") });
+        cpuBoardRom = pathCombo();
+        acceleratorOption = combo({ QStringLiteral("Settings preserved") });
+        acceleratorSelector = combo({ QStringLiteral("None") });
+        cpuBoardMem = combo({ QStringLiteral("None") });
+        acceleratorOptionCheck = new QCheckBox(QStringLiteral("Enabled"));
+        cpuBoardBrowse = new QPushButton(QStringLiteral("..."));
+        acceleratorOption->setEnabled(false);
+        acceleratorSelector->setEnabled(false);
+        acceleratorOptionCheck->setEnabled(false);
+        acceleratorOption->setToolTip(QStringLiteral("Accelerator-specific settings are preserved when loading a config; editable parity still needs the WinUAE settings bitfield adapter."));
         accelerator->setColumnStretch(2, 1);
         accelerator->addWidget(cpuBoardType, 0, 0);
         accelerator->addWidget(cpuBoardSubtype, 1, 0);
@@ -4886,6 +5032,26 @@ private:
         accelerator->addWidget(acceleratorSelector, 3, 2);
         accelerator->addWidget(acceleratorOptionCheck, 3, 3);
         root->addWidget(groupBox(QStringLiteral("Accelerator Board Settings"), accelerator));
+        populateCpuBoardTypeChoices();
+        populateCpuBoardSubtypeChoices();
+        updateCpuBoardControls();
+
+        connect(cpuBoardType, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this]() {
+            if (!cpuBoardUpdating) {
+                cpuBoardSettingsRaw.clear();
+            }
+            populateCpuBoardSubtypeChoices();
+            updateCpuBoardControls();
+        });
+        connect(cpuBoardSubtype, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this]() {
+            if (!cpuBoardUpdating) {
+                cpuBoardSettingsRaw.clear();
+            }
+            updateCpuBoardControls();
+        });
+        connect(cpuBoardBrowse, &QPushButton::clicked, this, [this]() {
+            addBrowse(cpuBoardRom, this, QStringLiteral("Accelerator board ROM file"), QStringLiteral("ROM images (*.rom *.bin);;All files (*)"));
+        });
 
         QGridLayout *misc = new QGridLayout;
         expansionBsdsocket = new QCheckBox(QStringLiteral("bsdsocket.library"));
@@ -4963,6 +5129,81 @@ private:
         expansionRomBoard->setCurrentIndex(selectedIndex);
     }
 
+    void populateExpansionSubtypeChoices(const QString &boardKey, const QString &requestedValue)
+    {
+        if (!expansionRomSubtype) {
+            return;
+        }
+
+        const QSignalBlocker blocker(expansionRomSubtype);
+        expansionRomSubtype->clear();
+        int selectedIndex = -1;
+        for (const WinUaeQtExpansionSubtypeChoice *choice = expansionSubtypeChoices; choice->boardKey; choice++) {
+            if (boardKey.compare(QString::fromLatin1(choice->boardKey), Qt::CaseInsensitive) != 0) {
+                continue;
+            }
+            expansionRomSubtype->addItem(QString::fromLatin1(choice->display), QString::fromLatin1(choice->configValue));
+            if (requestedValue.compare(QString::fromLatin1(choice->configValue), Qt::CaseInsensitive) == 0) {
+                selectedIndex = expansionRomSubtype->count() - 1;
+            }
+        }
+
+        if (expansionRomSubtype->count() == 0) {
+            expansionRomSubtype->addItem(QStringLiteral("Default"), QString());
+            expansionRomSubtype->setCurrentIndex(0);
+            expansionRomSubtype->setEnabled(false);
+            return;
+        }
+
+        if (selectedIndex < 0 && !requestedValue.isEmpty()) {
+            expansionRomSubtype->addItem(requestedValue, requestedValue);
+            selectedIndex = expansionRomSubtype->count() - 1;
+        }
+        expansionRomSubtype->setCurrentIndex(selectedIndex >= 0 ? selectedIndex : 0);
+        expansionRomSubtype->setEnabled(true);
+    }
+
+    void populateExpansionOptionChoices(const QString &boardKey)
+    {
+        if (!expansionBoardOption) {
+            return;
+        }
+
+        const QString requested = expansionBoardOption->currentData().toString();
+        const WinUaeQtExpansionBoardState state = expansionBoardStates.value(currentExpansionBoardConfigName);
+        const QSignalBlocker blocker(expansionBoardOption);
+        expansionBoardOption->clear();
+        expansionBoardOption->addItem(QStringLiteral("None"), QString());
+        int selectedIndex = 0;
+        for (const WinUaeQtExpansionOptionChoice *choice = expansionOptionChoices; choice->boardKey; choice++) {
+            if (boardKey.compare(QString::fromLatin1(choice->boardKey), Qt::CaseInsensitive) != 0) {
+                continue;
+            }
+            expansionBoardOption->addItem(QString::fromLatin1(choice->display), QString::fromLatin1(choice->configValue));
+            if (requested.compare(QString::fromLatin1(choice->configValue), Qt::CaseInsensitive) == 0) {
+                selectedIndex = expansionBoardOption->count() - 1;
+            } else if (selectedIndex == 0 && requested.isEmpty() && state.optionBools.value(QString::fromLatin1(choice->configValue), false)) {
+                selectedIndex = expansionBoardOption->count() - 1;
+            }
+        }
+        expansionBoardOption->setCurrentIndex(selectedIndex);
+        expansionBoardOption->setEnabled(expansionBoardOption->count() > 1);
+        updateExpansionBoardOptionCheck();
+    }
+
+    void updateExpansionBoardOptionCheck()
+    {
+        if (!expansionBoardOption || !expansionBoardOptionCheck) {
+            return;
+        }
+        const QString option = expansionBoardOption->currentData().toString();
+        const bool enabled = !expansionBoardUpdating && !currentExpansionBoardConfigName.isEmpty() && !option.isEmpty();
+        const WinUaeQtExpansionBoardState state = expansionBoardStates.value(currentExpansionBoardConfigName);
+        const QSignalBlocker blocker(expansionBoardOptionCheck);
+        expansionBoardOptionCheck->setEnabled(enabled);
+        expansionBoardOptionCheck->setChecked(enabled && state.optionBools.value(option, false));
+    }
+
     void loadExpansionBoardUiState(const QString &boardKey, int slot)
     {
         if (!expansionRomEnabled) {
@@ -4996,6 +5237,10 @@ private:
         if (expansionRomPcmciaInserted) {
             expansionRomPcmciaInserted->setEnabled(hasBoard && (!choice || choice->pcmcia));
         }
+        populateExpansionSubtypeChoices(hasBoard ? boardKey : QString(), state.subtype);
+        expansionRomSubtype->setEnabled(hasBoard && expansionRomSubtype->count() > 1);
+        populateExpansionOptionChoices(hasBoard ? boardKey : QString());
+        expansionBoardOption->setEnabled(hasBoard && expansionBoardOption->count() > 1);
 
         setPathComboText(expansionRomFile, state.romFile == QStringLiteral(":ENABLED") ? QString() : state.romFile);
         expansionRomEnabled->setChecked(hasBoard && state.present);
@@ -5004,6 +5249,7 @@ private:
         expansionRomPcmciaInserted->setChecked(hasBoard && state.inserted);
         expansionRomId->setCurrentText(QString::number(qBound(0, state.id, 7)));
         expansionBoardUpdating = false;
+        updateExpansionBoardOptionCheck();
     }
 
     void storeCurrentExpansionBoardUiState()
@@ -5019,6 +5265,15 @@ private:
         state.dma24Bit = expansionRom24BitDma->isChecked();
         state.inserted = expansionRomPcmciaInserted->isChecked();
         state.id = expansionRomId->currentText().toInt();
+        state.subtype = expansionRomSubtype && expansionRomSubtype->isEnabled()
+            ? expansionRomSubtype->currentData().toString()
+            : QString();
+        if (expansionBoardOption && expansionBoardOptionCheck) {
+            const QString option = expansionBoardOption->currentData().toString();
+            if (!option.isEmpty()) {
+                state.optionBools.insert(option, expansionBoardOptionCheck->isChecked());
+            }
+        }
         if (state.present) {
             expansionBoardStates.insert(currentExpansionBoardConfigName, state);
         } else {
@@ -5086,12 +5341,19 @@ private:
         WinUaeQtExpansionBoardState state = expansionBoardStates.value(configName);
         if (isOptions) {
             state.rawOptions = value;
+            state.subtype = expansionOptionValue(value, QStringLiteral("subtype"));
             state.autobootDisabled = expansionOptionBool(value, QStringLiteral("autoboot_disabled"));
             state.dma24Bit = expansionOptionBool(value, QStringLiteral("dma24bit"));
             state.inserted = expansionOptionBool(value, QStringLiteral("inserted"));
             const QString id = expansionOptionValue(value, QStringLiteral("id"));
             if (!id.isEmpty()) {
                 state.id = qBound(0, id.toInt(), 7);
+            }
+            for (const WinUaeQtExpansionOptionChoice *choice = expansionOptionChoices; choice->boardKey; choice++) {
+                if (boardKey.compare(QString::fromLatin1(choice->boardKey), Qt::CaseInsensitive) == 0) {
+                    const QString option = QString::fromLatin1(choice->configValue);
+                    state.optionBools.insert(option, expansionOptionBool(value, option));
+                }
             }
         } else {
             state.present = !value.trimmed().isEmpty();
@@ -5128,6 +5390,147 @@ private:
             }
         }
         return keys;
+    }
+
+    QString selectedCpuBoardType() const
+    {
+        if (!cpuBoardType) {
+            return QString();
+        }
+        const QString data = cpuBoardType->currentData().toString();
+        if (!data.isEmpty()) {
+            return data;
+        }
+        const QString text = cpuBoardType->currentText().trimmed();
+        return text == QStringLiteral("None") ? QString() : text;
+    }
+
+    QString selectedCpuBoardConfigValue() const
+    {
+        if (!cpuBoardSubtype || !cpuBoardSubtype->isEnabled()) {
+            return QString();
+        }
+        return cpuBoardSubtype->currentData().toString();
+    }
+
+    const WinUaeQtCpuBoardSubtypeChoice *selectedCpuBoardChoice() const
+    {
+        return cpuBoardSubtypeChoiceByConfig(selectedCpuBoardConfigValue());
+    }
+
+    QStringList cpuBoardMemoryItems(int maxMemoryMb) const
+    {
+        QStringList items { QStringLiteral("None") };
+        for (int mb : { 1, 2, 4, 8, 16, 32, 64, 128, 256 }) {
+            if (maxMemoryMb <= 0 || mb <= maxMemoryMb) {
+                items.append(QStringLiteral("%1 MB").arg(mb));
+            }
+        }
+        return items;
+    }
+
+    void populateCpuBoardTypeChoices()
+    {
+        if (!cpuBoardType) {
+            return;
+        }
+        const QSignalBlocker blocker(cpuBoardType);
+        const QString selected = selectedCpuBoardType();
+        cpuBoardType->clear();
+        cpuBoardType->addItem(QStringLiteral("None"), QString());
+        int selectedIndex = 0;
+        for (const char **type = cpuBoardTypeChoices; *type; type++) {
+            const QString typeText = QString::fromLatin1(*type);
+            if (!cpuBoardTypeHasSubtypes(typeText)) {
+                continue;
+            }
+            cpuBoardType->addItem(typeText, typeText);
+            if (selected == typeText) {
+                selectedIndex = cpuBoardType->count() - 1;
+            }
+        }
+        cpuBoardType->setCurrentIndex(selectedIndex);
+    }
+
+    void populateCpuBoardSubtypeChoices(const QString &requestedConfig = QString())
+    {
+        if (!cpuBoardSubtype) {
+            return;
+        }
+        const QString selectedType = selectedCpuBoardType();
+        const QString currentConfig = requestedConfig.isEmpty() ? selectedCpuBoardConfigValue() : requestedConfig;
+        const QSignalBlocker blocker(cpuBoardSubtype);
+        cpuBoardSubtype->clear();
+        int selectedIndex = -1;
+        for (const WinUaeQtCpuBoardSubtypeChoice *choice = cpuBoardSubtypeChoices; choice->type; choice++) {
+            if (selectedType != QString::fromLatin1(choice->type)) {
+                continue;
+            }
+            cpuBoardSubtype->addItem(QString::fromLatin1(choice->display), QString::fromLatin1(choice->configValue));
+            if (currentConfig.compare(QString::fromLatin1(choice->configValue), Qt::CaseInsensitive) == 0) {
+                selectedIndex = cpuBoardSubtype->count() - 1;
+            }
+        }
+        if (cpuBoardSubtype->count() == 0) {
+            cpuBoardSubtype->addItem(QStringLiteral("Default"), QString());
+            cpuBoardSubtype->setCurrentIndex(0);
+            cpuBoardSubtype->setEnabled(false);
+            return;
+        }
+        cpuBoardSubtype->setCurrentIndex(selectedIndex >= 0 ? selectedIndex : 0);
+        cpuBoardSubtype->setEnabled(true);
+    }
+
+    void setCpuBoardMemoryMb(int memoryMb)
+    {
+        if (!cpuBoardMem) {
+            return;
+        }
+        const QString text = memoryMb > 0 ? QStringLiteral("%1 MB").arg(memoryMb) : QStringLiteral("None");
+        if (cpuBoardMem->findText(text) < 0) {
+            cpuBoardMem->addItem(text);
+        }
+        cpuBoardMem->setCurrentText(text);
+    }
+
+    void updateCpuBoardControls()
+    {
+        if (!cpuBoardSubtype || !cpuBoardRom || !cpuBoardMem || !cpuBoardBrowse) {
+            return;
+        }
+        const WinUaeQtCpuBoardSubtypeChoice *choice = selectedCpuBoardChoice();
+        const bool hasBoard = choice != nullptr;
+        cpuBoardSubtype->setEnabled(!selectedCpuBoardType().isEmpty() && cpuBoardSubtype->count() > 0);
+        cpuBoardRom->setEnabled(hasBoard);
+        cpuBoardBrowse->setEnabled(hasBoard);
+
+        const int currentMemory = megabytesFromText(cpuBoardMem->currentText());
+        const QSignalBlocker blocker(cpuBoardMem);
+        cpuBoardMem->clear();
+        cpuBoardMem->addItems(cpuBoardMemoryItems(choice ? choice->maxMemoryMb : 0));
+        setCpuBoardMemoryMb(hasBoard ? qMin(currentMemory, choice->maxMemoryMb) : 0);
+        cpuBoardMem->setEnabled(hasBoard);
+    }
+
+    void selectCpuBoardConfigValue(const QString &configValue)
+    {
+        const WinUaeQtCpuBoardSubtypeChoice *choice = cpuBoardSubtypeChoiceByConfig(configValue);
+        cpuBoardUpdating = true;
+        if (!choice) {
+            if (cpuBoardType) {
+                cpuBoardType->setCurrentIndex(0);
+            }
+            populateCpuBoardSubtypeChoices();
+            updateCpuBoardControls();
+            cpuBoardUpdating = false;
+            return;
+        }
+        if (cpuBoardType) {
+            cpuBoardType->setCurrentText(QString::fromLatin1(choice->type));
+        }
+        populateCpuBoardSubtypeChoices(QString::fromLatin1(choice->configValue));
+        updateCpuBoardControls();
+        cpuBoardUpdating = false;
     }
 
     QWidget *makeHardwareInfoPage()
@@ -9633,6 +10036,23 @@ private:
         settings.insert(QStringLiteral("gfxcard_hardware_sprite"), rtgHardwareSprite->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
         settings.insert(QStringLiteral("gfxcard_multithread"), rtgMultithread->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
         settings.insert(QStringLiteral("rtg_modes"), QStringLiteral("0x%1").arg(rtgModeMask(), 0, 16));
+        const QString cpuBoardConfig = selectedCpuBoardConfigValue();
+        if (cpuBoardConfig.isEmpty()) {
+            settings.insert(QStringLiteral("cpuboard_type"), QStringLiteral("none"));
+            settings.insert(QStringLiteral("cpuboardmem1_size"), QStringLiteral("0"));
+            settings.insert(QStringLiteral("cpuboardmem2_size"), QStringLiteral("0"));
+        } else {
+            settings.insert(QStringLiteral("cpuboard_type"), cpuBoardConfig);
+            settings.insert(QStringLiteral("cpuboardmem1_size"), QString::number(megabytesFromText(cpuBoardMem->currentText())));
+            settings.insert(QStringLiteral("cpuboardmem2_size"), QStringLiteral("0"));
+            const QString cpuBoardRomPath = cpuBoardRom->currentText().trimmed();
+            if (!cpuBoardRomPath.isEmpty()) {
+                settings.insert(QStringLiteral("cpuboard_rom_file"), cpuBoardRomPath);
+            }
+            if (!cpuBoardSettingsRaw.trimmed().isEmpty()) {
+                settings.insert(QStringLiteral("cpuboard_settings"), cpuBoardSettingsRaw.trimmed());
+            }
+        }
         insertExpansionBoardSettings(settings);
         settings.insert(QStringLiteral("bsdsocket_emu"), expansionBsdsocket->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
         settings.insert(QStringLiteral("scsi"), expansionScsiDevice->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
@@ -10000,6 +10420,11 @@ private:
             QStringLiteral("gfxcard_multithread"),
             QStringLiteral("rtg_modes"),
             QStringLiteral("gfx_filter_aspect_ratio_rtg"),
+            QStringLiteral("cpuboard_type"),
+            QStringLiteral("cpuboardmem1_size"),
+            QStringLiteral("cpuboardmem2_size"),
+            QStringLiteral("cpuboard_rom_file"),
+            QStringLiteral("cpuboard_settings"),
             QStringLiteral("bsdsocket_emu"),
             QStringLiteral("scsi"),
             QStringLiteral("sana2"),
@@ -10744,6 +11169,21 @@ private:
             rtg16Bit->setCurrentText(rtg16BitText(mask));
             rtg24Bit->setCurrentText(rtg24BitText(mask));
             rtg32Bit->setCurrentText(rtg32BitText(mask));
+        } else if (key == QStringLiteral("cpuboard_type")) {
+            if (value.compare(QStringLiteral("none"), Qt::CaseInsensitive) == 0 || value == QStringLiteral("-")) {
+                selectCpuBoardConfigValue(QString());
+            } else {
+                selectCpuBoardConfigValue(value);
+            }
+        } else if (key == QStringLiteral("cpuboardmem1_size")) {
+            setCpuBoardMemoryMb(value.toInt());
+        } else if (key == QStringLiteral("cpuboard_rom_file")) {
+            setPathComboText(cpuBoardRom, value);
+        } else if (key == QStringLiteral("cpuboard_settings")) {
+            cpuBoardSettingsRaw = value;
+            if (acceleratorOption) {
+                acceleratorOption->setCurrentText(QStringLiteral("Settings preserved"));
+            }
         } else if (applyExpansionBoardSetting(key, value)) {
         } else if (key == QStringLiteral("bsdsocket_emu")) {
             expansionBsdsocket->setChecked(configBoolValue(value));
