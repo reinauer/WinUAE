@@ -54,7 +54,9 @@
 #define ARCADIA 1
 #define AMAX 1
 #define WITH_SOFTFLOAT 1
+#define DRIVESOUND 1
 #define PARALLEL_PORT 1
+#define SERIAL_PORT 1
 
 #define CAN_PRINTF_LONG_LONG 1
 #define RETSIGTYPE void

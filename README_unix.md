@@ -8,8 +8,11 @@ This is an early macOS/Linux port of the WinUAE source tree. The current Unix bu
 - Uses `od-unix/` host abstractions.
 - SDL3 provides the current window, framebuffer presentation, mouse input, keyboard input, and audio output.
 - Qt Widgets provides an initial Windows-style configuration UI. When Qt is available, it is integrated into `winuae_unix` and the standalone `winuae_unix_qt` launcher is also built.
+- Floppy drive click sounds use the built-in WinUAE sample resources when SDL3 audio is active.
+- Native Unix serial support is available for POSIX serial devices and TCP listener endpoints.
 - A2065 Ethernet can use the built-in SLIRP user-mode NAT backend.
 - UAE Zorro II/Zorro III RTG RAM can be configured and autoconfigured, with an initial Unix `uaegfx.card` install path; guest Picasso96 monitor-driver testing and accelerated RTG operations are still incomplete.
+- The Qt Expansions page can enable common Zorro/expansion board ROM entries using the same `*_rom_file` and `*_rom_options` keys as WinUAE.
 - Full UI parity with the Windows configuration dialogs and platform packaging are still incomplete.
 - If SDL3 is not found, CMake currently builds a headless/null-video target.
 
@@ -174,6 +177,23 @@ configs/unix-a1200-install32-rtg-z3.uae.example
 ```
 
 Copy an example to a writable location and replace the ROM and ADF paths before using it with `-config` or `-f`.
+
+## Serial
+
+The Unix serial backend follows the same target-prefixed config style as Windows. Use `unix.serial_port` for command-line overrides and saved configs:
+
+```sh
+# Real serial device
+/tmp/winuae_cmake_build/winuae_unix \
+  -s unix.serial_port=/dev/cu.usbserial-0001 \
+  -s serial_hardware_ctsrts=true
+
+# Telnet-style TCP listener on localhost:1234
+/tmp/winuae_cmake_build/winuae_unix \
+  -s unix.serial_port=TCP:127.0.0.1:1234
+```
+
+`TCP:host:port`, `TCP://host:port`, and `TCP:port` are accepted. Add `/wait` to delay startup until a client connects, for example `TCP:127.0.0.1:1234/wait`.
 
 ## Smoke Test
 
