@@ -36,7 +36,6 @@ int debug_vsync_forced_delay;
 int uaelib_debug;
 int pissoff_value = 15000 * CYCLE_UNIT;
 int multithread_enabled = 1;
-int seriallog;
 int p96syncrate = 312;
 int p96refresh_active;
 int max_uae_width = 8192;
