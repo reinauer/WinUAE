@@ -1516,6 +1516,15 @@ static const ConfigChoice deniseModelChoices[] = {
     { "A1000", "a1000" }
 };
 
+static const ConfigChoice hvSyncChoices[] = {
+    { "Combined + Blanking", "hvcsync" },
+    { "Composite Sync + Blanking", "csync" },
+    { "H/V Sync + Blanking", "hvsync" },
+    { "Combined + Sync", "hvcsync_s" },
+    { "Composite Sync + Sync", "csync_s" },
+    { "H/V Sync + Sync", "hvsync_s" }
+};
+
 static const AdvancedCheckChoice advancedCheckChoices[] = {
     { "CIA ROM Overlay", "cia_overlay", true },
     { "CD32 CD", "cd32cd", false },
@@ -3194,6 +3203,7 @@ private:
     QCheckBox *immediateBlits = nullptr;
     QCheckBox *waitingBlits = nullptr;
     QComboBox *displayOptimization = nullptr;
+    QComboBox *chipsetSyncMode = nullptr;
     QButtonGroup *collisionButtons = nullptr;
     QCheckBox *advancedCompatible = nullptr;
     QButtonGroup *advancedRtcButtons = nullptr;
@@ -4082,12 +4092,15 @@ private:
             QStringLiteral("Partial"),
             QStringLiteral("None")
         }, QStringLiteral("Full"));
+        chipsetSyncMode = combo(configChoiceDisplays(hvSyncChoices, int(sizeof(hvSyncChoices) / sizeof(hvSyncChoices[0]))));
         QGridLayout *options = new QGridLayout;
         options->setColumnStretch(1, 1);
         options->addWidget(immediateBlits, 0, 0, 1, 2);
         options->addWidget(waitingBlits, 1, 0, 1, 2);
         options->addWidget(label(QStringLiteral("Optimizations:")), 2, 0);
         options->addWidget(displayOptimization, 2, 1);
+        options->addWidget(label(QStringLiteral("H/V sync mode:")), 3, 0);
+        options->addWidget(chipsetSyncMode, 3, 1);
         root->addWidget(groupBox(QStringLiteral("Options"), options), 0, 1);
 
         collisionButtons = new QButtonGroup(this);
@@ -8699,6 +8712,7 @@ private:
         immediateBlits->setChecked(false);
         waitingBlits->setChecked(false);
         displayOptimization->setCurrentText(QStringLiteral("Full"));
+        chipsetSyncMode->setCurrentText(QStringLiteral("Combined + Blanking"));
         if (QAbstractButton *button = collisionButtons->button(3)) {
             button->setChecked(true);
         }
@@ -10092,6 +10106,8 @@ private:
         settings.insert(QStringLiteral("waiting_blits"), waitingBlits->isChecked() ? QStringLiteral("automatic") : QStringLiteral("disabled"));
         settings.insert(QStringLiteral("collision_level"), QStringList({ QStringLiteral("none"), QStringLiteral("sprites"), QStringLiteral("playfields"), QStringLiteral("full") }).value(collisionButtons->checkedId(), QStringLiteral("full")));
         settings.insert(QStringLiteral("display_optimizations"), displayOptimizationConfigValue(displayOptimization->currentText()));
+        settings.insert(QStringLiteral("hvcsync"),
+            configChoiceValue(hvSyncChoices, int(sizeof(hvSyncChoices) / sizeof(hvSyncChoices[0])), chipsetSyncMode->currentText()));
         settings.insert(QStringLiteral("ciaatod"), advancedRadioValue(advancedCiaTodButtons, ciaTodChoices, int(sizeof(ciaTodChoices) / sizeof(ciaTodChoices[0]))));
         settings.insert(QStringLiteral("rtc"), advancedRadioValue(advancedRtcButtons, rtcChoices, int(sizeof(rtcChoices) / sizeof(rtcChoices[0]))));
         settings.insert(QStringLiteral("chipset_rtc_adjust"), advancedRtcAdjust->text().trimmed().isEmpty() ? QStringLiteral("0") : advancedRtcAdjust->text().trimmed());
@@ -10532,6 +10548,7 @@ private:
             QStringLiteral("waiting_blits"),
             QStringLiteral("collision_level"),
             QStringLiteral("display_optimizations"),
+            QStringLiteral("hvcsync"),
             QStringLiteral("ciaatod"),
             QStringLiteral("rtc"),
             QStringLiteral("chipset_rtc_adjust"),
@@ -11255,6 +11272,8 @@ private:
             }
         } else if (key == QStringLiteral("display_optimizations")) {
             displayOptimization->setCurrentText(displayOptimizationText(value));
+        } else if (key == QStringLiteral("hvcsync")) {
+            chipsetSyncMode->setCurrentText(configChoiceDisplay(hvSyncChoices, int(sizeof(hvSyncChoices) / sizeof(hvSyncChoices[0])), value));
         } else if (key == QStringLiteral("ciaatod")) {
             setAdvancedRadioValue(advancedCiaTodButtons, ciaTodChoices, int(sizeof(ciaTodChoices) / sizeof(ciaTodChoices[0])), value);
         } else if (key == QStringLiteral("rtc")) {
