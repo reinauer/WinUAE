@@ -16,6 +16,8 @@ This is an early macOS/Linux port of the WinUAE source tree. The current Unix bu
 - Full UI parity with the Windows configuration dialogs and platform packaging are still incomplete.
 - If SDL3 is not found, CMake currently builds a headless/null-video target.
 
+See `UNIX_RUNTIME_PARITY.md` for the current Windows-vs-Unix runtime feature matrix.
+
 ## Requirements
 
 - CMake 3.20 or newer
