@@ -2149,6 +2149,14 @@ struct WinUaeQtCpuBoardSubtypeChoice {
     int maxMemoryMb;
 };
 
+struct WinUaeQtCpuBoardOptionChoice {
+    const char *boardConfigValue;
+    const char *display;
+    const char *configValue;
+    const char *multiDisplays;
+    const char *multiValues;
+};
+
 static const char *expansionBoardCategoryNames[] = {
     "SCSI/IDE controllers",
     "RTG board ROMs",
@@ -2302,6 +2310,24 @@ static const WinUaeQtCpuBoardSubtypeChoice cpuBoardSubtypeChoices[] = {
     { nullptr, nullptr, nullptr, 0 }
 };
 
+static const WinUaeQtCpuBoardOptionChoice cpuBoardOptionChoices[] = {
+    { "Apollo", "SCSI module installed", "scsi", nullptr, nullptr },
+    { "Apollo", "Memory disable", "memory", nullptr, nullptr },
+    { "Apollo630", "Memory disable", "memory", nullptr, nullptr },
+    { "A2630", "OSMODE (J304)", "j304", nullptr, nullptr },
+    { "A1230SII", "Board disable (J5)", "disabled", nullptr, nullptr },
+    { "A1230SII", "SCSI Disable (J6)", "scsidisabled", nullptr, nullptr },
+    { "Blizzard1230III", "MapROM", "maprom", nullptr, nullptr },
+    { "Blizzard1230IV", "MapROM", "maprom", nullptr, nullptr },
+    { "Blizzard1260", "MapROM", "maprom", nullptr, nullptr },
+    { "Vector", "Memory (JP12)", "memory", "4M|8M|16M|32M", "4m|8m|16m|32m" },
+    { "Vector", "Disable FastROM (JP17)", "disfastrom", nullptr, nullptr },
+    { "Vector", "Autoboot (JP20)", "autoboot", nullptr, nullptr },
+    { "Vector", "Dis68kRAM (JP14)", "dis68kram", nullptr, nullptr },
+    { "Vector", "Burst (JP13)", "burst", nullptr, nullptr },
+    { nullptr, nullptr, nullptr, nullptr, nullptr }
+};
+
 static QStringList expansionBoardCategoryItems()
 {
     QStringList items;
@@ -2335,6 +2361,17 @@ static const WinUaeQtCpuBoardSubtypeChoice *cpuBoardSubtypeChoiceByConfig(const 
 {
     for (const WinUaeQtCpuBoardSubtypeChoice *choice = cpuBoardSubtypeChoices; choice->type; choice++) {
         if (configValue.compare(QString::fromLatin1(choice->configValue), Qt::CaseInsensitive) == 0) {
+            return choice;
+        }
+    }
+    return nullptr;
+}
+
+static const WinUaeQtCpuBoardOptionChoice *cpuBoardOptionChoiceByConfig(const QString &boardConfigValue, const QString &configValue)
+{
+    for (const WinUaeQtCpuBoardOptionChoice *choice = cpuBoardOptionChoices; choice->boardConfigValue; choice++) {
+        if (boardConfigValue.compare(QString::fromLatin1(choice->boardConfigValue), Qt::CaseInsensitive) == 0
+            && configValue.compare(QString::fromLatin1(choice->configValue), Qt::CaseInsensitive) == 0) {
             return choice;
         }
     }
@@ -5019,7 +5056,6 @@ private:
         acceleratorOption->setEnabled(false);
         acceleratorSelector->setEnabled(false);
         acceleratorOptionCheck->setEnabled(false);
-        acceleratorOption->setToolTip(QStringLiteral("Accelerator-specific settings are preserved when loading a config; editable parity still needs the WinUAE settings bitfield adapter."));
         accelerator->setColumnStretch(2, 1);
         accelerator->addWidget(cpuBoardType, 0, 0);
         accelerator->addWidget(cpuBoardSubtype, 1, 0);
@@ -5051,6 +5087,15 @@ private:
         });
         connect(cpuBoardBrowse, &QPushButton::clicked, this, [this]() {
             addBrowse(cpuBoardRom, this, QStringLiteral("Accelerator board ROM file"), QStringLiteral("ROM images (*.rom *.bin);;All files (*)"));
+        });
+        connect(acceleratorOption, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this]() {
+            updateCpuBoardOptionControls();
+        });
+        connect(acceleratorSelector, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this]() {
+            storeCpuBoardOptionFromUi();
+        });
+        connect(acceleratorOptionCheck, &QCheckBox::toggled, this, [this]() {
+            storeCpuBoardOptionFromUi();
         });
 
         QGridLayout *misc = new QGridLayout;
@@ -5429,6 +5474,80 @@ private:
         return items;
     }
 
+    QStringList pipeSeparatedValues(const char *text) const
+    {
+        if (!text) {
+            return {};
+        }
+        return QString::fromLatin1(text).split(QLatin1Char('|'), Qt::KeepEmptyParts);
+    }
+
+    bool cpuBoardOptionIsMulti(const WinUaeQtCpuBoardOptionChoice *choice) const
+    {
+        return choice && choice->multiValues && choice->multiValues[0];
+    }
+
+    QStringList cpuBoardOptionTokens(const WinUaeQtCpuBoardOptionChoice *choice) const
+    {
+        if (!choice) {
+            return {};
+        }
+        if (cpuBoardOptionIsMulti(choice)) {
+            return pipeSeparatedValues(choice->multiValues);
+        }
+        return { QString::fromLatin1(choice->configValue) };
+    }
+
+    bool cpuBoardSettingsContainToken(const QString &token) const
+    {
+        for (const QString &field : expansionOptionTokens(cpuBoardSettingsRaw)) {
+            if (field.compare(token, Qt::CaseInsensitive) == 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    QString cpuBoardSelectedMultiValue(const WinUaeQtCpuBoardOptionChoice *choice) const
+    {
+        const QStringList values = cpuBoardOptionTokens(choice);
+        for (const QString &value : values) {
+            if (cpuBoardSettingsContainToken(value)) {
+                return value;
+            }
+        }
+        return values.value(0);
+    }
+
+    void setCpuBoardSettingsToken(const WinUaeQtCpuBoardOptionChoice *choice, const QString &selectedValue, bool enabled)
+    {
+        if (!choice) {
+            return;
+        }
+        const QStringList removeTokens = cpuBoardOptionTokens(choice);
+        QStringList tokens;
+        for (const QString &token : expansionOptionTokens(cpuBoardSettingsRaw)) {
+            bool remove = false;
+            for (const QString &known : removeTokens) {
+                if (token.compare(known, Qt::CaseInsensitive) == 0) {
+                    remove = true;
+                    break;
+                }
+            }
+            if (!remove) {
+                tokens.append(token);
+            }
+        }
+        if (cpuBoardOptionIsMulti(choice)) {
+            if (!selectedValue.isEmpty()) {
+                tokens.append(selectedValue);
+            }
+        } else if (enabled) {
+            tokens.append(QString::fromLatin1(choice->configValue));
+        }
+        cpuBoardSettingsRaw = tokens.join(QLatin1Char(','));
+    }
+
     void populateCpuBoardTypeChoices()
     {
         if (!cpuBoardType) {
@@ -5510,6 +5629,7 @@ private:
         cpuBoardMem->addItems(cpuBoardMemoryItems(choice ? choice->maxMemoryMb : 0));
         setCpuBoardMemoryMb(hasBoard ? qMin(currentMemory, choice->maxMemoryMb) : 0);
         cpuBoardMem->setEnabled(hasBoard);
+        updateCpuBoardOptionChoices();
     }
 
     void selectCpuBoardConfigValue(const QString &configValue)
@@ -5531,6 +5651,87 @@ private:
         populateCpuBoardSubtypeChoices(QString::fromLatin1(choice->configValue));
         updateCpuBoardControls();
         cpuBoardUpdating = false;
+    }
+
+    void updateCpuBoardOptionChoices()
+    {
+        if (!acceleratorOption) {
+            return;
+        }
+        const QString boardConfigValue = selectedCpuBoardConfigValue();
+        const QString requested = acceleratorOption->currentData().toString();
+        const QSignalBlocker blocker(acceleratorOption);
+        acceleratorOption->clear();
+        acceleratorOption->addItem(QStringLiteral("None"), QString());
+        int selectedIndex = 0;
+        for (const WinUaeQtCpuBoardOptionChoice *choice = cpuBoardOptionChoices; choice->boardConfigValue; choice++) {
+            if (boardConfigValue.compare(QString::fromLatin1(choice->boardConfigValue), Qt::CaseInsensitive) != 0) {
+                continue;
+            }
+            acceleratorOption->addItem(QString::fromLatin1(choice->display), QString::fromLatin1(choice->configValue));
+            if (requested.compare(QString::fromLatin1(choice->configValue), Qt::CaseInsensitive) == 0) {
+                selectedIndex = acceleratorOption->count() - 1;
+            } else if (selectedIndex == 0 && requested.isEmpty()) {
+                for (const QString &token : cpuBoardOptionTokens(choice)) {
+                    if (cpuBoardSettingsContainToken(token)) {
+                        selectedIndex = acceleratorOption->count() - 1;
+                        break;
+                    }
+                }
+            }
+        }
+        acceleratorOption->setCurrentIndex(selectedIndex);
+        acceleratorOption->setEnabled(acceleratorOption->count() > 1);
+        updateCpuBoardOptionControls();
+    }
+
+    void updateCpuBoardOptionControls()
+    {
+        if (!acceleratorOption || !acceleratorSelector || !acceleratorOptionCheck) {
+            return;
+        }
+        const QString boardConfigValue = selectedCpuBoardConfigValue();
+        const QString option = acceleratorOption->currentData().toString();
+        const WinUaeQtCpuBoardOptionChoice *choice = cpuBoardOptionChoiceByConfig(boardConfigValue, option);
+        const bool isMulti = cpuBoardOptionIsMulti(choice);
+
+        const QSignalBlocker selectorBlocker(acceleratorSelector);
+        const QSignalBlocker checkBlocker(acceleratorOptionCheck);
+        acceleratorSelector->clear();
+        if (isMulti) {
+            const QStringList displays = pipeSeparatedValues(choice->multiDisplays);
+            const QStringList values = pipeSeparatedValues(choice->multiValues);
+            for (int i = 0; i < values.size(); i++) {
+                acceleratorSelector->addItem(displays.value(i, values[i]), values[i]);
+            }
+            const QString selected = cpuBoardSelectedMultiValue(choice);
+            const int index = acceleratorSelector->findData(selected);
+            acceleratorSelector->setCurrentIndex(index >= 0 ? index : 0);
+        } else {
+            acceleratorSelector->addItem(QStringLiteral("None"), QString());
+            acceleratorSelector->setCurrentIndex(0);
+        }
+        acceleratorSelector->setEnabled(isMulti);
+        acceleratorOptionCheck->setEnabled(choice && !isMulti);
+        acceleratorOptionCheck->setChecked(choice && !isMulti && cpuBoardSettingsContainToken(QString::fromLatin1(choice->configValue)));
+    }
+
+    void storeCpuBoardOptionFromUi()
+    {
+        if (cpuBoardUpdating || !acceleratorOption || !acceleratorSelector || !acceleratorOptionCheck) {
+            return;
+        }
+        const QString boardConfigValue = selectedCpuBoardConfigValue();
+        const QString option = acceleratorOption->currentData().toString();
+        const WinUaeQtCpuBoardOptionChoice *choice = cpuBoardOptionChoiceByConfig(boardConfigValue, option);
+        if (!choice) {
+            return;
+        }
+        if (cpuBoardOptionIsMulti(choice)) {
+            setCpuBoardSettingsToken(choice, acceleratorSelector->currentData().toString(), true);
+        } else {
+            setCpuBoardSettingsToken(choice, QString(), acceleratorOptionCheck->isChecked());
+        }
     }
 
     QWidget *makeHardwareInfoPage()
