@@ -1537,6 +1537,18 @@ static const ConfigChoice genlockModeChoices[] = {
     { "Pioneer LaserDisc Player", "pioneer_ld" }
 };
 
+static const ConfigChoice keyboardModeChoices[] = {
+    { "Keyboard disconnected", "disconnected" },
+    { "UAE High level emulation", "UAE" },
+    { "A500 / A500+ (6570-036 MCU)", "a500_6570-036" },
+    { "A600 (6570-036 MCU)", "a600_6570-036" },
+    { "A1000 (6500-1 MCU, ROM not yet dumped)", "a1000_6500-1" },
+    { "A1000 (6570-036 MCU)", "a1000_6570-036" },
+    { "A1200 (68HC05C MCU)", "a1200_6805" },
+    { "A2000 (Cherry, 8039 MCU)", "a2000_8039" },
+    { "A2000/A3000/A4000 (6570-036 MCU)", "ax000_6570-036" }
+};
+
 static const AdvancedCheckChoice advancedCheckChoices[] = {
     { "CIA ROM Overlay", "cia_overlay", true },
     { "CD32 CD", "cd32cd", false },
@@ -3237,6 +3249,8 @@ private:
     QCheckBox *genlockKeepAspect = nullptr;
     QComboBox *genlockFile = nullptr;
     QPushButton *genlockFileBrowse = nullptr;
+    QComboBox *keyboardMode = nullptr;
+    QCheckBox *keyboardNkro = nullptr;
     QString genlockImagePath;
     QString genlockVideoPath;
     bool genlockUpdating = false;
@@ -4156,6 +4170,14 @@ private:
         }
         root->addWidget(groupBox(QStringLiteral("Collision Level"), collision), 1, 0, 1, 2);
 
+        keyboardMode = combo(configChoiceDisplays(keyboardModeChoices, int(sizeof(keyboardModeChoices) / sizeof(keyboardModeChoices[0]))), QStringLiteral("UAE High level emulation"));
+        keyboardNkro = new QCheckBox(QStringLiteral("Keyboard N-key rollover"));
+        QGridLayout *keyboard = new QGridLayout;
+        keyboard->setColumnStretch(0, 1);
+        keyboard->addWidget(keyboardMode, 0, 0);
+        keyboard->addWidget(keyboardNkro, 1, 0);
+        root->addWidget(groupBox(QStringLiteral("Keyboard"), keyboard), 2, 0, 1, 2);
+
         genlockConnected = new QCheckBox(QStringLiteral("Genlock connected"));
         genlockMode = combo(configChoiceDisplays(genlockModeChoices, int(sizeof(genlockModeChoices) / sizeof(genlockModeChoices[0]))));
         genlockMix = combo({
@@ -4184,8 +4206,8 @@ private:
         genlock->addWidget(genlockKeepAspect, 2, 0, 1, 3);
         genlock->addWidget(genlockFile, 3, 0, 1, 2);
         genlock->addWidget(genlockFileBrowse, 3, 2);
-        root->addWidget(groupBox(QStringLiteral("Genlock"), genlock), 2, 0, 1, 2);
-        root->setRowStretch(3, 1);
+        root->addWidget(groupBox(QStringLiteral("Genlock"), genlock), 3, 0, 1, 2);
+        root->setRowStretch(4, 1);
 
         connect(chipsetNtsc, &QCheckBox::toggled, this, [this](bool checked) {
             setCheckBoxIfChanged(ntsc, checked);
@@ -8855,6 +8877,8 @@ private:
         genlockImagePath.clear();
         genlockVideoPath.clear();
         updateGenlockControlState();
+        keyboardMode->setCurrentText(QStringLiteral("UAE High level emulation"));
+        keyboardNkro->setChecked(true);
         if (QAbstractButton *button = collisionButtons->button(3)) {
             button->setChecked(true);
         }
@@ -10270,6 +10294,10 @@ private:
         if (!videoPath.isEmpty()) {
             settings.insert(QStringLiteral("genlock_video"), videoPath);
         }
+        const QString keyboardType = configChoiceValue(keyboardModeChoices, int(sizeof(keyboardModeChoices) / sizeof(keyboardModeChoices[0])), keyboardMode->currentText());
+        settings.insert(QStringLiteral("keyboard_connected"), keyboardType == QStringLiteral("disconnected") ? QStringLiteral("false") : QStringLiteral("true"));
+        settings.insert(QStringLiteral("keyboard_type"), keyboardType);
+        settings.insert(QStringLiteral("keyboard_nkro"), keyboardNkro->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
         settings.insert(QStringLiteral("ciaatod"), advancedRadioValue(advancedCiaTodButtons, ciaTodChoices, int(sizeof(ciaTodChoices) / sizeof(ciaTodChoices[0]))));
         settings.insert(QStringLiteral("rtc"), advancedRadioValue(advancedRtcButtons, rtcChoices, int(sizeof(rtcChoices) / sizeof(rtcChoices[0]))));
         settings.insert(QStringLiteral("chipset_rtc_adjust"), advancedRtcAdjust->text().trimmed().isEmpty() ? QStringLiteral("0") : advancedRtcAdjust->text().trimmed());
@@ -10718,6 +10746,9 @@ private:
             QStringLiteral("genlock_aspect"),
             QStringLiteral("genlock_image"),
             QStringLiteral("genlock_video"),
+            QStringLiteral("keyboard_connected"),
+            QStringLiteral("keyboard_type"),
+            QStringLiteral("keyboard_nkro"),
             QStringLiteral("ciaatod"),
             QStringLiteral("rtc"),
             QStringLiteral("chipset_rtc_adjust"),
@@ -11467,6 +11498,16 @@ private:
             if (genlockModeUsesVideoFile(mode)) {
                 setPathComboText(genlockFile, value);
             }
+        } else if (key == QStringLiteral("keyboard_connected")) {
+            if (!configBoolValue(value)) {
+                keyboardMode->setCurrentText(QStringLiteral("Keyboard disconnected"));
+            } else if (keyboardMode->currentText() == QStringLiteral("Keyboard disconnected")) {
+                keyboardMode->setCurrentText(QStringLiteral("UAE High level emulation"));
+            }
+        } else if (key == QStringLiteral("keyboard_type")) {
+            keyboardMode->setCurrentText(configChoiceDisplay(keyboardModeChoices, int(sizeof(keyboardModeChoices) / sizeof(keyboardModeChoices[0])), value));
+        } else if (key == QStringLiteral("keyboard_nkro")) {
+            keyboardNkro->setChecked(configBoolValue(value));
         } else if (key == QStringLiteral("ciaatod")) {
             setAdvancedRadioValue(advancedCiaTodButtons, ciaTodChoices, int(sizeof(ciaTodChoices) / sizeof(ciaTodChoices[0])), value);
         } else if (key == QStringLiteral("rtc")) {
