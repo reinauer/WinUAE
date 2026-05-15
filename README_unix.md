@@ -7,6 +7,7 @@ This is an early macOS/Linux port of the WinUAE source tree. The current Unix bu
 - Builds with CMake as `winuae_unix`.
 - Uses `od-unix/` host abstractions.
 - SDL3 provides the current window, framebuffer presentation, mouse input, keyboard input, and audio output.
+- SDL3 gamepads and non-gamepad joysticks are exposed through the WinUAE input-device layer for game-port use; the remap/test dialogs are still disabled.
 - Qt Widgets provides an initial Windows-style configuration UI. When Qt is available, it is integrated into `winuae_unix` and the standalone `winuae_unix_qt` launcher is also built.
 - Floppy drive click sounds use the built-in WinUAE sample resources when SDL3 audio is active.
 - Native Unix serial support is available for POSIX serial devices and TCP listener endpoints.
@@ -240,6 +241,8 @@ export WINUAE_SMOKE_LOG=/tmp/winuae_unix_smoke.log
 - Press `Esc` while grabbed to release the mouse.
 - Press `Ctrl+G` or `Cmd+G` to release the mouse.
 - Press `Ctrl+Q` or `Cmd+Q` to quit.
+- SDL3 gamepads use the standard SDL layout: left stick and D-pad map to joystick directions, South/East/West/North map to the first four buttons, and CD32 mode follows the Windows default button order where possible.
+- Non-gamepad SDL joysticks expose their native axes, hats, and buttons; hats also map to joystick directions by default.
 - Press `F12` to open the integrated Qt settings UI during emulation.
 - Hold `End` and press `F1`-`F4` to change DF0:-DF3:, `F5` to change the CD image, and `F6` to restore a state. Hold `Shift` with those shortcuts to eject the matching floppy/CD image or save state, matching the Windows key map.
 - On MacBook or compact Apple keyboards, `End` is usually `Fn`/Globe + `Right Arrow`. Depending on macOS keyboard settings, function keys may also need `Fn`/Globe, so the MacBook form is `Fn`/Globe + `Right Arrow`, then `F1`-`F6` or `Shift` + `F1`-`F6`. Enabling "Use F1, F2, etc. keys as standard function keys" in macOS makes these closer to the Windows chords.

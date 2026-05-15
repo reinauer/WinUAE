@@ -1,6 +1,12 @@
 #include "sysconfig.h"
 #include "sysdeps.h"
 
+#ifdef UAE_UNIX_WITH_SDL3
+#define SDL_MAIN_HANDLED
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_main.h>
+#endif
+
 #include "options.h"
 #include "traps.h"
 #include "inputdevice.h"
@@ -28,6 +34,104 @@ static TCHAR keyboard_friendly[] = _T("Unix Keyboard");
 static TCHAR keyboard_unique_name[] = _T("unix.keyboard");
 static bool mouse_active;
 static bool keyboard_state[512];
+
+#ifdef UAE_UNIX_WITH_SDL3
+enum {
+    UNIX_AXIS_SDL,
+    UNIX_AXIS_GAMEPAD_DPAD_X,
+    UNIX_AXIS_GAMEPAD_DPAD_Y,
+    UNIX_AXIS_HAT_X,
+    UNIX_AXIS_HAT_Y
+};
+
+struct unix_joystick_device {
+    SDL_JoystickID instance_id;
+    SDL_Gamepad *gamepad;
+    SDL_Joystick *joystick;
+    bool is_gamepad;
+    TCHAR friendly[128];
+    TCHAR unique[160];
+    int axis_count;
+    int button_count;
+    int axis_kind[ID_AXIS_TOTAL];
+    int axis_code[ID_AXIS_TOTAL];
+    int button_code[ID_BUTTON_TOTAL];
+    int axis_state[ID_AXIS_TOTAL];
+    bool button_state[ID_BUTTON_TOTAL];
+};
+
+static unix_joystick_device unix_joysticks[MAX_INPUT_DEVICES];
+static int unix_joystick_count;
+static bool unix_joystick_sdl_initialized;
+
+static const SDL_GamepadAxis unix_gamepad_axes[] = {
+    SDL_GAMEPAD_AXIS_LEFTX,
+    SDL_GAMEPAD_AXIS_LEFTY,
+    SDL_GAMEPAD_AXIS_RIGHTX,
+    SDL_GAMEPAD_AXIS_RIGHTY,
+    SDL_GAMEPAD_AXIS_LEFT_TRIGGER,
+    SDL_GAMEPAD_AXIS_RIGHT_TRIGGER
+};
+
+static const TCHAR *const unix_gamepad_axis_names[] = {
+    _T("Left X Axis"),
+    _T("Left Y Axis"),
+    _T("Right X Axis"),
+    _T("Right Y Axis"),
+    _T("Left Trigger"),
+    _T("Right Trigger")
+};
+
+static const SDL_GamepadButton unix_gamepad_buttons[] = {
+    SDL_GAMEPAD_BUTTON_SOUTH,
+    SDL_GAMEPAD_BUTTON_EAST,
+    SDL_GAMEPAD_BUTTON_WEST,
+    SDL_GAMEPAD_BUTTON_NORTH,
+    SDL_GAMEPAD_BUTTON_LEFT_SHOULDER,
+    SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER,
+    SDL_GAMEPAD_BUTTON_START,
+    SDL_GAMEPAD_BUTTON_BACK,
+    SDL_GAMEPAD_BUTTON_LEFT_STICK,
+    SDL_GAMEPAD_BUTTON_RIGHT_STICK,
+    SDL_GAMEPAD_BUTTON_GUIDE,
+    SDL_GAMEPAD_BUTTON_MISC1,
+    SDL_GAMEPAD_BUTTON_RIGHT_PADDLE1,
+    SDL_GAMEPAD_BUTTON_LEFT_PADDLE1,
+    SDL_GAMEPAD_BUTTON_RIGHT_PADDLE2,
+    SDL_GAMEPAD_BUTTON_LEFT_PADDLE2,
+    SDL_GAMEPAD_BUTTON_TOUCHPAD,
+    SDL_GAMEPAD_BUTTON_MISC2,
+    SDL_GAMEPAD_BUTTON_MISC3,
+    SDL_GAMEPAD_BUTTON_MISC4,
+    SDL_GAMEPAD_BUTTON_MISC5,
+    SDL_GAMEPAD_BUTTON_MISC6
+};
+
+static const TCHAR *const unix_gamepad_button_names[] = {
+    _T("South Button"),
+    _T("East Button"),
+    _T("West Button"),
+    _T("North Button"),
+    _T("Left Shoulder"),
+    _T("Right Shoulder"),
+    _T("Start Button"),
+    _T("Back Button"),
+    _T("Left Stick Button"),
+    _T("Right Stick Button"),
+    _T("Guide Button"),
+    _T("Misc Button 1"),
+    _T("Right Paddle 1"),
+    _T("Left Paddle 1"),
+    _T("Right Paddle 2"),
+    _T("Left Paddle 2"),
+    _T("Touchpad Button"),
+    _T("Misc Button 2"),
+    _T("Misc Button 3"),
+    _T("Misc Button 4"),
+    _T("Misc Button 5"),
+    _T("Misc Button 6")
+};
+#endif
 
 enum {
     UKEY_A = 4,
@@ -529,11 +633,492 @@ static int keyboard_get_widget_first(int, int type)
 }
 static int keyboard_get_flags(int) { return 0; }
 
+#ifdef UAE_UNIX_WITH_SDL3
+static void joystick_release_device(int index)
+{
+    if (index < 0 || index >= unix_joystick_count) {
+        return;
+    }
+    unix_joystick_device *dev = &unix_joysticks[index];
+    for (int i = 0; i < dev->axis_count && i < ID_AXIS_TOTAL; i++) {
+        if (dev->axis_state[i]) {
+            setjoystickstate(index, i, 0, 32767);
+            dev->axis_state[i] = 0;
+        }
+    }
+    for (int i = 0; i < dev->button_count && i < ID_BUTTON_TOTAL; i++) {
+        if (dev->button_state[i]) {
+            setjoybuttonstate(index, i, 0);
+            dev->button_state[i] = false;
+        }
+    }
+}
+
+static void joystick_close_devices(void)
+{
+    for (int i = 0; i < unix_joystick_count; i++) {
+        joystick_release_device(i);
+        if (unix_joysticks[i].gamepad) {
+            SDL_CloseGamepad(unix_joysticks[i].gamepad);
+        } else if (unix_joysticks[i].joystick) {
+            SDL_CloseJoystick(unix_joysticks[i].joystick);
+        }
+    }
+    memset(unix_joysticks, 0, sizeof unix_joysticks);
+    unix_joystick_count = 0;
+}
+
+static void joystick_copy_text(TCHAR *dst, int dstlen, const char *src, const TCHAR *fallback)
+{
+    if (!dst || dstlen <= 0) {
+        return;
+    }
+    if (src && src[0]) {
+        _sntprintf(dst, dstlen, _T("%s"), src);
+    } else {
+        _sntprintf(dst, dstlen, _T("%s"), fallback);
+    }
+    dst[dstlen - 1] = 0;
+}
+
+static void joystick_make_unique(TCHAR *dst, int dstlen, const TCHAR *kind, SDL_JoystickID instance_id, int ordinal)
+{
+    char guid[64];
+    SDL_GUIDToString(SDL_GetJoystickGUIDForID(instance_id), guid, sizeof guid);
+    _sntprintf(dst, dstlen, _T("unix.%s.%s.%d"), kind, guid, ordinal);
+    dst[dstlen - 1] = 0;
+}
+
+static void joystick_add_axis(unix_joystick_device *dev, int kind, int code)
+{
+    if (!dev || dev->axis_count >= ID_AXIS_TOTAL) {
+        return;
+    }
+    int axis = dev->axis_count++;
+    dev->axis_kind[axis] = kind;
+    dev->axis_code[axis] = code;
+}
+
+static void joystick_add_button(unix_joystick_device *dev, int code)
+{
+    if (!dev || dev->button_count >= ID_BUTTON_TOTAL) {
+        return;
+    }
+    dev->button_code[dev->button_count++] = code;
+}
+
+static void joystick_register_gamepad(SDL_JoystickID instance_id)
+{
+    if (unix_joystick_count >= MAX_INPUT_DEVICES) {
+        return;
+    }
+
+    SDL_Gamepad *gamepad = SDL_OpenGamepad(instance_id);
+    if (!gamepad) {
+        write_log(_T("SDL3: failed to open gamepad %d: %s\n"), (int)instance_id, SDL_GetError());
+        return;
+    }
+
+    unix_joystick_device *dev = &unix_joysticks[unix_joystick_count];
+    memset(dev, 0, sizeof *dev);
+    dev->instance_id = instance_id;
+    dev->gamepad = gamepad;
+    dev->is_gamepad = true;
+    joystick_copy_text(dev->friendly, sizeof dev->friendly / sizeof dev->friendly[0],
+        SDL_GetGamepadName(gamepad), _T("SDL Gamepad"));
+    joystick_make_unique(dev->unique, sizeof dev->unique / sizeof dev->unique[0],
+        _T("gamepad"), instance_id, unix_joystick_count);
+
+    for (int i = 0; i < (int)(sizeof unix_gamepad_axes / sizeof unix_gamepad_axes[0]); i++) {
+        if (SDL_GamepadHasAxis(gamepad, unix_gamepad_axes[i])) {
+            joystick_add_axis(dev, UNIX_AXIS_SDL, unix_gamepad_axes[i]);
+        }
+    }
+    joystick_add_axis(dev, UNIX_AXIS_GAMEPAD_DPAD_X, 0);
+    joystick_add_axis(dev, UNIX_AXIS_GAMEPAD_DPAD_Y, 0);
+
+    for (int i = 0; i < (int)(sizeof unix_gamepad_buttons / sizeof unix_gamepad_buttons[0]); i++) {
+        if (SDL_GamepadHasButton(gamepad, unix_gamepad_buttons[i])) {
+            joystick_add_button(dev, unix_gamepad_buttons[i]);
+        }
+    }
+
+    write_log(_T("SDL3: gamepad %d: '%s' (%s), %d axes, %d buttons\n"),
+        unix_joystick_count, dev->friendly, dev->unique, dev->axis_count, dev->button_count);
+    unix_joystick_count++;
+}
+
+static void joystick_register_joystick(SDL_JoystickID instance_id)
+{
+    if (unix_joystick_count >= MAX_INPUT_DEVICES || SDL_IsGamepad(instance_id)) {
+        return;
+    }
+
+    SDL_Joystick *joystick = SDL_OpenJoystick(instance_id);
+    if (!joystick) {
+        write_log(_T("SDL3: failed to open joystick %d: %s\n"), (int)instance_id, SDL_GetError());
+        return;
+    }
+
+    unix_joystick_device *dev = &unix_joysticks[unix_joystick_count];
+    memset(dev, 0, sizeof *dev);
+    dev->instance_id = instance_id;
+    dev->joystick = joystick;
+    joystick_copy_text(dev->friendly, sizeof dev->friendly / sizeof dev->friendly[0],
+        SDL_GetJoystickName(joystick), _T("SDL Joystick"));
+    joystick_make_unique(dev->unique, sizeof dev->unique / sizeof dev->unique[0],
+        _T("joystick"), instance_id, unix_joystick_count);
+
+    int axes = SDL_GetNumJoystickAxes(joystick);
+    int hats = SDL_GetNumJoystickHats(joystick);
+    int buttons = SDL_GetNumJoystickButtons(joystick);
+    if (axes < 0) {
+        axes = 0;
+    }
+    if (hats < 0) {
+        hats = 0;
+    }
+    if (buttons < 0) {
+        buttons = 0;
+    }
+    for (int i = 0; i < axes && dev->axis_count < ID_AXIS_TOTAL; i++) {
+        joystick_add_axis(dev, UNIX_AXIS_SDL, i);
+    }
+    for (int i = 0; i < hats && dev->axis_count + 1 < ID_AXIS_TOTAL; i++) {
+        joystick_add_axis(dev, UNIX_AXIS_HAT_X, i);
+        joystick_add_axis(dev, UNIX_AXIS_HAT_Y, i);
+    }
+    for (int i = 0; i < buttons && dev->button_count < ID_BUTTON_TOTAL; i++) {
+        joystick_add_button(dev, i);
+    }
+
+    write_log(_T("SDL3: joystick %d: '%s' (%s), %d axes, %d buttons\n"),
+        unix_joystick_count, dev->friendly, dev->unique, dev->axis_count, dev->button_count);
+    unix_joystick_count++;
+}
+
+static void joystick_open_devices(void)
+{
+    joystick_close_devices();
+
+    int count = 0;
+    SDL_JoystickID *ids = SDL_GetGamepads(&count);
+    if (ids) {
+        for (int i = 0; i < count; i++) {
+            joystick_register_gamepad(ids[i]);
+        }
+        SDL_free(ids);
+    }
+
+    count = 0;
+    ids = SDL_GetJoysticks(&count);
+    if (ids) {
+        for (int i = 0; i < count; i++) {
+            joystick_register_joystick(ids[i]);
+        }
+        SDL_free(ids);
+    }
+}
+
+static int joystick_init(void)
+{
+    input_init();
+    if (unix_joystick_sdl_initialized) {
+        return 1;
+    }
+
+    SDL_SetMainReady();
+    if (!SDL_InitSubSystem(SDL_INIT_EVENTS | SDL_INIT_JOYSTICK | SDL_INIT_GAMEPAD)) {
+        write_log(_T("SDL3: joystick/gamepad unavailable: %s\n"), SDL_GetError());
+        return 0;
+    }
+    SDL_SetJoystickEventsEnabled(true);
+    SDL_SetGamepadEventsEnabled(true);
+    unix_joystick_sdl_initialized = true;
+    joystick_open_devices();
+    return 1;
+}
+
+static void joystick_close(void)
+{
+    if (!unix_joystick_sdl_initialized) {
+        return;
+    }
+    joystick_close_devices();
+    SDL_QuitSubSystem(SDL_INIT_GAMEPAD | SDL_INIT_JOYSTICK);
+    unix_joystick_sdl_initialized = false;
+}
+
+static int joystick_acquire(int num, int)
+{
+    return num < 0 || num < unix_joystick_count;
+}
+
+static void joystick_unacquire(int num)
+{
+    if (num >= 0 && num < unix_joystick_count) {
+        joystick_release_device(num);
+    }
+}
+
+static void joystick_set_axis(unix_joystick_device *dev, int joy, int axis, int value, int max)
+{
+    if (!dev || axis < 0 || axis >= dev->axis_count || axis >= ID_AXIS_TOTAL) {
+        return;
+    }
+    if (dev->axis_state[axis] == value) {
+        return;
+    }
+    dev->axis_state[axis] = value;
+    setjoystickstate(joy, axis, value, max);
+}
+
+static void joystick_set_button(unix_joystick_device *dev, int joy, int button, bool down)
+{
+    if (!dev || button < 0 || button >= dev->button_count || button >= ID_BUTTON_TOTAL) {
+        return;
+    }
+    if (dev->button_state[button] == down) {
+        return;
+    }
+    dev->button_state[button] = down;
+    setjoybuttonstate(joy, button, down ? 1 : 0);
+}
+
+static void joystick_read_gamepad(unix_joystick_device *dev, int joy)
+{
+    int dpad_x = 0;
+    int dpad_y = 0;
+
+    for (int axis = 0; axis < dev->axis_count; axis++) {
+        switch (dev->axis_kind[axis]) {
+        case UNIX_AXIS_SDL:
+            joystick_set_axis(dev, joy, axis, SDL_GetGamepadAxis(dev->gamepad, (SDL_GamepadAxis)dev->axis_code[axis]), 32767);
+            break;
+        case UNIX_AXIS_GAMEPAD_DPAD_X:
+            dpad_x = SDL_GetGamepadButton(dev->gamepad, SDL_GAMEPAD_BUTTON_DPAD_RIGHT) ? 1 : 0;
+            dpad_x -= SDL_GetGamepadButton(dev->gamepad, SDL_GAMEPAD_BUTTON_DPAD_LEFT) ? 1 : 0;
+            joystick_set_axis(dev, joy, axis, dpad_x, 1);
+            break;
+        case UNIX_AXIS_GAMEPAD_DPAD_Y:
+            dpad_y = SDL_GetGamepadButton(dev->gamepad, SDL_GAMEPAD_BUTTON_DPAD_DOWN) ? 1 : 0;
+            dpad_y -= SDL_GetGamepadButton(dev->gamepad, SDL_GAMEPAD_BUTTON_DPAD_UP) ? 1 : 0;
+            joystick_set_axis(dev, joy, axis, dpad_y, 1);
+            break;
+        }
+    }
+
+    for (int button = 0; button < dev->button_count; button++) {
+        joystick_set_button(dev, joy, button,
+            SDL_GetGamepadButton(dev->gamepad, (SDL_GamepadButton)dev->button_code[button]));
+    }
+}
+
+static void joystick_read_joystick(unix_joystick_device *dev, int joy)
+{
+    for (int axis = 0; axis < dev->axis_count; axis++) {
+        switch (dev->axis_kind[axis]) {
+        case UNIX_AXIS_SDL:
+            joystick_set_axis(dev, joy, axis, SDL_GetJoystickAxis(dev->joystick, dev->axis_code[axis]), 32767);
+            break;
+        case UNIX_AXIS_HAT_X:
+        {
+            Uint8 hat = SDL_GetJoystickHat(dev->joystick, dev->axis_code[axis]);
+            int value = (hat & SDL_HAT_RIGHT) ? 1 : 0;
+            value -= (hat & SDL_HAT_LEFT) ? 1 : 0;
+            joystick_set_axis(dev, joy, axis, value, 1);
+            break;
+        }
+        case UNIX_AXIS_HAT_Y:
+        {
+            Uint8 hat = SDL_GetJoystickHat(dev->joystick, dev->axis_code[axis]);
+            int value = (hat & SDL_HAT_DOWN) ? 1 : 0;
+            value -= (hat & SDL_HAT_UP) ? 1 : 0;
+            joystick_set_axis(dev, joy, axis, value, 1);
+            break;
+        }
+        }
+    }
+
+    for (int button = 0; button < dev->button_count; button++) {
+        joystick_set_button(dev, joy, button, SDL_GetJoystickButton(dev->joystick, dev->button_code[button]));
+    }
+}
+
+static void joystick_read(void)
+{
+    if (!unix_joystick_sdl_initialized) {
+        return;
+    }
+    SDL_UpdateGamepads();
+    SDL_UpdateJoysticks();
+    for (int i = 0; i < unix_joystick_count; i++) {
+        unix_joystick_device *dev = &unix_joysticks[i];
+        if (dev->gamepad) {
+            joystick_read_gamepad(dev, i);
+        } else if (dev->joystick) {
+            joystick_read_joystick(dev, i);
+        }
+    }
+}
+
+static int joystick_get_num(void)
+{
+    return unix_joystick_count;
+}
+
+static TCHAR *joystick_get_friendlyname(int joy)
+{
+    return joy >= 0 && joy < unix_joystick_count ? unix_joysticks[joy].friendly : empty_friendly;
+}
+
+static TCHAR *joystick_get_uniquename(int joy)
+{
+    return joy >= 0 && joy < unix_joystick_count ? unix_joysticks[joy].unique : empty_unique_name;
+}
+
+static int joystick_get_widget_num(int joy)
+{
+    if (joy < 0 || joy >= unix_joystick_count) {
+        return 0;
+    }
+    return unix_joysticks[joy].axis_count + unix_joysticks[joy].button_count;
+}
+
+static void joystick_axis_name(unix_joystick_device *dev, int axis, TCHAR *name)
+{
+    if (!name) {
+        return;
+    }
+    switch (dev->axis_kind[axis]) {
+    case UNIX_AXIS_SDL:
+        if (dev->is_gamepad) {
+            for (int i = 0; i < (int)(sizeof unix_gamepad_axes / sizeof unix_gamepad_axes[0]); i++) {
+                if (dev->axis_code[axis] == unix_gamepad_axes[i]) {
+                    _tcscpy(name, unix_gamepad_axis_names[i]);
+                    return;
+                }
+            }
+        }
+        _sntprintf(name, 64, _T("Axis %d"), dev->axis_code[axis] + 1);
+        name[63] = 0;
+        return;
+    case UNIX_AXIS_GAMEPAD_DPAD_X:
+        _tcscpy(name, _T("DPad X Axis"));
+        return;
+    case UNIX_AXIS_GAMEPAD_DPAD_Y:
+        _tcscpy(name, _T("DPad Y Axis"));
+        return;
+    case UNIX_AXIS_HAT_X:
+        _sntprintf(name, 64, _T("Hat %d X Axis"), dev->axis_code[axis] + 1);
+        name[63] = 0;
+        return;
+    case UNIX_AXIS_HAT_Y:
+        _sntprintf(name, 64, _T("Hat %d Y Axis"), dev->axis_code[axis] + 1);
+        name[63] = 0;
+        return;
+    }
+    _tcscpy(name, _T("Axis"));
+}
+
+static void joystick_button_name(unix_joystick_device *dev, int button, TCHAR *name)
+{
+    if (!name) {
+        return;
+    }
+    if (dev->is_gamepad) {
+        for (int i = 0; i < (int)(sizeof unix_gamepad_buttons / sizeof unix_gamepad_buttons[0]); i++) {
+            if (dev->button_code[button] == unix_gamepad_buttons[i]) {
+                _tcscpy(name, unix_gamepad_button_names[i]);
+                return;
+            }
+        }
+    }
+    _sntprintf(name, 64, _T("Button %d"), dev->button_code[button] + 1);
+    name[63] = 0;
+}
+
+static int joystick_get_widget_type(int joy, int widget, TCHAR *name, uae_u32 *code)
+{
+    if (joy < 0 || joy >= unix_joystick_count) {
+        return IDEV_WIDGET_NONE;
+    }
+    unix_joystick_device *dev = &unix_joysticks[joy];
+    if (code) {
+        *code = widget;
+    }
+    if (widget >= 0 && widget < dev->axis_count) {
+        joystick_axis_name(dev, widget, name);
+        return IDEV_WIDGET_AXIS;
+    }
+    int button = widget - dev->axis_count;
+    if (button >= 0 && button < dev->button_count) {
+        joystick_button_name(dev, button, name);
+        return IDEV_WIDGET_BUTTON;
+    }
+    return IDEV_WIDGET_NONE;
+}
+
+static int joystick_get_widget_first(int joy, int type)
+{
+    if (joy < 0 || joy >= unix_joystick_count) {
+        return -1;
+    }
+    switch (type) {
+    case IDEV_WIDGET_AXIS:
+        return unix_joysticks[joy].axis_count > 0 ? 0 : -1;
+    case IDEV_WIDGET_BUTTON:
+        return unix_joysticks[joy].button_count > 0 ? unix_joysticks[joy].axis_count : -1;
+    }
+    return -1;
+}
+
+static int joystick_get_flags(int) { return 0; }
+
+static bool joystick_has_button(int joy, int button)
+{
+    return joy >= 0 && joy < unix_joystick_count && button >= 0 && button < unix_joysticks[joy].button_count;
+}
+
+static bool joystick_axis_is_dpad_or_hat(int joy, int axis)
+{
+    if (joy < 0 || joy >= unix_joystick_count || axis < 0 || axis >= unix_joysticks[joy].axis_count) {
+        return false;
+    }
+    int kind = unix_joysticks[joy].axis_kind[axis];
+    return kind == UNIX_AXIS_GAMEPAD_DPAD_X || kind == UNIX_AXIS_GAMEPAD_DPAD_Y ||
+        kind == UNIX_AXIS_HAT_X || kind == UNIX_AXIS_HAT_Y;
+}
+
+void unix_input_joystick_device_changed(void)
+{
+    if (unix_joystick_sdl_initialized) {
+        joystick_open_devices();
+    }
+}
+#else
+static int joystick_init(void) { return input_init(); }
+static void joystick_close(void) {}
+static int joystick_acquire(int, int) { return 1; }
+static void joystick_unacquire(int) {}
+static void joystick_read(void) {}
+static int joystick_get_num(void) { return 0; }
+static TCHAR *joystick_get_friendlyname(int) { return empty_friendly; }
+static TCHAR *joystick_get_uniquename(int) { return empty_unique_name; }
+static int joystick_get_widget_num(int) { return 0; }
+static int joystick_get_widget_type(int, int, TCHAR *, uae_u32 *) { return IDEV_WIDGET_NONE; }
+static int joystick_get_widget_first(int, int) { return -1; }
+static int joystick_get_flags(int) { return 0; }
+static bool joystick_has_button(int, int) { return false; }
+static bool joystick_axis_is_dpad_or_hat(int, int) { return false; }
+void unix_input_joystick_device_changed(void) {}
+#endif
+
 inputdevice_functions inputdevicefunc_joystick = {
-    input_init, input_close, input_acquire, input_unacquire, input_read,
-    empty_get_num, empty_get_friendlyname, empty_get_uniquename,
-    empty_get_widget_num, empty_get_widget_type, empty_get_widget_first,
-    empty_get_flags
+    joystick_init, joystick_close, joystick_acquire, joystick_unacquire, joystick_read,
+    joystick_get_num, joystick_get_friendlyname, joystick_get_uniquename,
+    joystick_get_widget_num, joystick_get_widget_type, joystick_get_widget_first,
+    joystick_get_flags
 };
 
 inputdevice_functions inputdevicefunc_mouse = {
@@ -682,8 +1267,117 @@ int input_get_default_mouse(uae_input_device *uid, int dev, int port, int af, bo
     return 1;
 }
 int input_get_default_lightpen(uae_input_device *, int, int, int, bool, bool, int) { return 0; }
-int input_get_default_joystick(uae_input_device *, int, int, int, int, bool, bool, bool) { return 0; }
-int input_get_default_joystick_analog(uae_input_device *, int, int, int, bool, bool, bool) { return 0; }
+int input_get_default_joystick(uae_input_device *uid, int dev, int port, int af, int mode, bool gp, bool joymouseswap, bool default_osk)
+{
+    if (joymouseswap || dev < 0 || dev >= joystick_get_num()) {
+        return 0;
+    }
+
+    int h;
+    int v;
+    if (mode == JSEM_MODE_MOUSE_CDTV) {
+        h = INPUTEVENT_MOUSE_CDTV_HORIZ;
+        v = INPUTEVENT_MOUSE_CDTV_VERT;
+    } else if (port >= 2) {
+        h = port == 3 ? INPUTEVENT_PAR_JOY2_HORIZ : INPUTEVENT_PAR_JOY1_HORIZ;
+        v = port == 3 ? INPUTEVENT_PAR_JOY2_VERT : INPUTEVENT_PAR_JOY1_VERT;
+    } else {
+        h = port ? INPUTEVENT_JOY2_HORIZ : INPUTEVENT_JOY1_HORIZ;
+        v = port ? INPUTEVENT_JOY2_VERT : INPUTEVENT_JOY1_VERT;
+    }
+
+    setid(uid, dev, ID_AXIS_OFFSET + 0, 0, port, h, gp);
+    setid(uid, dev, ID_AXIS_OFFSET + 1, 0, port, v, gp);
+    int first_button = joystick_get_widget_first(dev, IDEV_WIDGET_BUTTON);
+    if (first_button < 0) {
+        first_button = joystick_get_widget_num(dev);
+    }
+    for (int axis = 2; axis < first_button; axis++) {
+        if (!joystick_axis_is_dpad_or_hat(dev, axis) || axis + 1 >= first_button) {
+            continue;
+        }
+        if (joystick_axis_is_dpad_or_hat(dev, axis + 1)) {
+            setid(uid, dev, ID_AXIS_OFFSET + axis, 0, port, h, gp);
+            setid(uid, dev, ID_AXIS_OFFSET + axis + 1, 0, port, v, gp);
+            axis++;
+        }
+    }
+
+    if (port >= 2) {
+        setid(uid, dev, ID_BUTTON_OFFSET + 0, 0, port,
+            port == 3 ? INPUTEVENT_PAR_JOY2_FIRE_BUTTON : INPUTEVENT_PAR_JOY1_FIRE_BUTTON, af, gp);
+    } else {
+        setid(uid, dev, ID_BUTTON_OFFSET + 0, 0, port,
+            port ? INPUTEVENT_JOY2_FIRE_BUTTON : INPUTEVENT_JOY1_FIRE_BUTTON, af, gp);
+        if (joystick_has_button(dev, 1)) {
+            setid(uid, dev, ID_BUTTON_OFFSET + 1, 0, port,
+                port ? INPUTEVENT_JOY2_2ND_BUTTON : INPUTEVENT_JOY1_2ND_BUTTON, gp);
+        }
+        if (mode != JSEM_MODE_JOYSTICK && joystick_has_button(dev, 2)) {
+            setid(uid, dev, ID_BUTTON_OFFSET + 2, 0, port,
+                port ? INPUTEVENT_JOY2_3RD_BUTTON : INPUTEVENT_JOY1_3RD_BUTTON, gp);
+        }
+        if (default_osk && joystick_has_button(dev, 3)) {
+            setid(uid, dev, ID_BUTTON_OFFSET + 3, 0, port, INPUTEVENT_SPC_OSK, gp);
+        }
+    }
+
+    if (mode == JSEM_MODE_JOYSTICK_CD32) {
+        setid(uid, dev, ID_BUTTON_OFFSET + 0, 0, port,
+            port ? INPUTEVENT_JOY2_CD32_RED : INPUTEVENT_JOY1_CD32_RED, af, gp);
+        if (joystick_has_button(dev, 1)) {
+            setid(uid, dev, ID_BUTTON_OFFSET + 1, 0, port,
+                port ? INPUTEVENT_JOY2_CD32_BLUE : INPUTEVENT_JOY1_CD32_BLUE, gp);
+        }
+        if (joystick_has_button(dev, 2)) {
+            setid(uid, dev, ID_BUTTON_OFFSET + 2, 0, port,
+                port ? INPUTEVENT_JOY2_CD32_GREEN : INPUTEVENT_JOY1_CD32_GREEN, gp);
+        }
+        if (joystick_has_button(dev, 3)) {
+            setid(uid, dev, ID_BUTTON_OFFSET + 3, 0, port,
+                port ? INPUTEVENT_JOY2_CD32_YELLOW : INPUTEVENT_JOY1_CD32_YELLOW, gp);
+        }
+        if (joystick_has_button(dev, 4)) {
+            setid(uid, dev, ID_BUTTON_OFFSET + 4, 0, port,
+                port ? INPUTEVENT_JOY2_CD32_RWD : INPUTEVENT_JOY1_CD32_RWD, gp);
+        }
+        if (joystick_has_button(dev, 5)) {
+            setid(uid, dev, ID_BUTTON_OFFSET + 5, 0, port,
+                port ? INPUTEVENT_JOY2_CD32_FFW : INPUTEVENT_JOY1_CD32_FFW, gp);
+        }
+        if (joystick_has_button(dev, 6)) {
+            setid(uid, dev, ID_BUTTON_OFFSET + 6, 0, port,
+                port ? INPUTEVENT_JOY2_CD32_PLAY : INPUTEVENT_JOY1_CD32_PLAY, gp);
+        }
+    }
+
+    return dev == 0 ? 1 : 0;
+}
+
+int input_get_default_joystick_analog(uae_input_device *uid, int dev, int port, int af, bool gp, bool joymouseswap, bool default_osk)
+{
+    if (joymouseswap || dev < 0 || dev >= joystick_get_num()) {
+        return 0;
+    }
+
+    setid(uid, dev, ID_AXIS_OFFSET + 0, 0, port, port ? INPUTEVENT_JOY2_HORIZ_POT : INPUTEVENT_JOY1_HORIZ_POT, gp);
+    setid(uid, dev, ID_AXIS_OFFSET + 1, 0, port, port ? INPUTEVENT_JOY2_VERT_POT : INPUTEVENT_JOY1_VERT_POT, gp);
+    setid(uid, dev, ID_BUTTON_OFFSET + 0, 0, port, port ? INPUTEVENT_JOY2_LEFT : INPUTEVENT_JOY1_LEFT, af, gp);
+    if (joystick_has_button(dev, 1)) {
+        setid(uid, dev, ID_BUTTON_OFFSET + 1, 0, port, port ? INPUTEVENT_JOY2_RIGHT : INPUTEVENT_JOY1_RIGHT, gp);
+    }
+    if (joystick_has_button(dev, 2)) {
+        setid(uid, dev, ID_BUTTON_OFFSET + 2, 0, port, port ? INPUTEVENT_JOY2_UP : INPUTEVENT_JOY1_UP, gp);
+    }
+    if (joystick_has_button(dev, 3)) {
+        setid(uid, dev, ID_BUTTON_OFFSET + 3, 0, port, port ? INPUTEVENT_JOY2_DOWN : INPUTEVENT_JOY1_DOWN, gp);
+    }
+    if (default_osk && joystick_has_button(dev, 4)) {
+        setid(uid, dev, ID_BUTTON_OFFSET + 4, 0, port, INPUTEVENT_SPC_OSK, gp);
+    }
+
+    return dev == 0 ? 1 : 0;
+}
 int is_tablet(void) { return 0; }
 bool ismouseactive(void) { return unix_input_get_mouse_active(); }
 void setmouseactive(int, int active) { unix_input_set_mouse_active(active != 0); }

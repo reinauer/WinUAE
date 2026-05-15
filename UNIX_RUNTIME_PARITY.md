@@ -61,7 +61,7 @@ Status values:
 | Native MIDI | Deferred | Windows defines `WITH_MIDI`, `WITH_PORTAUDIO`, `WITH_OPENAL` and links `od-win32/midi.cpp`; Unix does not. | Choose CoreMIDI on macOS and ALSA/PipeWire/PortMIDI on Linux. |
 | Sampler input | Stubbed | `od-unix/stubs.cpp` implements `sampler_init` and `sampler_getsample` as no-op/zero. | Keep UI disabled until a native capture backend exists. |
 | Keyboard and mouse input | Enabled | `od-unix/input.cpp` exposes one Unix keyboard and mouse; `od-unix/video_sdl.cpp` feeds SDL3 key, mouse, wheel, and grab events. | Continue matching Windows shortcuts and runtime grab behavior. |
-| Joystick/gamepad input, remapping/test UI | Stubbed/Deferred | `inputdevicefunc_joystick` uses empty device functions; default joystick helpers return 0. | Add SDL3 gamepad/joystick enumeration and mapping before enabling input remap/test dialogs. |
+| Joystick/gamepad input, remapping/test UI | Partial | `od-unix/input.cpp` now exposes SDL3 gamepads and non-gamepad joysticks through `inputdevicefunc_joystick`, maps left stick plus D-pad/hat axes to Amiga directions, and follows the Windows default button/CD32 ordering where possible. Remap/test UI is still disabled. | Test with real controllers on macOS/Linux, add SDL haptics later if useful, then enable remap/test UI once the dialog has a working backend. |
 | Tablet/lightpen/raw input | Stubbed/Deferred | `is_tablet`, `input_get_default_lightpen`, and `is_touch_lightpen` return disabled values. Windows uses RawInput/tablet paths. | Native tablet/lightpen support can wait until basic input parity is complete. |
 
 ## Networking, Serial, And Ports
@@ -107,5 +107,5 @@ Status values:
 1. RTG/Picasso96 is visible in the UI and partially active, but the Unix backend only covers UAE Z2/Z3 RAM and a first `uaegfx.card` path. This needs guest-driver validation before it should be considered Windows-equivalent.
 2. A2065/SLIRP is compiled by default, but SANA-II, pcap/tap/tun, and `bsdsocket.library` are not yet validated/enabled as a coherent networking story.
 3. Audio output exists through SDL3, but Windows has many more audio/MIDI/board paths. The Unix UI should keep advanced sound/MIDI controls disabled until native backends exist.
-4. Host integration stubs are still broad: clipboard, screenshots/capture, sampler, printer/parallel, archive browsing, native media passthrough, joystick/gamepad, CPU boards, and hardware graphics boards.
+4. Host integration stubs are still broad: clipboard, screenshots/capture, sampler, printer/parallel, archive browsing, native media passthrough, CPU boards, and hardware graphics boards. Joystick/gamepad support has a first SDL3 backend, but still needs real-device validation and remap/test UI wiring.
 5. The Unix build defines some user-visible features whose backend is only partial or stubbed, especially `PARALLEL_PORT`, `PICASSO96`, and A2065/SLIRP. These should either become fully backed or be clearly reflected in the UI/status text.
