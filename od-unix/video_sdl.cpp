@@ -447,6 +447,13 @@ int unix_video_poll(bool *quit_requested)
                 unix_input_mouse_wheel(event.wheel.integer_x, event.wheel.integer_y);
             }
             break;
+        case SDL_EVENT_JOYSTICK_ADDED:
+        case SDL_EVENT_JOYSTICK_REMOVED:
+        case SDL_EVENT_GAMEPAD_ADDED:
+        case SDL_EVENT_GAMEPAD_REMOVED:
+        case SDL_EVENT_GAMEPAD_REMAPPED:
+            unix_input_joystick_device_changed();
+            break;
         default:
             break;
         }
