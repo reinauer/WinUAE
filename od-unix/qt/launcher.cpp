@@ -2942,6 +2942,8 @@ struct UnixQtInputTestWidget {
     QString name;
     UnixQtInputWidgetKind kind = UnixQtInputWidgetKind::Axis;
     int code = 0;
+    int mappingIndex = 0;
+    QChar mappingType = QLatin1Char('a');
     int state = 0;
     QTreeWidgetItem *item = nullptr;
 };
@@ -3041,8 +3043,11 @@ static bool unixQtInputWidgetActive(UnixQtInputWidgetKind kind, int state)
 
 class UnixQtInputMapDialog final : public QDialog {
 public:
-    explicit UnixQtInputMapDialog(const QString &context, QWidget *parent = nullptr)
-        : QDialog(parent)
+    explicit UnixQtInputMapDialog(int port, const QString &context, const QString &customConfig, QWidget *parent = nullptr)
+        : QDialog(parent),
+          port(port),
+          contextText(context),
+          customMappings(customConfig.split(QLatin1Char(' '), Qt::SkipEmptyParts))
     {
         setWindowTitle(QStringLiteral("Input Remap"));
         resize(640, 440);
@@ -3071,32 +3076,25 @@ public:
         mappingLine->setReadOnly(true);
         mappingLine->setEnabled(false);
         mappingLine->setFixedHeight(48);
-        mappingLine->setPlainText(context);
 
         addEvent = new QComboBox;
-        addEvent->addItems({
-            QStringLiteral("Joystick 1 Fire"),
-            QStringLiteral("Joystick 1 Up"),
-            QStringLiteral("Joystick 1 Down"),
-            QStringLiteral("Joystick 1 Left"),
-            QStringLiteral("Joystick 1 Right"),
-            QStringLiteral("Left mouse button"),
-            QStringLiteral("Right mouse button")
-        });
-        QPushButton *addEventButton = new QPushButton(QStringLiteral("Add Event"));
+        populateEventChoices();
+        addEventButton = new QPushButton(QStringLiteral("Add Event"));
         QPushButton *autofireButton = new QPushButton(QStringLiteral("Autofire"));
         testButton = new QPushButton(QStringLiteral("Test"));
         QPushButton *remapButton = new QPushButton(QStringLiteral("Remap"));
         QPushButton *deleteButton = new QPushButton(QStringLiteral("Delete"));
-        QPushButton *deleteAllButton = new QPushButton(QStringLiteral("Delete all"));
+        deleteAllButton = new QPushButton(QStringLiteral("Delete all"));
         QPushButton *exitButton = new QPushButton(QStringLiteral("Exit"));
 
-        disableUnavailable(addEvent, QStringLiteral("Custom input event insertion needs the shared preferences input adapter."));
-        disableUnavailable(addEventButton, QStringLiteral("Custom input event insertion needs the shared preferences input adapter."));
         disableUnavailable(autofireButton, QStringLiteral("Autofire mapping edits need the shared preferences input adapter."));
-        disableUnavailable(remapButton, QStringLiteral("Input remap capture needs the shared preferences input adapter."));
-        disableUnavailable(deleteButton, QStringLiteral("Input mapping edits need the shared preferences input adapter."));
-        disableUnavailable(deleteAllButton, QStringLiteral("Input mapping edits need the shared preferences input adapter."));
+        disableUnavailable(remapButton, QStringLiteral("Sequential remap capture needs direct shared preferences input adapter support."));
+        disableUnavailable(deleteButton, QStringLiteral("Single mapping deletion is not connected yet."));
+        if (port < 0) {
+            disableUnavailable(addEvent, QStringLiteral("Custom game-port mappings are only available from the Game Ports page."));
+            disableUnavailable(addEventButton, QStringLiteral("Custom game-port mappings are only available from the Game Ports page."));
+            disableUnavailable(deleteAllButton, QStringLiteral("Custom game-port mappings are only available from the Game Ports page."));
+        }
 
         QHBoxLayout *addRow = new QHBoxLayout;
         addRow->setContentsMargins(0, 0, 0, 0);
@@ -3125,10 +3123,21 @@ public:
         timer->setInterval(30);
         connect(timer, &QTimer::timeout, this, [this]() { pollInput(); });
         connect(testButton, &QPushButton::clicked, this, [this]() { setTesting(!testing); });
+        connect(addEventButton, &QPushButton::clicked, this, [this]() { addSelectedMapping(); });
+        connect(deleteAllButton, &QPushButton::clicked, this, [this]() {
+            customMappings.clear();
+            changed = true;
+            updateMappingLine();
+        });
         connect(exitButton, &QPushButton::clicked, this, &QDialog::accept);
+        connect(list, &QTreeWidget::currentItemChanged, this, [this](QTreeWidgetItem *, QTreeWidgetItem *) {
+            updateActionState();
+        });
 
         loadDevices();
         populateList();
+        updateMappingLine();
+        updateActionState();
         if (list->topLevelItemCount() == 0) {
             QTreeWidgetItem *item = new QTreeWidgetItem(list, {
                 QStringLiteral("<None>"),
@@ -3146,14 +3155,30 @@ public:
         closeDevices();
     }
 
+    bool hasChanges() const
+    {
+        return changed;
+    }
+
+    QString customConfig() const
+    {
+        return customMappings.join(QLatin1Char(' '));
+    }
+
 private:
+    int port = -1;
+    QString contextText;
     QTreeWidget *list = nullptr;
     QLineEdit *inputLine = nullptr;
     QPlainTextEdit *mappingLine = nullptr;
     QComboBox *addEvent = nullptr;
+    QPushButton *addEventButton = nullptr;
+    QPushButton *deleteAllButton = nullptr;
     QPushButton *testButton = nullptr;
     QTimer *timer = nullptr;
     bool testing = false;
+    bool changed = false;
+    QStringList customMappings;
 
 #ifdef UAE_UNIX_WITH_SDL3
     QVector<UnixQtInputTestDevice> devices;
@@ -3179,12 +3204,15 @@ private:
             SDL_GAMEPAD_AXIS_LEFT_TRIGGER,
             SDL_GAMEPAD_AXIS_RIGHT_TRIGGER
         };
+        int axisSlot = 0;
         for (SDL_GamepadAxis axis : axes) {
             if (SDL_GamepadHasAxis(gamepad, axis)) {
                 UnixQtInputTestWidget widget;
                 widget.name = sdlGamepadAxisName(axis);
                 widget.kind = UnixQtInputWidgetKind::Axis;
                 widget.code = int(axis);
+                widget.mappingIndex = axisSlot++;
+                widget.mappingType = QLatin1Char('a');
                 device.widgets.append(widget);
             }
         }
@@ -3192,10 +3220,14 @@ private:
         UnixQtInputTestWidget dpadX;
         dpadX.name = QStringLiteral("DPad X Axis");
         dpadX.kind = UnixQtInputWidgetKind::GamepadDpadX;
+        dpadX.mappingIndex = axisSlot++;
+        dpadX.mappingType = QLatin1Char('a');
         device.widgets.append(dpadX);
         UnixQtInputTestWidget dpadY;
         dpadY.name = QStringLiteral("DPad Y Axis");
         dpadY.kind = UnixQtInputWidgetKind::GamepadDpadY;
+        dpadY.mappingIndex = axisSlot++;
+        dpadY.mappingType = QLatin1Char('a');
         device.widgets.append(dpadY);
 
         const SDL_GamepadButton buttons[] = {
@@ -3222,12 +3254,15 @@ private:
             SDL_GAMEPAD_BUTTON_MISC5,
             SDL_GAMEPAD_BUTTON_MISC6
         };
+        int buttonSlot = 0;
         for (SDL_GamepadButton button : buttons) {
             if (SDL_GamepadHasButton(gamepad, button)) {
                 UnixQtInputTestWidget widget;
                 widget.name = sdlGamepadButtonName(button);
                 widget.kind = UnixQtInputWidgetKind::Button;
                 widget.code = int(button);
+                widget.mappingIndex = buttonSlot++;
+                widget.mappingType = QLatin1Char('b');
                 device.widgets.append(widget);
             }
         }
@@ -3257,20 +3292,27 @@ private:
             widget.name = QStringLiteral("Axis %1").arg(i + 1);
             widget.kind = UnixQtInputWidgetKind::Axis;
             widget.code = i;
+            widget.mappingIndex = i;
+            widget.mappingType = QLatin1Char('a');
             device.widgets.append(widget);
         }
 
         const int hatCount = qMax(0, SDL_GetNumJoystickHats(joystick));
+        int axisSlot = axisCount;
         for (int i = 0; i < hatCount; i++) {
             UnixQtInputTestWidget hatX;
             hatX.name = QStringLiteral("Hat %1 X Axis").arg(i + 1);
             hatX.kind = UnixQtInputWidgetKind::JoystickHatX;
             hatX.code = i;
+            hatX.mappingIndex = axisSlot++;
+            hatX.mappingType = QLatin1Char('a');
             device.widgets.append(hatX);
             UnixQtInputTestWidget hatY;
             hatY.name = QStringLiteral("Hat %1 Y Axis").arg(i + 1);
             hatY.kind = UnixQtInputWidgetKind::JoystickHatY;
             hatY.code = i;
+            hatY.mappingIndex = axisSlot++;
+            hatY.mappingType = QLatin1Char('a');
             device.widgets.append(hatY);
         }
 
@@ -3280,6 +3322,8 @@ private:
             widget.name = QStringLiteral("Button %1").arg(i + 1);
             widget.kind = UnixQtInputWidgetKind::Button;
             widget.code = i;
+            widget.mappingIndex = i;
+            widget.mappingType = QLatin1Char('b');
             device.widgets.append(widget);
         }
 
@@ -3383,8 +3427,10 @@ private:
     void populateList()
     {
 #ifdef UAE_UNIX_WITH_SDL3
-        for (UnixQtInputTestDevice &device : devices) {
-            for (UnixQtInputTestWidget &widget : device.widgets) {
+        for (int deviceIndex = 0; deviceIndex < devices.size(); deviceIndex++) {
+            UnixQtInputTestDevice &device = devices[deviceIndex];
+            for (int widgetIndex = 0; widgetIndex < device.widgets.size(); widgetIndex++) {
+                UnixQtInputTestWidget &widget = device.widgets[widgetIndex];
                 const QString type = widget.kind == UnixQtInputWidgetKind::Button ? QStringLiteral("Button") : QStringLiteral("Axis");
                 widget.item = new QTreeWidgetItem(list, {
                     widget.name,
@@ -3392,8 +3438,102 @@ private:
                     type,
                     QStringLiteral("0")
                 });
+                widget.item->setData(0, Qt::UserRole, deviceIndex);
+                widget.item->setData(0, Qt::UserRole + 1, widgetIndex);
             }
         }
+#endif
+    }
+
+    QString portEventPrefix() const
+    {
+        switch (port) {
+        case 0:
+            return QStringLiteral("JOY1");
+        case 1:
+            return QStringLiteral("JOY2");
+        case 2:
+            return QStringLiteral("PAR_JOY1");
+        case 3:
+            return QStringLiteral("PAR_JOY2");
+        default:
+            return QString();
+        }
+    }
+
+    void populateEventChoices()
+    {
+        const QString prefix = portEventPrefix();
+        if (prefix.isEmpty()) {
+            addEvent->addItem(QStringLiteral("<None>"));
+            return;
+        }
+        addEvent->addItem(QStringLiteral("Horizontal"), prefix + QStringLiteral("_HORIZ"));
+        addEvent->addItem(QStringLiteral("Vertical"), prefix + QStringLiteral("_VERT"));
+        addEvent->addItem(QStringLiteral("Up"), prefix + QStringLiteral("_UP"));
+        addEvent->addItem(QStringLiteral("Down"), prefix + QStringLiteral("_DOWN"));
+        addEvent->addItem(QStringLiteral("Left"), prefix + QStringLiteral("_LEFT"));
+        addEvent->addItem(QStringLiteral("Right"), prefix + QStringLiteral("_RIGHT"));
+        addEvent->addItem(QStringLiteral("Fire"), prefix + QStringLiteral("_FIRE_BUTTON"));
+        if (port < 2) {
+            addEvent->addItem(QStringLiteral("2nd Button"), prefix + QStringLiteral("_2ND_BUTTON"));
+            addEvent->addItem(QStringLiteral("3rd Button"), prefix + QStringLiteral("_3RD_BUTTON"));
+        }
+    }
+
+    void updateMappingLine()
+    {
+        QStringList lines;
+        if (!contextText.isEmpty()) {
+            lines.append(contextText.split(QLatin1Char('\n')));
+        }
+        if (!customMappings.isEmpty()) {
+            lines.append(customMappings);
+        }
+        mappingLine->setPlainText(lines.join(QLatin1Char('\n')));
+    }
+
+    void updateActionState()
+    {
+        if (port < 0) {
+            return;
+        }
+        const bool hasSelection = list->currentItem() && !list->currentItem()->isDisabled();
+        addEvent->setEnabled(hasSelection && addEvent->count() > 0);
+        addEventButton->setEnabled(hasSelection && addEvent->count() > 0);
+        deleteAllButton->setEnabled(!customMappings.isEmpty());
+    }
+
+    void addSelectedMapping()
+    {
+#ifdef UAE_UNIX_WITH_SDL3
+        if (port < 0 || !list->currentItem()) {
+            return;
+        }
+        const int deviceIndex = list->currentItem()->data(0, Qt::UserRole).toInt();
+        const int widgetIndex = list->currentItem()->data(0, Qt::UserRole + 1).toInt();
+        if (deviceIndex < 0 || deviceIndex >= devices.size()) {
+            return;
+        }
+        UnixQtInputTestDevice &device = devices[deviceIndex];
+        if (widgetIndex < 0 || widgetIndex >= device.widgets.size()) {
+            return;
+        }
+        const QString event = addEvent->currentData().toString();
+        if (event.isEmpty()) {
+            return;
+        }
+        const UnixQtInputTestWidget &widget = device.widgets[widgetIndex];
+        const QString mapping = QStringLiteral("j.%1.%2.%3.0=%4")
+            .arg(deviceIndex)
+            .arg(widget.mappingType)
+            .arg(widget.mappingIndex)
+            .arg(event);
+        customMappings.removeAll(mapping);
+        customMappings.append(mapping);
+        changed = true;
+        updateMappingLine();
+        updateActionState();
 #endif
     }
 
@@ -7711,6 +7851,7 @@ private:
     void openInputMapDialog(int port)
     {
         QString context;
+        int customSlot = -1;
         if (port >= 0 && port < 4) {
             context = QStringLiteral("Port %1: %2").arg(port + 1).arg(portDevice[port] ? portDevice[port]->currentText() : QStringLiteral("<None>"));
             if (port < 2) {
@@ -7718,11 +7859,25 @@ private:
                     .arg(portMode[port] ? portMode[port]->currentText() : QStringLiteral("Default"))
                     .arg(portAutofire[port] ? portAutofire[port]->currentText() : QStringLiteral("No autofire (normal)"));
             }
+            customSlot = qBound(0, port, MaxJoyportCustomSlots - 1);
+            const QString device = portDevice[port] ? portDevice[port]->currentText() : QString();
+            if (device.startsWith(QStringLiteral("Custom "))) {
+                bool ok = false;
+                const int slot = device.mid(7).toInt(&ok) - 1;
+                if (ok && slot >= 0 && slot < MaxJoyportCustomSlots) {
+                    customSlot = slot;
+                }
+            }
         } else {
             context = QStringLiteral("Input: %1").arg(inputDevice ? inputDevice->currentText() : QStringLiteral("Device"));
         }
-        UnixQtInputMapDialog dialog(context, this);
-        dialog.exec();
+        UnixQtInputMapDialog dialog(port, context, customSlot >= 0 ? joyportCustom[customSlot] : QString(), this);
+        if (dialog.exec() == QDialog::Accepted && dialog.hasChanges() && customSlot >= 0) {
+            joyportCustom[customSlot] = dialog.customConfig();
+            if (portDevice[port]) {
+                portDevice[port]->setCurrentText(QStringLiteral("Custom %1").arg(customSlot + 1));
+            }
+        }
     }
 
     void updateMouseExtraState()
