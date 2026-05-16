@@ -147,7 +147,7 @@ cmake --build /tmp/winuae_cmake_build --target winuae_unix_macos_dmg -j
 ```
 
 The DMG is written next to the app bundle in `/tmp/winuae_cmake_build/package/`.
-The DMG target verifies the generated image by mounting it and checking the app bundle, `/Applications` link, Finder layout metadata, volume icon, background image, and `.uae` document declaration. You can rerun the verification directly:
+The DMG target verifies the generated image by mounting it, checking the app bundle, `/Applications` link, Finder layout metadata, volume icon, background image, and `.uae` document declaration, then running the bundled executable with `-h` from an isolated temporary home directory. You can rerun the verification directly:
 
 ```sh
 tools/macos-verify-dmg.sh /tmp/winuae_cmake_build/package/WinUAE-6.1.0.dmg
