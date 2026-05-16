@@ -2905,6 +2905,13 @@ static QGroupBox *groupBox(const QString &title, QLayout *layout)
     QFont titleFont = box->font();
     titleFont.setPixelSize(13);
     box->setFont(titleFont);
+    layout->setContentsMargins(6, 8, 6, 6);
+    if (QGridLayout *grid = dynamic_cast<QGridLayout*>(layout)) {
+        grid->setHorizontalSpacing(qMax(grid->horizontalSpacing(), 8));
+        grid->setVerticalSpacing(qMax(grid->verticalSpacing(), 5));
+    } else {
+        layout->setSpacing(qMax(layout->spacing(), 5));
+    }
     box->setLayout(layout);
     return box;
 }
@@ -3098,8 +3105,8 @@ public:
     {
         setWindowTitle(QStringLiteral("WinUAE Properties"));
         setWindowIcon(resourceIcon(QStringLiteral("winuae.ico")));
-        resize(820, 560);
-        setMinimumSize(760, 520);
+        resize(880, 640);
+        setMinimumSize(820, 600);
 
         navigation = new QTreeWidget;
         navigation->setHeaderHidden(true);
@@ -3627,7 +3634,19 @@ private:
 
     void addPage(const QString &title, const QString &icon, QWidget *page)
     {
-        const int index = pageStack->addWidget(page);
+        QWidget *stackPage = page;
+        if (!page->findChild<QScrollArea*>()) {
+            if (QLayout *layout = page->layout()) {
+                layout->setSizeConstraint(QLayout::SetMinimumSize);
+            }
+            page->setMinimumSize(page->minimumSizeHint());
+            QScrollArea *scroll = new QScrollArea;
+            scroll->setFrameShape(QFrame::NoFrame);
+            scroll->setWidgetResizable(true);
+            scroll->setWidget(page);
+            stackPage = scroll;
+        }
+        const int index = pageStack->addWidget(stackPage);
         QTreeWidgetItem *item = new QTreeWidgetItem(navigation);
         item->setText(0, title);
         item->setIcon(0, resourceIcon(icon));
@@ -4721,11 +4740,12 @@ private:
         QWidget *page = makePage();
         QVBoxLayout *root = new QVBoxLayout(page);
         root->setContentsMargins(4, 4, 4, 4);
-        QGridLayout *drives = new QGridLayout;
-        drives->setColumnStretch(5, 1);
+        QVBoxLayout *drives = new QVBoxLayout;
+        drives->setSpacing(10);
         for (int i = 0; i < 4; i++) {
             addFloppyRow(drives, i);
         }
+        drives->addStretch();
         root->addWidget(groupBox(QStringLiteral("Floppy Drives"), drives), 1);
         floppySpeed = new QSlider(Qt::Horizontal);
         floppySpeed->setRange(0, 4);
@@ -4745,7 +4765,7 @@ private:
         return page;
     }
 
-    void addFloppyRow(QGridLayout *layout, int drive)
+    void addFloppyRow(QVBoxLayout *layout, int drive)
     {
         dfEnable[drive] = new QCheckBox(QStringLiteral("DF%1:").arg(drive));
         dfType[drive] = combo(floppyTypeItems(drive, false));
@@ -4754,15 +4774,26 @@ private:
         QPushButton *info = smallButton(QStringLiteral("?"));
         QPushButton *eject = new QPushButton(QStringLiteral("Eject"));
         QPushButton *browse = smallButton(QStringLiteral("..."));
-        const int row = drive * 2;
-        layout->addWidget(dfEnable[drive], row, 0);
-        layout->addWidget(dfType[drive], row, 1);
-        layout->addWidget(new QLabel(QStringLiteral("Write-protected")), row, 2);
-        layout->addWidget(dfWriteProtect[drive], row, 3);
-        layout->addWidget(info, row, 4);
-        layout->addWidget(eject, row, 5);
-        layout->addWidget(browse, row, 6);
-        layout->addWidget(dfPath[drive], row + 1, 0, 1, 7);
+
+        QWidget *driveWidget = new QWidget;
+        QVBoxLayout *driveLayout = new QVBoxLayout(driveWidget);
+        driveLayout->setContentsMargins(0, 0, 0, 0);
+        driveLayout->setSpacing(4);
+
+        QHBoxLayout *controls = new QHBoxLayout;
+        controls->setContentsMargins(0, 0, 0, 0);
+        controls->setSpacing(6);
+        controls->addWidget(dfEnable[drive]);
+        controls->addWidget(dfType[drive]);
+        controls->addWidget(new QLabel(QStringLiteral("Write-protected")));
+        controls->addWidget(dfWriteProtect[drive]);
+        controls->addWidget(info);
+        controls->addWidget(eject);
+        controls->addWidget(browse);
+        controls->addStretch();
+        driveLayout->addLayout(controls);
+        driveLayout->addWidget(dfPath[drive]);
+        layout->addWidget(driveWidget);
         dfEnable[drive]->setChecked(drive == 0);
         connect(info, &QPushButton::clicked, this, [this, drive]() {
             showFloppyInfo(dfPath[drive] ? dfPath[drive]->currentText() : QString(), drive);
