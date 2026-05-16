@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "options.h"
+#include "sound_unix.h"
 #include "uae/string.h"
 #include "uae.h"
 #include "zfile.h"
@@ -509,11 +510,38 @@ int target_parse_option(struct uae_prefs *p, const TCHAR *option, const TCHAR *v
         p->use_serial = p->sername[0] != 0;
         return 1;
     }
+    if (!_tcsicmp(option, _T("soundcard"))) {
+        int parsed = 0;
+        if (!parse_int_value(value, &parsed)) {
+            return 0;
+        }
+        if (parsed < 0 || parsed >= unix_sound_device_count()) {
+            parsed = 0;
+        }
+        p->win32_soundcard = parsed;
+        return 1;
+    }
+    if (!_tcsicmp(option, _T("soundcardname"))) {
+        int index = unix_sound_device_index_from_config_name(value);
+        if (index >= 0) {
+            p->win32_soundcard = index;
+        }
+        return 1;
+    }
     return 0;
 }
 
-void target_save_options(struct zfile*, struct uae_prefs*)
+void target_save_options(struct zfile *f, struct uae_prefs *p)
 {
+    int index = p->win32_soundcard;
+    if (index < 0 || index >= unix_sound_device_count()) {
+        index = 0;
+    }
+    cfgfile_target_write(f, _T("soundcard"), _T("%d"), index);
+    const TCHAR *name = unix_sound_device_config_name(index);
+    if (name && name[0]) {
+        cfgfile_target_write_str(f, _T("soundcardname"), name);
+    }
 }
 
 void target_default_options(struct uae_prefs*, int)
