@@ -4482,6 +4482,7 @@ private:
     QCheckBox *miscGuiResize = nullptr;
     QCheckBox *miscGuiFullscreen = nullptr;
     QCheckBox *miscGuiDarkMode = nullptr;
+    QString miscGuiFontConfig;
     QComboBox *stateFileName = nullptr;
     QCheckBox *stateFileClear = nullptr;
     QComboBox *keyboardLed[3] = {};
@@ -8807,18 +8808,30 @@ private:
         QPushButton *guiFont = new QPushButton(QStringLiteral("GUI Font..."));
         QPushButton *osdFont = new QPushButton(QStringLiteral("OSD Font..."));
         QPushButton *setDefault = new QPushButton(QStringLiteral("Set default"));
-        miscGuiSize = combo({ QStringLiteral("Select..."), QStringLiteral("200%"), QStringLiteral("150%"), QStringLiteral("100%"), QStringLiteral("80%") });
+        miscGuiSize = combo({
+            QStringLiteral("Select..."),
+            QStringLiteral("200%"),
+            QStringLiteral("190%"),
+            QStringLiteral("180%"),
+            QStringLiteral("170%"),
+            QStringLiteral("160%"),
+            QStringLiteral("150%"),
+            QStringLiteral("140%"),
+            QStringLiteral("130%"),
+            QStringLiteral("120%"),
+            QStringLiteral("110%"),
+            QStringLiteral("100%"),
+            QStringLiteral("90%"),
+            QStringLiteral("80%"),
+            QStringLiteral("70%"),
+            QStringLiteral("60%")
+        });
         QPushButton *resetLists = new QPushButton(QStringLiteral("Reset list customizations"));
         miscGuiResize = new QCheckBox(QStringLiteral("Resizeable GUI"));
         miscGuiFullscreen = new QCheckBox(QStringLiteral("Fullscreen GUI"));
         miscGuiDarkMode = new QCheckBox(QStringLiteral("Dark mode"));
-        disableUnavailable(guiFont, QStringLiteral("Qt GUI font selection is not implemented yet."));
         disableUnavailable(osdFont, QStringLiteral("OSD font selection is not implemented yet."));
-        disableUnavailable(setDefault, QStringLiteral("GUI scaling defaults are not connected to the Unix Qt frontend yet."));
-        disableUnavailable(miscGuiSize, QStringLiteral("GUI scaling is not connected to the Unix Qt frontend yet."));
         disableUnavailable(resetLists, QStringLiteral("List customization storage is not implemented in the Unix Qt frontend yet."));
-        disableUnavailable(miscGuiResize, QStringLiteral("Qt configuration window resize policy is currently fixed by the Unix frontend."));
-        disableUnavailable(miscGuiFullscreen, QStringLiteral("Fullscreen configuration UI is not implemented in the Unix Qt frontend."));
         disableUnavailable(miscGuiDarkMode, QStringLiteral("macOS dark-mode polish is tracked as a later UI item."));
 
         QHBoxLayout *fontRow = new QHBoxLayout;
@@ -8882,7 +8895,101 @@ private:
         connect(stateFileName, &QComboBox::currentTextChanged, this, [this](const QString &text) {
             stateFileClear->setChecked(text.trimmed().isEmpty());
         });
+        connect(guiFont, &QPushButton::clicked, this, [this]() { chooseGuiFont(); });
+        connect(setDefault, &QPushButton::clicked, this, [this]() { applyGuiScaleSelection(); });
+        connect(miscGuiSize, &QComboBox::currentTextChanged, this, [this](const QString &text) {
+            if (text != QStringLiteral("Select...")) {
+                applyGuiScaleSelection();
+            }
+        });
+        connect(miscGuiResize, &QCheckBox::toggled, this, [this](bool) { applyGuiResizeMode(); });
+        connect(miscGuiFullscreen, &QCheckBox::toggled, this, [this](bool checked) { applyGuiFullscreenMode(checked); });
         return page;
+    }
+
+    int guiScalePercent(const QString &text) const
+    {
+        QString value = text.trimmed();
+        if (value.endsWith(QLatin1Char('%'))) {
+            value.chop(1);
+        }
+        bool ok = false;
+        const int percent = value.trimmed().toInt(&ok);
+        return ok && percent >= 60 && percent <= 200 ? percent : 100;
+    }
+
+    void applyGuiResizeMode()
+    {
+        if (!miscGuiResize || !miscGuiFullscreen) {
+            return;
+        }
+        const bool resizable = miscGuiResize->isChecked() || miscGuiFullscreen->isChecked();
+        setMinimumSize(820, 600);
+        setMaximumSize(resizable ? QSize(QWIDGETSIZE_MAX, QWIDGETSIZE_MAX) : size());
+        if (!resizable) {
+            setFixedSize(size());
+        }
+    }
+
+    void applyGuiScaleSelection(bool exitFullscreen = true)
+    {
+        if (!miscGuiSize) {
+            return;
+        }
+        const int percent = guiScalePercent(miscGuiSize->currentText());
+        const QSize baseSize(880, 640);
+        const QSize minSize(820, 600);
+        const QSize scaled(qMax(minSize.width(), baseSize.width() * percent / 100),
+            qMax(minSize.height(), baseSize.height() * percent / 100));
+        if (miscGuiFullscreen && miscGuiFullscreen->isChecked()) {
+            if (!exitFullscreen) {
+                return;
+            }
+            showNormal();
+            miscGuiFullscreen->setChecked(false);
+        }
+        setMinimumSize(820, 600);
+        setMaximumSize(QWIDGETSIZE_MAX, QWIDGETSIZE_MAX);
+        resize(scaled);
+        applyGuiResizeMode();
+    }
+
+    void applyGuiFullscreenMode(bool fullscreen)
+    {
+        if (fullscreen) {
+            setMinimumSize(820, 600);
+            setMaximumSize(QWIDGETSIZE_MAX, QWIDGETSIZE_MAX);
+            showFullScreen();
+        } else {
+            showNormal();
+            applyGuiResizeMode();
+        }
+    }
+
+    void applyGuiFont(const QFont &font, const QString &config)
+    {
+        miscGuiFontConfig = config;
+        if (QApplication *app = qobject_cast<QApplication *>(QApplication::instance())) {
+            app->setFont(font);
+        }
+        setFont(font);
+    }
+
+    void applyGuiFontConfig(const QString &config)
+    {
+        QFont font;
+        if (font.fromString(config)) {
+            applyGuiFont(font, config);
+        }
+    }
+
+    void chooseGuiFont()
+    {
+        bool ok = false;
+        const QFont selected = QFontDialog::getFont(&ok, font(), this, QStringLiteral("Select GUI Font"));
+        if (ok) {
+            applyGuiFont(selected, selected.toString());
+        }
     }
 
     bool miscOptionChecked(const QString &key) const
@@ -10297,6 +10404,11 @@ private:
         logSelect->setCurrentText(QStringLiteral("winuaebootlog.txt"));
         fullLogging->setChecked(false);
         logWindow->setChecked(false);
+        miscGuiSize->setCurrentText(QStringLiteral("Select..."));
+        miscGuiResize->setChecked(true);
+        miscGuiFullscreen->setChecked(false);
+        miscGuiFontConfig.clear();
+        applyGuiResizeMode();
         updateLogPathText();
         updateOutputControlState();
         refreshConfigList();
@@ -11351,6 +11463,14 @@ private:
         insertCheckBoxSetting(settings, QStringLiteral("unix.ui.portable_mode"), portableMode);
         insertCheckBoxSetting(settings, QStringLiteral("unix.ui.full_logging"), fullLogging);
         insertCheckBoxSetting(settings, QStringLiteral("unix.ui.log_window"), logWindow);
+        if (miscGuiSize) {
+            settings.insert(QStringLiteral("unix.ui.gui_scale"), miscGuiSize->currentText());
+        }
+        insertCheckBoxSetting(settings, QStringLiteral("unix.ui.gui_resize"), miscGuiResize);
+        insertCheckBoxSetting(settings, QStringLiteral("unix.ui.gui_fullscreen"), miscGuiFullscreen);
+        if (!miscGuiFontConfig.isEmpty()) {
+            settings.insert(QStringLiteral("unix.ui.gui_font"), miscGuiFontConfig);
+        }
         insertLineEditSetting(settings, QStringLiteral("unix.ui.output_file"), outputFile);
         insertCheckBoxSetting(settings, QStringLiteral("unix.ui.output_frame_limiter_disabled"), outputFrameLimiter);
         insertCheckBoxSetting(settings, QStringLiteral("unix.ui.output_original_size"), outputOriginalSize);
@@ -11833,6 +11953,10 @@ private:
             QStringLiteral("unix.ui.portable_mode"),
             QStringLiteral("unix.ui.full_logging"),
             QStringLiteral("unix.ui.log_window"),
+            QStringLiteral("unix.ui.gui_scale"),
+            QStringLiteral("unix.ui.gui_resize"),
+            QStringLiteral("unix.ui.gui_fullscreen"),
+            QStringLiteral("unix.ui.gui_font"),
             QStringLiteral("unix.ui.output_file"),
             QStringLiteral("unix.ui.output_frame_limiter_disabled"),
             QStringLiteral("unix.ui.output_original_size"),
@@ -12503,6 +12627,17 @@ private:
             fullLogging->setChecked(configBoolValue(value));
         } else if (key == QStringLiteral("unix.ui.log_window")) {
             logWindow->setChecked(configBoolValue(value));
+        } else if (key == QStringLiteral("unix.ui.gui_scale")) {
+            miscGuiSize->setCurrentText(value);
+            applyGuiScaleSelection(false);
+        } else if (key == QStringLiteral("unix.ui.gui_resize")) {
+            miscGuiResize->setChecked(configBoolValue(value));
+            applyGuiResizeMode();
+        } else if (key == QStringLiteral("unix.ui.gui_fullscreen")) {
+            miscGuiFullscreen->setChecked(configBoolValue(value));
+            applyGuiFullscreenMode(miscGuiFullscreen->isChecked());
+        } else if (key == QStringLiteral("unix.ui.gui_font")) {
+            applyGuiFontConfig(value);
         } else if (key == QStringLiteral("unix.ui.output_file")) {
             outputFile->setText(value);
         } else if (key == QStringLiteral("unix.ui.output_frame_limiter_disabled")) {
