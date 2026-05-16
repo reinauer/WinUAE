@@ -236,6 +236,7 @@ set(WINUAE_CORE_SOURCES
     softfloat/softfloat_decimal.cpp
     softfloat/softfloat_fpsp.cpp
     od-unix/charset.cpp
+    od-unix/clipboard.cpp
     od-unix/config.cpp
     od-unix/driveclick.cpp
     od-unix/filesys_host.cpp

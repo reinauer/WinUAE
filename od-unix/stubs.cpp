@@ -6,7 +6,6 @@
 #include "memory.h"
 #include "autoconf.h"
 #include "audio.h"
-#include "clipboard.h"
 #include "cpuboard.h"
 #include "debug.h"
 #include "filesys.h"
@@ -14,7 +13,6 @@
 #include "gfxboard.h"
 #include "inputdevice.h"
 #include "keyboard.h"
-#include "keybuf.h"
 #include "rommgr.h"
 #include "savestate.h"
 #include "sampler.h"
@@ -46,8 +44,6 @@ volatile int bsd_int_requested;
 void machdep_free(void) {}
 void protect_roms(bool) {}
 void debugger_change(int) {}
-void clipboard_vsync(void) {}
-void clipboard_unsafeperiod(void) {}
 void pausevideograb(int) {}
 bool getpausevideograb(void) { return false; }
 uae_s64 getsetpositionvideograb(uae_s64) { return -1; }
@@ -156,14 +152,6 @@ bool hydra_init(struct autoconfig_info *) { return false; }
 bool lanrover_init(struct autoconfig_info *) { return false; }
 bool xsurf_init(struct autoconfig_info *) { return false; }
 bool xsurf100_init(struct autoconfig_info *) { return false; }
-
-uaecptr amiga_clipboard_proc_start(TrapContext *) { return 0; }
-void amiga_clipboard_task_start(TrapContext *, uaecptr) {}
-int amiga_clipboard_want_data(TrapContext *) { return 0; }
-void amiga_clipboard_got_data(TrapContext *, uaecptr, uae_u32, uae_u32) {}
-void amiga_clipboard_die(TrapContext *) {}
-void amiga_clipboard_init(TrapContext *) {}
-void target_paste_to_keyboard(void) {}
 
 struct zvolume *archive_directory_plain(struct zfile *) { return NULL; }
 struct zvolume *archive_directory_lha(struct zfile *) { return NULL; }
