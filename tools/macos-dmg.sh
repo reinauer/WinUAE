@@ -38,7 +38,7 @@ minor="$(awk '/^#define UAEMINOR / { print $3; exit }' "${source_dir}/include/op
 revision="$(awk '/^#define UAESUBREV / { print $3; exit }' "${source_dir}/include/options.h")"
 version="${major:-0}.${minor:-0}.${revision:-0}"
 
-app_dir="$("${script_dir}/macos-bundle.sh" "${build_dir}" "${output_dir}")"
+app_dir="$("${script_dir}/macos-bundle.sh" "${build_dir}" "${output_dir}" | awk 'NF { line = $0 } END { print line }')"
 staging_dir="${output_dir}/dmg-root"
 volume_name="WinUAE"
 rw_dmg="${output_dir}/WinUAE-${version}.rw.dmg"
