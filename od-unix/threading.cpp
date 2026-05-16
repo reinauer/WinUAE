@@ -40,6 +40,9 @@ void uae_sem_destroy(uae_sem_t *sem)
 
 void uae_sem_post(uae_sem_t *sem)
 {
+    if (!sem || !*sem) {
+        return;
+    }
     pthread_mutex_lock(&(*sem)->mutex);
     (*sem)->count++;
     pthread_cond_signal(&(*sem)->cond);
@@ -48,6 +51,9 @@ void uae_sem_post(uae_sem_t *sem)
 
 void uae_sem_unpost(uae_sem_t *sem)
 {
+    if (!sem || !*sem) {
+        return;
+    }
     pthread_mutex_lock(&(*sem)->mutex);
     if ((*sem)->count > 0) {
         (*sem)->count--;
