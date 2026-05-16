@@ -2925,6 +2925,16 @@ static QString envString(const char *name)
     return QString::fromLocal8Bit(qgetenv(name));
 }
 
+static QString unixDefaultDataPath()
+{
+    return QStringLiteral("$HOME/Documents/WinUAE");
+}
+
+static QString unixDefaultDataSubPath(const QString &name)
+{
+    return QDir(unixDefaultDataPath()).filePath(name);
+}
+
 static QString expandUnixPath(QString path)
 {
     if (path.isEmpty()) {
@@ -7082,6 +7092,8 @@ private:
         root->setSpacing(6);
 
         QGridLayout *parallel = new QGridLayout;
+        parallel->setHorizontalSpacing(8);
+        parallel->setVerticalSpacing(4);
         parallel->setColumnStretch(1, 1);
         printerPort = combo({ QStringLiteral("<None>") });
         printerType = combo(configChoiceDisplays(printerTypeChoices, int(sizeof(printerTypeChoices) / sizeof(printerTypeChoices[0]))));
@@ -7107,7 +7119,12 @@ private:
         root->addWidget(groupBox(QStringLiteral("Parallel Port"), parallel));
 
         QGridLayout *serial = new QGridLayout;
+        serial->setHorizontalSpacing(8);
+        serial->setVerticalSpacing(4);
+        serial->setColumnStretch(0, 1);
         serial->setColumnStretch(1, 1);
+        serial->setColumnStretch(2, 1);
+        serial->setColumnStretch(3, 1);
         serialPort = combo(unixSerialPortItems());
         serialPort->setEditable(true);
         serialPort->setInsertPolicy(QComboBox::NoInsert);
@@ -7125,11 +7142,13 @@ private:
         serial->addWidget(serialDirect, 1, 2);
         serial->addWidget(uaeSerial, 1, 3);
         serial->addWidget(serialStatus, 2, 0, 1, 2);
-        serial->addWidget(serialRingIndicator, 2, 2, 1, 2);
-        serial->addWidget(serialCrlf, 3, 0, 1, 2);
+        serial->addWidget(serialRingIndicator, 2, 2);
+        serial->addWidget(serialCrlf, 2, 3);
         root->addWidget(groupBox(QStringLiteral("Serial Port"), serial));
 
         QGridLayout *midi = new QGridLayout;
+        midi->setHorizontalSpacing(8);
+        midi->setVerticalSpacing(4);
         midi->setColumnStretch(1, 1);
         midi->setColumnStretch(3, 1);
         midiOut = combo({ QStringLiteral("<None>") });
@@ -7143,6 +7162,8 @@ private:
         root->addWidget(groupBox(QStringLiteral("MIDI"), midi));
 
         QGridLayout *dongle = new QGridLayout;
+        dongle->setHorizontalSpacing(8);
+        dongle->setVerticalSpacing(4);
         dongle->setColumnStretch(1, 1);
         protectionDongle = combo(configChoiceDisplays(dongleChoices, int(sizeof(dongleChoices) / sizeof(dongleChoices[0]))));
         dongle->addWidget(label(QStringLiteral("Dongle:")), 0, 0);
@@ -7568,26 +7589,26 @@ private:
             base = dataPath ? dataPath->text().trimmed() : QString();
         }
         if (base.isEmpty()) {
-            base = QDir::homePath();
+            base = unixDefaultDataPath();
         }
         if (dataPath) {
             dataPath->setText(base);
         }
         const QDir dir(base);
         if (romsPath) {
-            romsPath->setText(dir.filePath(QStringLiteral("ROMs")));
+            romsPath->setText(dir.filePath(QStringLiteral("Kickstarts")));
         }
         if (configsPath) {
-            configsPath->setText(dir.filePath(QStringLiteral("Configurations")));
+            configsPath->setText(dir.filePath(QStringLiteral("Configuration")));
         }
         if (nvramPath) {
             nvramPath->setText(dir.filePath(QStringLiteral("NVRAMs")));
         }
         if (screenshotsPath) {
-            screenshotsPath->setText(dir.filePath(QStringLiteral("ScreenShots")));
+            screenshotsPath->setText(dir.filePath(QStringLiteral("Screenshots")));
         }
         if (stateFilesPath) {
-            stateFilesPath->setText(dir.filePath(QStringLiteral("Savestates")));
+            stateFilesPath->setText(dir.filePath(QStringLiteral("Save States")));
         }
         if (videosPath) {
             videosPath->setText(dir.filePath(QStringLiteral("Videos")));
@@ -9227,16 +9248,15 @@ private:
         extensionMinimizedNoSound->setChecked(true);
         extensionMinimizedNoJoy->setChecked(true);
         updateExtensionActivityState();
-        romsPath->setText(QDir::homePath());
-        configsPath->setText(QDir::homePath());
-        const QDir home(QDir::homePath());
-        nvramPath->setText(home.filePath(QStringLiteral("NVRAMs")));
-        screenshotsPath->setText(home.filePath(QStringLiteral("ScreenShots")));
-        stateFilesPath->setText(home.filePath(QStringLiteral("Savestates")));
-        videosPath->setText(home.filePath(QStringLiteral("Videos")));
-        saveImagesPath->setText(home.filePath(QStringLiteral("SaveImages")));
-        ripsPath->setText(home.filePath(QStringLiteral("Rips")));
-        dataPath->setText(QDir::homePath());
+        romsPath->setText(unixDefaultDataSubPath(QStringLiteral("Kickstarts")));
+        configsPath->setText(unixDefaultDataSubPath(QStringLiteral("Configuration")));
+        nvramPath->setText(unixDefaultDataSubPath(QStringLiteral("NVRAMs")));
+        screenshotsPath->setText(unixDefaultDataSubPath(QStringLiteral("Screenshots")));
+        stateFilesPath->setText(unixDefaultDataSubPath(QStringLiteral("Save States")));
+        videosPath->setText(unixDefaultDataSubPath(QStringLiteral("Videos")));
+        saveImagesPath->setText(unixDefaultDataSubPath(QStringLiteral("SaveImages")));
+        ripsPath->setText(unixDefaultDataSubPath(QStringLiteral("Rips")));
+        dataPath->setText(unixDefaultDataPath());
         recursiveRoms->setChecked(false);
         cacheConfigurations->setChecked(true);
         cacheBoxArt->setChecked(false);
