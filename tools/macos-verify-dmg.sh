@@ -6,6 +6,10 @@ usage() {
 Usage: $0 dmg-path
 
 Verifies a WinUAE macOS drag-install DMG.
+
+The check mounts the image, validates the app/layout resources, and runs the
+bundled executable with -h from an isolated HOME to catch missing runtime
+libraries without starting emulation.
 EOF
 }
 
@@ -16,8 +20,16 @@ fi
 
 dmg_path="${1:-}"
 mount_dir=""
+launch_home=""
+launch_log=""
 
 cleanup() {
+    if [[ -n "${launch_home}" && -d "${launch_home}" ]]; then
+        rm -rf "${launch_home}"
+    fi
+    if [[ -n "${launch_log}" && -f "${launch_log}" ]]; then
+        rm -f "${launch_log}"
+    fi
     if [[ -n "${mount_dir}" && -d "${mount_dir}" ]]; then
         hdiutil detach "${mount_dir}" -quiet >/dev/null 2>&1 || true
     fi
@@ -115,6 +127,14 @@ if [[ "$(plist_get ':CFBundleIconFile')" != "WinUAE.icns" ]]; then
 fi
 if [[ "$(plist_get ':CFBundleDocumentTypes:0:CFBundleTypeExtensions:0')" != "uae" ]]; then
     echo "error: .uae document type is not registered in Info.plist" >&2
+    exit 1
+fi
+
+launch_home="$(mktemp -d -t winuae-dmg-home.XXXXXX)"
+launch_log="$(mktemp -t winuae-dmg-launch.XXXXXX)"
+if ! HOME="${launch_home}" QT_QPA_PLATFORM=offscreen SDL_VIDEODRIVER=dummy "${app_dir}/Contents/MacOS/WinUAE" -h >"${launch_log}" 2>&1; then
+    echo "error: bundled executable did not start successfully from the mounted DMG" >&2
+    sed -n '1,120p' "${launch_log}" >&2
     exit 1
 fi
 
