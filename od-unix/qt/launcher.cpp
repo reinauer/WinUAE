@@ -1493,14 +1493,13 @@ static const MiscCheckChoice miscCheckChoices[] = {
 
 static bool miscCheckChoiceEnabled(const QString &key)
 {
-    return key != QStringLiteral("clipboard_sharing");
+    Q_UNUSED(key);
+    return true;
 }
 
 static QString miscCheckChoiceDisabledReason(const QString &key)
 {
-    if (key == QStringLiteral("clipboard_sharing")) {
-        return QStringLiteral("Full Amiga clipboard sharing needs a native Unix clipboard-device backend. Host text paste is available through the paste input event.");
-    }
+    Q_UNUSED(key);
     return QString();
 }
 
