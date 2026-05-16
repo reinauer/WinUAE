@@ -584,17 +584,32 @@ static void fetch_home_path(TCHAR *out, int size)
     fixtrailing(out);
 }
 
-void fetch_saveimagepath(TCHAR *out, int size, int) { fetch_home_path(out, size); }
-void fetch_configurationpath(TCHAR *out, int size) { fetch_home_path(out, size); }
-void fetch_nvrampath(TCHAR *out, int size) { fetch_home_path(out, size); }
+static void fetch_user_data_path(TCHAR *out, int size, const char *subdir)
+{
+    if (!out || size <= 0) {
+        return;
+    }
+    const char *home = getenv("HOME");
+    const char *base = home ? home : ".";
+    if (subdir && subdir[0]) {
+        snprintf(out, (size_t)size, "%s/Documents/WinUAE/%s", base, subdir);
+    } else {
+        snprintf(out, (size_t)size, "%s/Documents/WinUAE", base);
+    }
+    fixtrailing(out);
+}
+
+void fetch_saveimagepath(TCHAR *out, int size, int) { fetch_user_data_path(out, size, "SaveImages"); }
+void fetch_configurationpath(TCHAR *out, int size) { fetch_user_data_path(out, size, "Configuration"); }
+void fetch_nvrampath(TCHAR *out, int size) { fetch_user_data_path(out, size, "NVRAMs"); }
 void fetch_luapath(TCHAR *out, int size) { fetch_home_path(out, size); }
-void fetch_screenshotpath(TCHAR *out, int size) { fetch_home_path(out, size); }
-void fetch_ripperpath(TCHAR *out, int size) { fetch_home_path(out, size); }
-void fetch_statefilepath(TCHAR *out, int size) { fetch_home_path(out, size); }
+void fetch_screenshotpath(TCHAR *out, int size) { fetch_user_data_path(out, size, "Screenshots"); }
+void fetch_ripperpath(TCHAR *out, int size) { fetch_user_data_path(out, size, "Rips"); }
+void fetch_statefilepath(TCHAR *out, int size) { fetch_user_data_path(out, size, "Save States"); }
 void fetch_inputfilepath(TCHAR *out, int size) { fetch_home_path(out, size); }
-void fetch_datapath(TCHAR *out, int size) { fetch_home_path(out, size); }
-void fetch_rompath(TCHAR *out, int size) { fetch_home_path(out, size); }
-void fetch_videopath(TCHAR *out, int size) { fetch_home_path(out, size); }
+void fetch_datapath(TCHAR *out, int size) { fetch_user_data_path(out, size, NULL); }
+void fetch_rompath(TCHAR *out, int size) { fetch_user_data_path(out, size, "Kickstarts"); }
+void fetch_videopath(TCHAR *out, int size) { fetch_user_data_path(out, size, "Videos"); }
 
 void target_getdate(int *y, int *m, int *d)
 {
