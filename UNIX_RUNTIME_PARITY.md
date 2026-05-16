@@ -55,7 +55,7 @@ Status values:
 | Windows feature area | Unix status | Evidence | Next action |
 | --- | --- | --- | --- |
 | Paula audio output | Enabled | `od-unix/sound.cpp` uses SDL3 `SDL_AudioStream`, enumerates SDL playback devices, and honors `unix.soundcard` / `unix.soundcardname` in the same index-plus-name pattern as Windows. The A1200 smoke test checks SDL dummy audio initialization. | Test real host output devices on macOS/Linux and keep advanced backends disabled until implemented. |
-| Floppy drive sounds | Enabled | Unix defines `DRIVESOUND`; `od-unix/sound.cpp` calls `driveclick_init()` and CMake links `od-unix/driveclick.cpp`. The Qt Sound page round-trips `floppyNsound` and per-drive empty/disk volumes. | Verify audible click behavior with real output hardware. |
+| Floppy drive sounds | Partial | Unix defines `DRIVESOUND`; `od-unix/sound.cpp` calls `driveclick_init()` and CMake links `od-unix/driveclick.cpp`. The Qt Sound page round-trips `floppyNsound` and per-drive empty/disk volumes, but real-host testing has not produced audible drive clicks yet. | Investigate the drive-click mixer path after higher-priority UI and packaging work. |
 | AHI sound emulation | Deferred | Windows defines `AHI` and links `od-win32/ahidsound_*`; Unix does not define `AHI`. | Defer until core audio output and MIDI/sound-board work are stable. |
 | Sound boards, Toccata, DSP, MIDI emulation | Deferred | Windows defines `WITH_SNDBOARD`, `WITH_TOCCATA`, `WITH_DSP`, `WITH_MIDIEMU`; Unix does not link those sources. | Add native audio/MIDI backends before enabling UI controls. |
 | Native MIDI | Deferred | Windows defines `WITH_MIDI`, `WITH_PORTAUDIO`, `WITH_OPENAL` and links `od-win32/midi.cpp`; Unix does not. | Choose CoreMIDI on macOS and ALSA/PipeWire/PortMIDI on Linux. |
@@ -95,7 +95,7 @@ Status values:
 | --- | --- | --- | --- |
 | Threads, timers, memory mapping, dynamic loading | Enabled | CMake links `od-unix/threading.cpp`, `od-unix/time.cpp`, `od-unix/mman.cpp`, and shared `dlopen.cpp`; Unix defines `SUPPORT_THREADS`. | Keep covered by normal boot and filesystem tests. |
 | Logging and console | Partial | `od-unix/logging.cpp` logs to stderr/file paths; console input helpers are no-ops. | Add log-open/export polish through Qt; debugger console input remains later work. |
-| Clipboard | Stubbed | `od-unix/stubs.cpp` returns no Amiga clipboard data and paste-to-keyboard is no-op. | Add Cocoa/X11/Wayland clipboard backend before enabling UI controls. |
+| Clipboard | Partial | `od-unix/clipboard.cpp` implements host text paste-to-keyboard through `keybuf_inject`, using `pbpaste` on macOS and `wl-paste`/`xclip`/`xsel` on Linux. The Amiga clipboard-device hooks still return no data. | Add a native full clipboard sharing backend before enabling the Clipboard sharing UI control. |
 | Caps Lock / keyboard LED host state | Stubbed | `target_checkcapslock`, `setcapslockstate`, and `getcapslockstate` return disabled values. | Add native keyboard LED/state handling if compatibility requires it. |
 | Config path and Unix path expansion | Enabled/Partial | `od-unix/config.cpp` and Qt expand `~/`, `$VAR`, and `${VAR}`; `~user` and relative-path policy are still open. | Add tests and decide/document `~user`. |
 | Qt integrated configuration UI | Partial | CMake defaults `WINUAE_UNIX_WITH_QT_UI` and `WINUAE_UNIX_WITH_INTEGRATED_QT_UI` on; Qt source lives under `od-unix/qt`. | Continue Windows behavior comparisons for each page/action. |
@@ -107,5 +107,5 @@ Status values:
 1. RTG/Picasso96 is visible in the UI and partially active, but the Unix backend only covers UAE Z2/Z3 RAM and a first `uaegfx.card` path. This needs guest-driver validation before it should be considered Windows-equivalent.
 2. A2065/SLIRP is compiled by default, but SANA-II, pcap/tap/tun, and `bsdsocket.library` are not yet validated/enabled as a coherent networking story.
 3. Audio output exists through SDL3, but Windows has many more audio/MIDI/board paths. The Unix UI should keep advanced sound/MIDI controls disabled until native backends exist.
-4. Host integration stubs are still broad: clipboard, screenshots/capture, sampler, printer/parallel, archive browsing, native media passthrough, CPU boards, and hardware graphics boards. Joystick/gamepad support has a first SDL3 backend, but still needs real-device validation and remap/test UI wiring.
+4. Host integration stubs are still broad: full clipboard sharing, screenshots/capture, sampler, printer/parallel, archive browsing, native media passthrough, CPU boards, and hardware graphics boards. Joystick/gamepad support has a first SDL3 backend, but still needs real-device validation and remap/test UI wiring.
 5. The Unix build defines some user-visible features whose backend is only partial or stubbed, especially `PARALLEL_PORT`, `PICASSO96`, and A2065/SLIRP. These should either become fully backed or be clearly reflected in the UI/status text.
