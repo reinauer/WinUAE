@@ -59,6 +59,21 @@ static SDL_PixelFormat texture_format_for_pixbytes(int pixbytes)
     return SDL_PIXELFORMAT_ARGB8888;
 }
 
+static int unix_input_lock_state_from_sdl(SDL_Keymod mod)
+{
+    int lockstate = 0;
+    if (mod & SDL_KMOD_CAPS) {
+        lockstate |= UNIX_INPUT_LOCK_CAPS;
+    }
+    if (mod & SDL_KMOD_NUM) {
+        lockstate |= UNIX_INPUT_LOCK_NUM;
+    }
+    if (mod & SDL_KMOD_SCROLL) {
+        lockstate |= UNIX_INPUT_LOCK_SCROLL;
+    }
+    return lockstate;
+}
+
 static int statusbar_source_height(void)
 {
     return TD_TOTAL_HEIGHT;
@@ -415,7 +430,8 @@ int unix_video_poll(bool *quit_requested)
             if (event.key.type == SDL_EVENT_KEY_DOWN && event.key.key == SDLK_ESCAPE && s_mouse_grabbed) {
                 unix_video_set_mouse_grab(false);
             }
-            unix_input_keyboard_key((int)event.key.scancode, event.key.type == SDL_EVENT_KEY_DOWN);
+            unix_input_keyboard_key((int)event.key.scancode, event.key.type == SDL_EVENT_KEY_DOWN,
+                unix_input_lock_state_from_sdl(event.key.mod));
             break;
         case SDL_EVENT_MOUSE_MOTION:
             if (s_mouse_grabbed) {
