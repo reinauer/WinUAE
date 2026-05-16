@@ -4,6 +4,7 @@
 #include <QFileOpenEvent>
 #include <QUrl>
 
+#include <algorithm>
 #include <cstdio>
 #include <functional>
 
@@ -46,6 +47,130 @@ static constexpr int MaxRomBoards = 4;
 static constexpr int MaxDiskSwapperSlots = 20;
 static constexpr int MaxQuickstartConfigs = 6;
 static constexpr int MaxJoyportCustomSlots = 6;
+static constexpr int CustomInputConfigSlots = 3;
+static constexpr int GamePortsInputConfigLine = 4;
+static constexpr int MaxInputSubEventSlots = 8;
+static constexpr int InputMappingKeyRole = Qt::UserRole;
+static constexpr int InputMappingEditableRole = Qt::UserRole + 1;
+static constexpr int InputFlagAutofire = 1;
+static constexpr int InputFlagToggle = 2;
+static constexpr int InputFlagInvertToggle = 16;
+static constexpr int InputFlagInvert = 32;
+static constexpr int InputFlagSetOnOff = 128;
+static constexpr int InputFlagSetOnOffVal1 = 256;
+static constexpr int InputFlagSetOnOffVal2 = 512;
+
+struct WinUaeQtInputEventChoice {
+    const char *display;
+    const char *config;
+};
+
+static const WinUaeQtInputEventChoice inputEventChoices[] = {
+    { "Joy1 Horizontal", "JOY1_HORIZ" },
+    { "Joy1 Vertical", "JOY1_VERT" },
+    { "Joy1 Horizontal (Analog)", "JOY1_HORIZ_POT" },
+    { "Joy1 Vertical (Analog)", "JOY1_VERT_POT" },
+    { "Joy1 Left", "JOY1_LEFT" },
+    { "Joy1 Right", "JOY1_RIGHT" },
+    { "Joy1 Up", "JOY1_UP" },
+    { "Joy1 Down", "JOY1_DOWN" },
+    { "Joy1 Left+Up", "JOY1_LEFT_UP" },
+    { "Joy1 Left+Down", "JOY1_LEFT_DOWN" },
+    { "Joy1 Right+Up", "JOY1_RIGHT_UP" },
+    { "Joy1 Right+Down", "JOY1_RIGHT_DOWN" },
+    { "Joy1 Fire/Mouse1 Left Button", "JOY1_FIRE_BUTTON" },
+    { "Joy1 2nd Button/Mouse1 Right Button", "JOY1_2ND_BUTTON" },
+    { "Joy1 3rd Button/Mouse1 Middle Button", "JOY1_3RD_BUTTON" },
+    { "Joy1 CD32 Play", "JOY1_CD32_PLAY" },
+    { "Joy1 CD32 RWD", "JOY1_CD32_RWD" },
+    { "Joy1 CD32 FFW", "JOY1_CD32_FFW" },
+    { "Joy1 CD32 Green", "JOY1_CD32_GREEN" },
+    { "Joy1 CD32 Yellow", "JOY1_CD32_YELLOW" },
+    { "Joy1 CD32 Red", "JOY1_CD32_RED" },
+    { "Joy1 CD32 Blue", "JOY1_CD32_BLUE" },
+    { "Mouse1 Horizontal", "MOUSE1_HORIZ" },
+    { "Mouse1 Vertical", "MOUSE1_VERT" },
+    { "Mouse1 Horizontal (inverted)", "MOUSE1_HORIZ_INV" },
+    { "Mouse1 Vertical (inverted)", "MOUSE1_VERT_INV" },
+    { "Mouse1 Up", "MOUSE1_UP" },
+    { "Mouse1 Down", "MOUSE1_DOWN" },
+    { "Mouse1 Left", "MOUSE1_LEFT" },
+    { "Mouse1 Right", "MOUSE1_RIGHT" },
+    { "Mouse1 Wheel", "MOUSE1_WHEEL" },
+    { "Joy2 Horizontal", "JOY2_HORIZ" },
+    { "Joy2 Vertical", "JOY2_VERT" },
+    { "Joy2 Horizontal (Analog)", "JOY2_HORIZ_POT" },
+    { "Joy2 Vertical (Analog)", "JOY2_VERT_POT" },
+    { "Joy2 Left", "JOY2_LEFT" },
+    { "Joy2 Right", "JOY2_RIGHT" },
+    { "Joy2 Up", "JOY2_UP" },
+    { "Joy2 Down", "JOY2_DOWN" },
+    { "Joy2 Left+Up", "JOY2_LEFT_UP" },
+    { "Joy2 Left+Down", "JOY2_LEFT_DOWN" },
+    { "Joy2 Right+Up", "JOY2_RIGHT_UP" },
+    { "Joy2 Right+Down", "JOY2_RIGHT_DOWN" },
+    { "Joy2 Fire/Mouse2 Left Button", "JOY2_FIRE_BUTTON" },
+    { "Joy2 2nd Button/Mouse2 Right Button", "JOY2_2ND_BUTTON" },
+    { "Joy2 3rd Button/Mouse2 Middle Button", "JOY2_3RD_BUTTON" },
+    { "Joy2 CD32 Play", "JOY2_CD32_PLAY" },
+    { "Joy2 CD32 RWD", "JOY2_CD32_RWD" },
+    { "Joy2 CD32 FFW", "JOY2_CD32_FFW" },
+    { "Joy2 CD32 Green", "JOY2_CD32_GREEN" },
+    { "Joy2 CD32 Yellow", "JOY2_CD32_YELLOW" },
+    { "Joy2 CD32 Red", "JOY2_CD32_RED" },
+    { "Joy2 CD32 Blue", "JOY2_CD32_BLUE" },
+    { "Mouse2 Horizontal", "MOUSE2_HORIZ" },
+    { "Mouse2 Vertical", "MOUSE2_VERT" },
+    { "Mouse2 Horizontal (inverted)", "MOUSE2_HORIZ_INV" },
+    { "Mouse2 Vertical (inverted)", "MOUSE2_VERT_INV" },
+    { "Mouse2 Up", "MOUSE2_UP" },
+    { "Mouse2 Down", "MOUSE2_DOWN" },
+    { "Mouse2 Left", "MOUSE2_LEFT" },
+    { "Mouse2 Right", "MOUSE2_RIGHT" },
+    { "Parallel Joy1 Horizontal", "PAR_JOY1_HORIZ" },
+    { "Parallel Joy1 Vertical", "PAR_JOY1_VERT" },
+    { "Parallel Joy1 Left", "PAR_JOY1_LEFT" },
+    { "Parallel Joy1 Right", "PAR_JOY1_RIGHT" },
+    { "Parallel Joy1 Up", "PAR_JOY1_UP" },
+    { "Parallel Joy1 Down", "PAR_JOY1_DOWN" },
+    { "Parallel Joy1 Fire Button", "PAR_JOY1_FIRE_BUTTON" },
+    { "Parallel Joy1 Spare/2nd Button", "PAR_JOY1_2ND_BUTTON" },
+    { "Parallel Joy2 Horizontal", "PAR_JOY2_HORIZ" },
+    { "Parallel Joy2 Vertical", "PAR_JOY2_VERT" },
+    { "Parallel Joy2 Left", "PAR_JOY2_LEFT" },
+    { "Parallel Joy2 Right", "PAR_JOY2_RIGHT" },
+    { "Parallel Joy2 Up", "PAR_JOY2_UP" },
+    { "Parallel Joy2 Down", "PAR_JOY2_DOWN" },
+    { "Parallel Joy2 Fire Button", "PAR_JOY2_FIRE_BUTTON" },
+    { "Parallel Joy2 Spare/2nd Button", "PAR_JOY2_2ND_BUTTON" },
+    { "Enter GUI", "SPC_ENTERGUI" },
+    { "Screenshot (file)", "SPC_SCREENSHOT" },
+    { "Pause emulation", "SPC_PAUSE" },
+    { "Warp mode", "SPC_WARP" },
+    { "Quit emulator", "SPC_QUIT" },
+    { "Reset emulation", "SPC_SOFTRESET" },
+    { "Hard reset emulation", "SPC_HARDRESET" },
+    { "Quick save state", "SPC_STATESAVE" },
+    { "Quick restore state", "SPC_STATERESTORE" },
+    { "Toggle windowed/fullscreen", "SPC_TOGGLEFULLSCREEN" },
+    { "Toggle mouse grab", "SPC_TOGGLEMOUSEGRAB" },
+    { "Swap joystick ports", "SPC_SWAPJOYPORTS" },
+    { "Paste from host clipboard", "SPC_PASTE" }
+};
+
+struct WinUaeQtInputSlot {
+    QString event;
+    int flags = 0;
+    QString qualifiers;
+    QString suffix;
+    bool custom = false;
+};
+
+struct WinUaeQtInputRow {
+    QString label;
+    QString key;
+    bool editable = false;
+};
 
 struct QuickstartModelChoice {
     const char *display;
@@ -2928,6 +3053,167 @@ static void disableUnavailable(QWidget *widget, const QString &reason)
     widget->setToolTip(reason);
 }
 
+static QString winUaeQtInputEventDisplayName(const QString &configName)
+{
+    if (configName.isEmpty()) {
+        return QStringLiteral("<None>");
+    }
+    for (const WinUaeQtInputEventChoice &choice : inputEventChoices) {
+        if (configName.compare(QString::fromLatin1(choice.config), Qt::CaseInsensitive) == 0) {
+            return QString::fromLatin1(choice.display);
+        }
+    }
+    return configName;
+}
+
+static QStringList winUaeQtInputSlotFields(const QString &value)
+{
+    QStringList fields;
+    QString field;
+    bool quoted = false;
+    for (QChar ch : value) {
+        if (ch == QLatin1Char('\'')) {
+            quoted = !quoted;
+        }
+        if (ch == QLatin1Char(',') && !quoted) {
+            fields.append(field.trimmed());
+            field.clear();
+            continue;
+        }
+        field.append(ch);
+    }
+    if (!field.isEmpty() || value.endsWith(QLatin1Char(','))) {
+        fields.append(field.trimmed());
+    }
+    return fields;
+}
+
+static WinUaeQtInputSlot winUaeQtParseInputSlot(QString raw)
+{
+    WinUaeQtInputSlot slot;
+    raw = raw.trimmed();
+    if (raw.isEmpty() || raw.compare(QStringLiteral("NULL"), Qt::CaseInsensitive) == 0) {
+        return slot;
+    }
+
+    QString rest;
+    if (raw.startsWith(QLatin1Char('\''))) {
+        const int endQuote = raw.indexOf(QLatin1Char('\''), 1);
+        if (endQuote > 0) {
+            slot.custom = true;
+            slot.event = raw.mid(1, endQuote - 1);
+            rest = raw.mid(endQuote + 1);
+        } else {
+            slot.event = raw;
+        }
+    } else {
+        const int dot = raw.indexOf(QLatin1Char('.'));
+        if (dot >= 0) {
+            slot.event = raw.left(dot);
+            rest = raw.mid(dot);
+        } else {
+            slot.event = raw;
+        }
+    }
+
+    if (rest.startsWith(QLatin1Char('.'))) {
+        rest.remove(0, 1);
+        int pos = 0;
+        while (pos < rest.size() && rest[pos].isDigit()) {
+            pos++;
+        }
+        if (pos > 0) {
+            slot.flags = rest.left(pos).toInt();
+            rest.remove(0, pos);
+        }
+        if (rest.startsWith(QLatin1Char('.'))) {
+            int qpos = 1;
+            while (qpos < rest.size() && rest[qpos].isLetter()) {
+                qpos++;
+            }
+            if (qpos > 1) {
+                slot.qualifiers = rest.mid(1, qpos - 1);
+                rest.remove(0, qpos);
+            }
+        }
+        slot.suffix = rest;
+    }
+    return slot;
+}
+
+static QString winUaeQtFormatInputSlot(const WinUaeQtInputSlot &slot)
+{
+    if (slot.event.trimmed().isEmpty()) {
+        return QStringLiteral("NULL");
+    }
+
+    QString text = slot.custom
+        ? QStringLiteral("'%1'").arg(slot.event)
+        : slot.event;
+    text += QStringLiteral(".%1").arg(slot.flags);
+    if (!slot.qualifiers.isEmpty()) {
+        text += QLatin1Char('.');
+        text += slot.qualifiers;
+    }
+    text += slot.suffix;
+    return text;
+}
+
+static bool winUaeQtIsInputDeviceConfigKey(const QString &key)
+{
+    const QStringList parts = key.split(QLatin1Char('.'));
+    if (parts.size() < 5 || parts.value(0) != QStringLiteral("input")) {
+        return false;
+    }
+    bool ok = false;
+    const int config = parts.value(1).toInt(&ok);
+    if (!ok || config < 1 || config > GamePortsInputConfigLine) {
+        return false;
+    }
+    const QString type = parts.value(2);
+    if (type != QStringLiteral("joystick") && type != QStringLiteral("mouse")
+        && type != QStringLiteral("keyboard") && type != QStringLiteral("internal")) {
+        return false;
+    }
+    parts.value(3).toInt(&ok);
+    if (!ok) {
+        return false;
+    }
+    const QString field = parts.value(4);
+    return field == QStringLiteral("axis")
+        || field == QStringLiteral("button")
+        || field == QStringLiteral("friendlyname")
+        || field == QStringLiteral("name")
+        || field == QStringLiteral("empty")
+        || field == QStringLiteral("disabled")
+        || field == QStringLiteral("custom");
+}
+
+static bool winUaeQtIsInputWidgetMappingKey(const QString &key)
+{
+    const QStringList parts = key.split(QLatin1Char('.'));
+    return winUaeQtIsInputDeviceConfigKey(key)
+        && (parts.value(4) == QStringLiteral("axis") || parts.value(4) == QStringLiteral("button"));
+}
+
+static QString winUaeQtSwapInputEventPorts(QString event)
+{
+    static const QPair<QString, QString> pairs[] = {
+        { QStringLiteral("JOY1_"), QStringLiteral("JOY2_") },
+        { QStringLiteral("MOUSE1_"), QStringLiteral("MOUSE2_") },
+        { QStringLiteral("PAR_JOY1_"), QStringLiteral("PAR_JOY2_") }
+    };
+    for (const auto &pair : pairs) {
+        if (event.startsWith(pair.first)) {
+            return pair.second + event.mid(pair.first.size());
+        }
+        if (event.startsWith(pair.second)) {
+            return pair.first + event.mid(pair.second.size());
+        }
+    }
+    return event;
+}
+
 #ifdef UAE_UNIX_WITH_SDL3
 enum class UnixQtInputWidgetKind {
     Axis,
@@ -2950,6 +3236,7 @@ struct UnixQtInputTestWidget {
 
 struct UnixQtInputTestDevice {
     QString name;
+    QString uniqueName;
     SDL_JoystickID instanceId = 0;
     SDL_Gamepad *gamepad = nullptr;
     SDL_Joystick *joystick = nullptr;
@@ -3043,10 +3330,11 @@ static bool unixQtInputWidgetActive(UnixQtInputWidgetKind kind, int state)
 
 class UnixQtInputMapDialog final : public QDialog {
 public:
-    explicit UnixQtInputMapDialog(int port, const QString &context, const QString &customConfig, QWidget *parent = nullptr)
+    explicit UnixQtInputMapDialog(int port, const QString &context, const QString &customConfig, QWidget *parent = nullptr, bool captureSingle = false)
         : QDialog(parent),
           port(port),
           contextText(context),
+          singleCapture(captureSingle),
           customMappings(customConfig.split(QLatin1Char(' '), Qt::SkipEmptyParts))
     {
         setWindowTitle(QStringLiteral("Input Remap"));
@@ -3151,6 +3439,9 @@ public:
             });
             item->setDisabled(true);
             inputLine->setText(QStringLiteral("No SDL3 joystick/gamepad devices detected."));
+        } else if (singleCapture) {
+            setTesting(true);
+            inputLine->setText(contextText);
         }
     }
 
@@ -3167,6 +3458,46 @@ public:
     QString customConfig() const
     {
         return customMappings.join(QLatin1Char(' '));
+    }
+
+    bool hasCapturedInput() const
+    {
+        return capturedDeviceIndex >= 0 && capturedWidgetIndex >= 0;
+    }
+
+    int capturedDevice() const
+    {
+        return capturedDeviceIndex;
+    }
+
+    int capturedWidget() const
+    {
+        return capturedWidgetIndex;
+    }
+
+    QChar capturedWidgetType() const
+    {
+        return capturedMappingType;
+    }
+
+    int capturedWidgetMappingIndex() const
+    {
+        return capturedMappingIndex;
+    }
+
+    QString capturedDeviceDisplayName() const
+    {
+        return capturedDeviceName;
+    }
+
+    QString capturedDeviceConfigName() const
+    {
+        return capturedDeviceUniqueName;
+    }
+
+    QString capturedWidgetDisplayName() const
+    {
+        return capturedWidgetName;
     }
 
 private:
@@ -3186,6 +3517,14 @@ private:
     bool changed = false;
     bool remapping = false;
     bool remapWaitingForRelease = false;
+    bool singleCapture = false;
+    int capturedDeviceIndex = -1;
+    int capturedWidgetIndex = -1;
+    QChar capturedMappingType = QLatin1Char('a');
+    int capturedMappingIndex = 0;
+    QString capturedDeviceName;
+    QString capturedDeviceUniqueName;
+    QString capturedWidgetName;
     int remapEventIndex = -1;
     QStringList customMappings;
 
@@ -3204,6 +3543,9 @@ private:
         device.gamepad = gamepad;
         const char *name = SDL_GetGamepadName(gamepad);
         device.name = QString::fromUtf8(name && name[0] ? name : "SDL Gamepad");
+        char guid[64];
+        SDL_GUIDToString(SDL_GetJoystickGUIDForID(instanceId), guid, sizeof guid);
+        device.uniqueName = QStringLiteral("unix.gamepad.%1.%2").arg(QString::fromLatin1(guid)).arg(devices.size());
 
         const SDL_GamepadAxis axes[] = {
             SDL_GAMEPAD_AXIS_LEFTX,
@@ -3294,6 +3636,9 @@ private:
         device.joystick = joystick;
         const char *name = SDL_GetJoystickName(joystick);
         device.name = QString::fromUtf8(name && name[0] ? name : "SDL Joystick");
+        char guid[64];
+        SDL_GUIDToString(SDL_GetJoystickGUIDForID(instanceId), guid, sizeof guid);
+        device.uniqueName = QStringLiteral("unix.joystick.%1.%2").arg(QString::fromLatin1(guid)).arg(devices.size());
 
         const int axisCount = qMax(0, SDL_GetNumJoystickAxes(joystick));
         for (int i = 0; i < axisCount; i++) {
@@ -3756,9 +4101,23 @@ private:
         if (activeItem) {
             list->setCurrentItem(activeItem);
             list->scrollToItem(activeItem, QAbstractItemView::PositionAtCenter);
+            const int deviceIndex = activeItem->data(0, Qt::UserRole).toInt();
+            const int widgetIndex = activeItem->data(0, Qt::UserRole + 1).toInt();
+            if (singleCapture && deviceIndex >= 0 && deviceIndex < devices.size()
+                && widgetIndex >= 0 && widgetIndex < devices[deviceIndex].widgets.size()) {
+                const UnixQtInputTestWidget &widget = devices[deviceIndex].widgets[widgetIndex];
+                capturedDeviceIndex = deviceIndex;
+                capturedWidgetIndex = widgetIndex;
+                capturedMappingType = widget.mappingType;
+                capturedMappingIndex = widget.mappingIndex;
+                capturedDeviceName = devices[deviceIndex].name;
+                capturedDeviceUniqueName = devices[deviceIndex].uniqueName;
+                capturedWidgetName = widget.name;
+                changed = true;
+                accept();
+                return;
+            }
             if (remapping && !remapWaitingForRelease && remapEventIndex >= 0) {
-                const int deviceIndex = activeItem->data(0, Qt::UserRole).toInt();
-                const int widgetIndex = activeItem->data(0, Qt::UserRole + 1).toInt();
                 const QString event = addEvent->itemData(remapEventIndex).toString();
                 if (!event.isEmpty() && appendMappingFor(deviceIndex, widgetIndex, event)) {
                     remapWaitingForRelease = true;
@@ -4426,6 +4785,9 @@ private:
     QTreeWidget *inputMappingList = nullptr;
     QComboBox *inputSubEvent = nullptr;
     QComboBox *inputAmigaEvent = nullptr;
+    QPushButton *inputRemapButton = nullptr;
+    QPushButton *inputCopyButton = nullptr;
+    QPushButton *inputSwapButton = nullptr;
     QSpinBox *inputDeadzone = nullptr;
     QSpinBox *inputAutofireRate = nullptr;
     QSpinBox *inputJoyMouseDigital = nullptr;
@@ -4433,6 +4795,9 @@ private:
     QComboBox *inputCopyFrom = nullptr;
     QCheckBox *inputPageUpEnd = nullptr;
     QCheckBox *inputSwapBackslashF11 = nullptr;
+    QMap<QString, QString> inputMappingSettings;
+    QStringList inputOwnedMappingKeys;
+    bool inputMappingUpdating = false;
     QComboBox *printerPort = nullptr;
     QComboBox *printerType = nullptr;
     QSpinBox *printerAutoFlush = nullptr;
@@ -8232,6 +8597,541 @@ private:
         }
     }
 
+    bool inputGamePortsMode() const
+    {
+        return !inputType || inputType->currentText() == QStringLiteral("Game Ports");
+    }
+
+    int selectedInputConfigLine() const
+    {
+        if (inputGamePortsMode()) {
+            return GamePortsInputConfigLine;
+        }
+        return qBound(1, inputType->currentIndex() + 1, CustomInputConfigSlots);
+    }
+
+    QString selectedInputDeviceType() const
+    {
+        const QString device = inputDevice ? inputDevice->currentText() : QStringLiteral("Joystick");
+        if (device == QStringLiteral("Mouse")) {
+            return QStringLiteral("mouse");
+        }
+        if (device == QStringLiteral("Keyboard")) {
+            return QStringLiteral("keyboard");
+        }
+        return QStringLiteral("joystick");
+    }
+
+    void markInputOwnedKey(const QString &key)
+    {
+        if (!inputOwnedMappingKeys.contains(key)) {
+            inputOwnedMappingKeys.append(key);
+        }
+    }
+
+    QString inputDeviceMetadataKey(const QString &suffix, int device = 0) const
+    {
+        return QStringLiteral("input.%1.%2.%3.%4")
+            .arg(selectedInputConfigLine())
+            .arg(selectedInputDeviceType())
+            .arg(device)
+            .arg(suffix);
+    }
+
+    QString selectedInputMappingKey() const
+    {
+        QTreeWidgetItem *item = inputMappingList ? inputMappingList->currentItem() : nullptr;
+        return item ? item->data(0, InputMappingKeyRole).toString() : QString();
+    }
+
+    QList<int> inputDeviceIndices(const QString &type, int configLine) const
+    {
+        QList<int> indices;
+        if (type != QStringLiteral("keyboard")) {
+            indices.append(0);
+        }
+        const QString prefix = QStringLiteral("input.%1.%2.").arg(configLine).arg(type);
+        for (auto it = inputMappingSettings.constBegin(); it != inputMappingSettings.constEnd(); ++it) {
+            if (!it.key().startsWith(prefix)) {
+                continue;
+            }
+            const QStringList parts = it.key().split(QLatin1Char('.'));
+            bool ok = false;
+            const int index = parts.value(3).toInt(&ok);
+            if (ok && !indices.contains(index)) {
+                indices.append(index);
+            }
+        }
+        std::sort(indices.begin(), indices.end());
+        return indices;
+    }
+
+    QVector<WinUaeQtInputRow> currentInputRows() const
+    {
+        QVector<WinUaeQtInputRow> rows;
+        const QString type = selectedInputDeviceType();
+        const int configLine = selectedInputConfigLine();
+        const QList<int> deviceIndices = inputDeviceIndices(type, configLine);
+        const bool showDeviceNumber = deviceIndices.size() > 1 || deviceIndices.value(0, 0) != 0;
+        const auto rowLabel = [showDeviceNumber](const QString &base, int device) {
+            return showDeviceNumber ? QStringLiteral("Device %1 %2").arg(device + 1).arg(base) : base;
+        };
+
+        if (type == QStringLiteral("joystick")) {
+            for (int device : deviceIndices) {
+                for (int axis = 0; axis < 6; axis++) {
+                    rows.append({
+                        rowLabel(axis == 0 ? QStringLiteral("X Axis")
+                            : axis == 1 ? QStringLiteral("Y Axis")
+                            : QStringLiteral("Axis %1").arg(axis + 1), device),
+                        QStringLiteral("input.%1.joystick.%2.axis.%3").arg(configLine).arg(device).arg(axis),
+                        true
+                    });
+                }
+                for (int button = 0; button < 12; button++) {
+                    rows.append({
+                        rowLabel(QStringLiteral("Button %1").arg(button + 1), device),
+                        QStringLiteral("input.%1.joystick.%2.button.%3").arg(configLine).arg(device).arg(button),
+                        true
+                    });
+                }
+            }
+        } else if (type == QStringLiteral("mouse")) {
+            for (int device : deviceIndices) {
+                rows.append({ rowLabel(QStringLiteral("X Axis"), device), QStringLiteral("input.%1.mouse.%2.axis.0").arg(configLine).arg(device), true });
+                rows.append({ rowLabel(QStringLiteral("Y Axis"), device), QStringLiteral("input.%1.mouse.%2.axis.1").arg(configLine).arg(device), true });
+                rows.append({ rowLabel(QStringLiteral("Wheel"), device), QStringLiteral("input.%1.mouse.%2.axis.2").arg(configLine).arg(device), true });
+                for (int button = 0; button < 5; button++) {
+                    rows.append({
+                        rowLabel(QStringLiteral("Button %1").arg(button + 1), device),
+                        QStringLiteral("input.%1.mouse.%2.button.%3").arg(configLine).arg(device).arg(button),
+                        true
+                    });
+                }
+            }
+        } else {
+            QStringList keyboardKeys;
+            const QString prefix = QStringLiteral("input.%1.keyboard.").arg(configLine);
+            for (auto it = inputMappingSettings.constBegin(); it != inputMappingSettings.constEnd(); ++it) {
+                if (winUaeQtIsInputWidgetMappingKey(it.key()) && it.key().startsWith(prefix)) {
+                    keyboardKeys.append(it.key());
+                }
+            }
+            std::sort(keyboardKeys.begin(), keyboardKeys.end());
+            for (const QString &key : keyboardKeys) {
+                const QStringList parts = key.split(QLatin1Char('.'));
+                rows.append({
+                    QStringLiteral("Keyboard %1 %2").arg(parts.value(3), parts.mid(4).join(QLatin1Char(' '))),
+                    key,
+                    false
+                });
+            }
+            if (rows.isEmpty()) {
+                const QStringList placeholders = {
+                    QStringLiteral("Cursor Up"),
+                    QStringLiteral("Cursor Down"),
+                    QStringLiteral("Cursor Left"),
+                    QStringLiteral("Cursor Right"),
+                    QStringLiteral("Space"),
+                    QStringLiteral("Left Ctrl"),
+                    QStringLiteral("Left Alt"),
+                    QStringLiteral("F11")
+                };
+                for (const QString &placeholder : placeholders) {
+                    rows.append({ placeholder, QString(), false });
+                }
+            }
+        }
+        return rows;
+    }
+
+    QVector<WinUaeQtInputSlot> inputSlotsForKey(const QString &key) const
+    {
+        QVector<WinUaeQtInputSlot> slotList;
+        const QString value = inputMappingSettings.value(key).trimmed();
+        if (value.isEmpty()) {
+            return slotList;
+        }
+        for (const QString &field : winUaeQtInputSlotFields(value)) {
+            slotList.append(winUaeQtParseInputSlot(field));
+        }
+        return slotList;
+    }
+
+    WinUaeQtInputSlot selectedInputSlotForKey(const QString &key) const
+    {
+        const QVector<WinUaeQtInputSlot> slotList = inputSlotsForKey(key);
+        const int sub = inputSubEvent ? inputSubEvent->currentIndex() : 0;
+        return sub >= 0 && sub < slotList.size() ? slotList[sub] : WinUaeQtInputSlot();
+    }
+
+    void setInputSlotForKey(const QString &key, int sub, WinUaeQtInputSlot slot)
+    {
+        if (key.isEmpty() || sub < 0 || sub >= MaxInputSubEventSlots) {
+            return;
+        }
+        QVector<WinUaeQtInputSlot> slotList = inputSlotsForKey(key);
+        while (slotList.size() <= sub) {
+            slotList.append(WinUaeQtInputSlot());
+        }
+        slotList[sub] = slot;
+        while (!slotList.isEmpty()) {
+            const WinUaeQtInputSlot &last = slotList.last();
+            if (!last.event.trimmed().isEmpty() || last.flags != 0 || !last.qualifiers.isEmpty() || !last.suffix.isEmpty()) {
+                break;
+            }
+            slotList.removeLast();
+        }
+
+        markInputOwnedKey(key);
+        if (slotList.isEmpty()) {
+            inputMappingSettings.remove(key);
+            return;
+        }
+        QStringList formatted;
+        for (const WinUaeQtInputSlot &entry : slotList) {
+            formatted.append(winUaeQtFormatInputSlot(entry));
+        }
+        inputMappingSettings.insert(key, formatted.join(QLatin1Char(',')));
+    }
+
+    int inputMappingSubEventCount(const QString &key) const
+    {
+        int count = 0;
+        for (const WinUaeQtInputSlot &slot : inputSlotsForKey(key)) {
+            if (!slot.event.trimmed().isEmpty()) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    QString inputFlagText(const WinUaeQtInputSlot &slot, int flag) const
+    {
+        if (slot.event.trimmed().isEmpty()) {
+            return QStringLiteral("-");
+        }
+        return (slot.flags & flag) ? QStringLiteral("YES") : QStringLiteral("NO");
+    }
+
+    QString inputAutofireText(const WinUaeQtInputSlot &slot) const
+    {
+        if (slot.event.trimmed().isEmpty()) {
+            return QStringLiteral("-");
+        }
+        if (slot.flags & InputFlagInvertToggle) {
+            return QStringLiteral("ON");
+        }
+        return (slot.flags & InputFlagAutofire) ? QStringLiteral("YES") : QStringLiteral("NO");
+    }
+
+    void populateInputEventChoices(const WinUaeQtInputSlot &slot, bool editable)
+    {
+        if (!inputAmigaEvent) {
+            return;
+        }
+        const QSignalBlocker blocker(inputAmigaEvent);
+        inputMappingUpdating = true;
+        inputAmigaEvent->clear();
+        inputAmigaEvent->addItem(QStringLiteral("<None>"), QString());
+        inputAmigaEvent->addItem(QStringLiteral("<Custom Event>"), QStringLiteral("__custom__"));
+        for (const WinUaeQtInputEventChoice &choice : inputEventChoices) {
+            inputAmigaEvent->addItem(QString::fromLatin1(choice.display), QString::fromLatin1(choice.config));
+        }
+        if (!slot.event.isEmpty()) {
+            const QString data = slot.custom ? QStringLiteral("__current_custom__") : slot.event;
+            const QString text = slot.custom
+                ? QStringLiteral("<Custom Event>: %1").arg(slot.event)
+                : winUaeQtInputEventDisplayName(slot.event);
+            if (inputAmigaEvent->findData(data) < 0) {
+                inputAmigaEvent->insertItem(1, text, data);
+            }
+            inputAmigaEvent->setCurrentIndex(qMax(0, inputAmigaEvent->findData(data)));
+        } else {
+            inputAmigaEvent->setCurrentIndex(0);
+        }
+        inputAmigaEvent->setEnabled(editable);
+        inputMappingUpdating = false;
+    }
+
+    void updateInputDeviceEnabledCheck()
+    {
+        if (!inputDeviceEnabled) {
+            return;
+        }
+        const QSignalBlocker blocker(inputDeviceEnabled);
+        const QString disabled = inputMappingSettings.value(inputDeviceMetadataKey(QStringLiteral("disabled")));
+        inputDeviceEnabled->setChecked(!configBoolValue(disabled));
+    }
+
+    void updateInputControlState()
+    {
+        const QString key = selectedInputMappingKey();
+        QTreeWidgetItem *item = inputMappingList ? inputMappingList->currentItem() : nullptr;
+        const bool editable = item && item->data(0, InputMappingEditableRole).toBool() && !inputGamePortsMode();
+        const WinUaeQtInputSlot slot = editable ? selectedInputSlotForKey(key) : WinUaeQtInputSlot();
+        populateInputEventChoices(slot, editable);
+        if (inputDeviceEnabled) {
+            inputDeviceEnabled->setEnabled(!inputGamePortsMode() && selectedInputDeviceType() != QStringLiteral("keyboard"));
+            updateInputDeviceEnabledCheck();
+        }
+        if (inputRemapButton) {
+            const bool canCapture = editable && selectedInputDeviceType() == QStringLiteral("joystick");
+            inputRemapButton->setEnabled(canCapture);
+            inputRemapButton->setToolTip(canCapture
+                ? QStringLiteral("Capture an SDL joystick/gamepad control for the selected mapping.")
+                : QStringLiteral("Capture is currently available for joystick/gamepad mappings."));
+        }
+        if (inputCopyButton) {
+            inputCopyButton->setEnabled(!inputGamePortsMode() && selectedInputDeviceType() != QStringLiteral("keyboard"));
+        }
+        if (inputCopyFrom) {
+            inputCopyFrom->setEnabled(!inputGamePortsMode() && selectedInputDeviceType() != QStringLiteral("keyboard"));
+        }
+        if (inputSwapButton) {
+            inputSwapButton->setEnabled(!inputGamePortsMode() && selectedInputDeviceType() != QStringLiteral("keyboard"));
+        }
+    }
+
+    void setSelectedInputEvent(const QString &eventData)
+    {
+        if (inputMappingUpdating || inputGamePortsMode()) {
+            return;
+        }
+        const QString key = selectedInputMappingKey();
+        QTreeWidgetItem *item = inputMappingList ? inputMappingList->currentItem() : nullptr;
+        if (key.isEmpty() || !item || !item->data(0, InputMappingEditableRole).toBool()) {
+            return;
+        }
+        WinUaeQtInputSlot slot = selectedInputSlotForKey(key);
+        QString event = eventData;
+        bool custom = false;
+        if (eventData == QStringLiteral("__current_custom__")) {
+            return;
+        }
+        if (eventData == QStringLiteral("__custom__")) {
+            bool ok = false;
+            event = QInputDialog::getText(this, QStringLiteral("Custom Event"), QStringLiteral("Event:"), QLineEdit::Normal, slot.custom ? slot.event : QString(), &ok).trimmed();
+            if (!ok) {
+                updateInputControlState();
+                return;
+            }
+            custom = true;
+        }
+        slot.event = event;
+        slot.custom = custom;
+        if (slot.event.isEmpty()) {
+            slot.flags = 0;
+            slot.qualifiers.clear();
+            slot.suffix.clear();
+            slot.custom = false;
+        }
+        setInputSlotForKey(key, inputSubEvent ? inputSubEvent->currentIndex() : 0, slot);
+        refreshInputMappingList(key);
+    }
+
+    void toggleSelectedInputFlag(int flag)
+    {
+        if (inputGamePortsMode()) {
+            return;
+        }
+        const QString key = selectedInputMappingKey();
+        if (key.isEmpty()) {
+            return;
+        }
+        WinUaeQtInputSlot slot = selectedInputSlotForKey(key);
+        if (slot.event.trimmed().isEmpty()) {
+            return;
+        }
+        slot.flags ^= flag;
+        setInputSlotForKey(key, inputSubEvent ? inputSubEvent->currentIndex() : 0, slot);
+        refreshInputMappingList(key);
+    }
+
+    void toggleSelectedInputAutofire()
+    {
+        if (inputGamePortsMode()) {
+            return;
+        }
+        const QString key = selectedInputMappingKey();
+        if (key.isEmpty()) {
+            return;
+        }
+        WinUaeQtInputSlot slot = selectedInputSlotForKey(key);
+        if (slot.event.trimmed().isEmpty()) {
+            return;
+        }
+        if ((slot.flags & InputFlagAutofire) && (slot.flags & InputFlagInvertToggle)) {
+            slot.flags &= ~(InputFlagAutofire | InputFlagInvertToggle);
+        } else if (slot.flags & InputFlagAutofire) {
+            slot.flags |= InputFlagInvertToggle;
+            slot.flags &= ~InputFlagToggle;
+        } else {
+            slot.flags |= InputFlagAutofire;
+        }
+        setInputSlotForKey(key, inputSubEvent ? inputSubEvent->currentIndex() : 0, slot);
+        refreshInputMappingList(key);
+    }
+
+    void toggleSelectedInputSetMode()
+    {
+        if (inputGamePortsMode()) {
+            return;
+        }
+        const QString key = selectedInputMappingKey();
+        if (key.isEmpty()) {
+            return;
+        }
+        WinUaeQtInputSlot slot = selectedInputSlotForKey(key);
+        if (slot.event.trimmed().isEmpty()) {
+            return;
+        }
+        if (slot.flags & InputFlagSetOnOffVal2) {
+            slot.flags &= ~(InputFlagSetOnOff | InputFlagSetOnOffVal1 | InputFlagSetOnOffVal2);
+        } else if (slot.flags & InputFlagSetOnOffVal1) {
+            slot.flags &= ~InputFlagSetOnOffVal1;
+            slot.flags |= InputFlagSetOnOffVal2;
+        } else if (slot.flags & InputFlagSetOnOff) {
+            slot.flags |= InputFlagSetOnOffVal1;
+        } else {
+            slot.flags |= InputFlagSetOnOff;
+        }
+        setInputSlotForKey(key, inputSubEvent ? inputSubEvent->currentIndex() : 0, slot);
+        refreshInputMappingList(key);
+    }
+
+    bool inputKeyMatchesCurrentDevice(const QString &key, int configLine) const
+    {
+        const QString prefix = QStringLiteral("input.%1.%2.").arg(configLine).arg(selectedInputDeviceType());
+        return key.startsWith(prefix);
+    }
+
+    void copyInputMappings()
+    {
+        if (inputGamePortsMode() || selectedInputDeviceType() == QStringLiteral("keyboard")) {
+            return;
+        }
+        const int dest = selectedInputConfigLine();
+        const int sourceIndex = inputCopyFrom ? inputCopyFrom->currentIndex() : -1;
+        if (sourceIndex < 0) {
+            return;
+        }
+        if (sourceIndex < CustomInputConfigSlots && sourceIndex + 1 == dest) {
+            return;
+        }
+        const QString type = selectedInputDeviceType();
+        const QString destPrefix = QStringLiteral("input.%1.%2.").arg(dest).arg(type);
+        const QString sourcePrefix = QStringLiteral("input.%1.%2.").arg(sourceIndex + 1).arg(type);
+        const QStringList keys = inputMappingSettings.keys();
+        for (const QString &key : keys) {
+            if (key.startsWith(destPrefix)) {
+                inputMappingSettings.remove(key);
+                markInputOwnedKey(key);
+            }
+        }
+        if (sourceIndex < CustomInputConfigSlots && sourceIndex + 1 != dest) {
+            for (const QString &key : keys) {
+                if (!key.startsWith(sourcePrefix)) {
+                    continue;
+                }
+                const QString destKey = destPrefix + key.mid(sourcePrefix.size());
+                inputMappingSettings.insert(destKey, inputMappingSettings.value(key));
+                markInputOwnedKey(destKey);
+            }
+        }
+        refreshInputMappingList();
+    }
+
+    void swapInputMappings()
+    {
+        if (inputGamePortsMode() || selectedInputDeviceType() == QStringLiteral("keyboard")) {
+            return;
+        }
+        const QStringList keys = inputMappingSettings.keys();
+        const int configLine = selectedInputConfigLine();
+        for (const QString &key : keys) {
+            if (!inputKeyMatchesCurrentDevice(key, configLine) || !winUaeQtIsInputWidgetMappingKey(key)) {
+                continue;
+            }
+            QVector<WinUaeQtInputSlot> slotList = inputSlotsForKey(key);
+            bool changed = false;
+            for (WinUaeQtInputSlot &slot : slotList) {
+                const QString swapped = winUaeQtSwapInputEventPorts(slot.event);
+                if (swapped != slot.event) {
+                    slot.event = swapped;
+                    changed = true;
+                }
+            }
+            if (!changed) {
+                continue;
+            }
+            QStringList formatted;
+            for (const WinUaeQtInputSlot &slot : slotList) {
+                formatted.append(winUaeQtFormatInputSlot(slot));
+            }
+            inputMappingSettings.insert(key, formatted.join(QLatin1Char(',')));
+            markInputOwnedKey(key);
+        }
+        refreshInputMappingList();
+    }
+
+    void setInputDeviceEnabled(bool enabled)
+    {
+        if (inputMappingUpdating || inputGamePortsMode() || selectedInputDeviceType() == QStringLiteral("keyboard")) {
+            return;
+        }
+        const QString key = inputDeviceMetadataKey(QStringLiteral("disabled"));
+        inputMappingSettings.insert(key, enabled ? QStringLiteral("false") : QStringLiteral("true"));
+        markInputOwnedKey(key);
+    }
+
+    void openInputRemapCapture()
+    {
+        const QString key = selectedInputMappingKey();
+        if (key.isEmpty() || selectedInputDeviceType() != QStringLiteral("joystick")) {
+            return;
+        }
+        WinUaeQtInputSlot slot = selectedInputSlotForKey(key);
+        const QString event = inputAmigaEvent ? inputAmigaEvent->currentData().toString() : slot.event;
+        if (!event.isEmpty() && !event.startsWith(QStringLiteral("__"))) {
+            slot.event = event;
+            slot.custom = false;
+        }
+        if (slot.event.trimmed().isEmpty()) {
+            QMessageBox::information(this, windowTitle(), QStringLiteral("Select an Amiga event before capturing a host control."));
+            return;
+        }
+
+        const QString prompt = QStringLiteral("Press input for %1.").arg(winUaeQtInputEventDisplayName(slot.event));
+        UnixQtInputMapDialog dialog(-1, prompt, QString(), this, true);
+        if (dialog.exec() != QDialog::Accepted || !dialog.hasCapturedInput()) {
+            return;
+        }
+        const QString capturedKey = QStringLiteral("input.%1.joystick.%2.%3.%4")
+            .arg(selectedInputConfigLine())
+            .arg(dialog.capturedDevice())
+            .arg(dialog.capturedWidgetType() == QLatin1Char('b') ? QStringLiteral("button") : QStringLiteral("axis"))
+            .arg(dialog.capturedWidgetMappingIndex());
+        inputMappingSettings.insert(QStringLiteral("input.%1.joystick.%2.friendlyname")
+                .arg(selectedInputConfigLine()).arg(dialog.capturedDevice()),
+            dialog.capturedDeviceDisplayName());
+        inputMappingSettings.insert(QStringLiteral("input.%1.joystick.%2.name")
+                .arg(selectedInputConfigLine()).arg(dialog.capturedDevice()),
+            dialog.capturedDeviceConfigName().isEmpty() ? dialog.capturedDeviceDisplayName() : dialog.capturedDeviceConfigName());
+        inputMappingSettings.insert(QStringLiteral("input.%1.joystick.%2.empty")
+                .arg(selectedInputConfigLine()).arg(dialog.capturedDevice()),
+            QStringLiteral("false"));
+        inputMappingSettings.insert(QStringLiteral("input.%1.joystick.%2.disabled")
+                .arg(selectedInputConfigLine()).arg(dialog.capturedDevice()),
+            QStringLiteral("false"));
+        markInputOwnedKey(QStringLiteral("input.%1.joystick.%2.friendlyname").arg(selectedInputConfigLine()).arg(dialog.capturedDevice()));
+        markInputOwnedKey(QStringLiteral("input.%1.joystick.%2.name").arg(selectedInputConfigLine()).arg(dialog.capturedDevice()));
+        markInputOwnedKey(QStringLiteral("input.%1.joystick.%2.empty").arg(selectedInputConfigLine()).arg(dialog.capturedDevice()));
+        markInputOwnedKey(QStringLiteral("input.%1.joystick.%2.disabled").arg(selectedInputConfigLine()).arg(dialog.capturedDevice()));
+        setInputSlotForKey(capturedKey, inputSubEvent ? inputSubEvent->currentIndex() : 0, slot);
+        refreshInputMappingList(capturedKey);
+    }
+
     QWidget *makeInputPage()
     {
         QWidget *page = makePage();
@@ -8244,7 +9144,6 @@ private:
             QStringLiteral("Configuration #1"),
             QStringLiteral("Configuration #2"),
             QStringLiteral("Configuration #3"),
-            QStringLiteral("Configuration #4"),
             QStringLiteral("Game Ports")
         }, QStringLiteral("Game Ports"));
         inputDevice = combo({
@@ -8280,24 +9179,16 @@ private:
 
         QHBoxLayout *eventRow = new QHBoxLayout;
         inputSubEvent = combo({ QStringLiteral("1"), QStringLiteral("2"), QStringLiteral("3"), QStringLiteral("4"), QStringLiteral("5"), QStringLiteral("6"), QStringLiteral("7"), QStringLiteral("8") });
-        inputAmigaEvent = combo({
-            QStringLiteral("<None>"),
-            QStringLiteral("Joystick 1 Fire"),
-            QStringLiteral("Joystick 1 Up"),
-            QStringLiteral("Joystick 1 Down"),
-            QStringLiteral("Joystick 1 Left"),
-            QStringLiteral("Joystick 1 Right"),
-            QStringLiteral("Left mouse button"),
-            QStringLiteral("Right mouse button")
-        });
+        inputAmigaEvent = new QComboBox;
+        inputAmigaEvent->setEditable(false);
         QPushButton *inputTest = new QPushButton(QStringLiteral("Test"));
-        QPushButton *inputRemap = new QPushButton(QStringLiteral("Remap"));
+        inputRemapButton = new QPushButton(QStringLiteral("Remap"));
         connect(inputTest, &QPushButton::clicked, this, [this]() { openInputMapDialog(-1); });
-        disableUnavailable(inputRemap, QStringLiteral("Input remap capture needs the shared preferences input adapter."));
+        connect(inputRemapButton, &QPushButton::clicked, this, [this]() { openInputRemapCapture(); });
         eventRow->addWidget(inputSubEvent);
         eventRow->addWidget(inputAmigaEvent, 1);
         eventRow->addWidget(inputTest);
-        eventRow->addWidget(inputRemap);
+        eventRow->addWidget(inputRemapButton);
         root->addLayout(eventRow);
 
         QGridLayout *bottom = new QGridLayout;
@@ -8316,14 +9207,11 @@ private:
             QStringLiteral("Custom #1"),
             QStringLiteral("Custom #2"),
             QStringLiteral("Custom #3"),
-            QStringLiteral("Custom #4"),
             QStringLiteral("Default"),
             QStringLiteral("Default (PC KB)")
         });
-        QPushButton *inputCopy = new QPushButton(QStringLiteral("Copy from:"));
-        QPushButton *inputSwap = new QPushButton(QStringLiteral("Swap 1<>2"));
-        disableUnavailable(inputCopy, QStringLiteral("Input mapping copy is not connected to the Unix input adapter yet."));
-        disableUnavailable(inputSwap, QStringLiteral("Input mapping swap is not connected to the Unix input adapter yet."));
+        inputCopyButton = new QPushButton(QStringLiteral("Copy from:"));
+        inputSwapButton = new QPushButton(QStringLiteral("Swap 1<>2"));
         inputPageUpEnd = new QCheckBox(QStringLiteral("Page Up = End"));
         inputSwapBackslashF11 = new QCheckBox(QStringLiteral("Swap Backslash/F11"));
         inputSwapBackslashF11->setTristate(true);
@@ -8332,7 +9220,7 @@ private:
         bottom->addWidget(inputDeadzone, 0, 1);
         bottom->addWidget(label(QStringLiteral("Digital joy-mouse speed:")), 0, 2);
         bottom->addWidget(inputJoyMouseDigital, 0, 3);
-        bottom->addWidget(inputCopy, 0, 4);
+        bottom->addWidget(inputCopyButton, 0, 4);
         bottom->addWidget(label(QStringLiteral("Autofire rate (lines):")), 1, 0);
         bottom->addWidget(inputAutofireRate, 1, 1);
         bottom->addWidget(label(QStringLiteral("Analog joy-mouse speed:")), 1, 2);
@@ -8340,63 +9228,71 @@ private:
         bottom->addWidget(inputCopyFrom, 1, 4);
         bottom->addWidget(inputPageUpEnd, 2, 1);
         bottom->addWidget(inputSwapBackslashF11, 2, 2, 1, 2);
-        bottom->addWidget(inputSwap, 2, 4);
+        bottom->addWidget(inputSwapButton, 2, 4);
         root->addLayout(bottom);
 
+        connect(inputType, &QComboBox::currentTextChanged, this, [this](const QString &) { refreshInputMappingList(); });
         connect(inputDevice, &QComboBox::currentTextChanged, this, [this](const QString &) { refreshInputMappingList(); });
+        connect(inputSubEvent, &QComboBox::currentIndexChanged, this, [this](int) { refreshInputMappingList(selectedInputMappingKey()); });
+        connect(inputAmigaEvent, &QComboBox::currentIndexChanged, this, [this](int) {
+            setSelectedInputEvent(inputAmigaEvent->currentData().toString());
+        });
+        connect(inputMappingList, &QTreeWidget::currentItemChanged, this, [this](QTreeWidgetItem *, QTreeWidgetItem *) {
+            updateInputControlState();
+        });
+        connect(inputMappingList, &QTreeWidget::itemClicked, this, [this](QTreeWidgetItem *, int column) {
+            if (column == 1) {
+                toggleSelectedInputSetMode();
+            } else if (column == 2) {
+                toggleSelectedInputAutofire();
+            } else if (column == 3) {
+                toggleSelectedInputFlag(InputFlagToggle);
+            } else if (column == 4) {
+                toggleSelectedInputFlag(InputFlagInvert);
+            } else if (column == 6 && inputSubEvent) {
+                inputSubEvent->setCurrentIndex((inputSubEvent->currentIndex() + 1) % MaxInputSubEventSlots);
+            }
+        });
+        connect(inputCopyButton, &QPushButton::clicked, this, [this]() { copyInputMappings(); });
+        connect(inputSwapButton, &QPushButton::clicked, this, [this]() { swapInputMappings(); });
+        connect(inputDeviceEnabled, &QCheckBox::toggled, this, [this](bool enabled) { setInputDeviceEnabled(enabled); });
+
         refreshInputMappingList();
         return page;
     }
 
-    void refreshInputMappingList()
+    void refreshInputMappingList(const QString &preferredKey = QString())
     {
         if (!inputMappingList || !inputDevice) {
             return;
         }
+        const QString selectedKey = preferredKey.isEmpty() ? selectedInputMappingKey() : preferredKey;
+        const QSignalBlocker blocker(inputMappingList);
         inputMappingList->clear();
 
-        QStringList hostWidgets;
-        const QString device = inputDevice->currentText();
-        if (device == QStringLiteral("Mouse")) {
-            hostWidgets = {
-                QStringLiteral("X Axis"),
-                QStringLiteral("Y Axis"),
-                QStringLiteral("Button 1"),
-                QStringLiteral("Button 2"),
-                QStringLiteral("Wheel")
-            };
-        } else if (device == QStringLiteral("Joystick")) {
-            hostWidgets = {
-                QStringLiteral("X Axis"),
-                QStringLiteral("Y Axis"),
-                QStringLiteral("Button 1"),
-                QStringLiteral("Button 2"),
-                QStringLiteral("Button 3")
-            };
-        } else {
-            hostWidgets = {
-                QStringLiteral("Cursor Up"),
-                QStringLiteral("Cursor Down"),
-                QStringLiteral("Cursor Left"),
-                QStringLiteral("Cursor Right"),
-                QStringLiteral("Space"),
-                QStringLiteral("Left Ctrl"),
-                QStringLiteral("Left Alt"),
-                QStringLiteral("F11")
-            };
-        }
-
-        int row = 1;
-        for (const QString &hostWidget : hostWidgets) {
+        for (const WinUaeQtInputRow &row : currentInputRows()) {
+            const WinUaeQtInputSlot slot = selectedInputSlotForKey(row.key);
             QTreeWidgetItem *item = new QTreeWidgetItem(inputMappingList);
-            item->setText(0, hostWidget);
-            item->setText(1, QStringLiteral("<None>"));
-            item->setText(2, QStringLiteral("-"));
-            item->setText(3, QStringLiteral("-"));
-            item->setText(4, QStringLiteral("-"));
-            item->setText(5, QStringLiteral("-"));
-            item->setText(6, QString::number(row++));
+            item->setText(0, row.label);
+            item->setText(1, slot.custom ? QStringLiteral("<Custom Event>: %1").arg(slot.event) : winUaeQtInputEventDisplayName(slot.event));
+            item->setText(2, inputAutofireText(slot));
+            item->setText(3, inputFlagText(slot, InputFlagToggle));
+            item->setText(4, inputFlagText(slot, InputFlagInvert));
+            item->setText(5, slot.qualifiers.isEmpty() ? QStringLiteral("-") : slot.qualifiers);
+            item->setText(6, row.key.isEmpty() ? QStringLiteral("-") : QString::number(qMax(1, inputMappingSubEventCount(row.key))));
+            item->setData(0, InputMappingKeyRole, row.key);
+            item->setData(0, InputMappingEditableRole, row.editable);
+            if (!row.editable || inputGamePortsMode()) {
+                item->setDisabled(true);
+            }
+            if (!selectedKey.isEmpty() && row.key == selectedKey) {
+                inputMappingList->setCurrentItem(item);
+            }
         }
+        if (!inputMappingList->currentItem() && inputMappingList->topLevelItemCount() > 0) {
+            inputMappingList->setCurrentItem(inputMappingList->topLevelItem(0));
+        }
+        updateInputControlState();
     }
 
     QWidget *makePathsPage()
@@ -10493,6 +11389,8 @@ private:
         mouseSpeed->setValue(100);
         inputType->setCurrentText(QStringLiteral("Game Ports"));
         inputDevice->setCurrentText(QStringLiteral("Keyboard"));
+        inputMappingSettings.clear();
+        inputOwnedMappingKeys.clear();
         inputDeviceEnabled->setChecked(true);
         inputSubEvent->setCurrentText(QStringLiteral("1"));
         inputAmigaEvent->setCurrentText(QStringLiteral("<None>"));
@@ -12072,7 +12970,7 @@ private:
         }
         const int inputConfig = inputType->currentText() == QStringLiteral("Game Ports")
             ? 0
-            : qBound(1, inputType->currentIndex() + 1, 4);
+            : qBound(1, inputType->currentIndex() + 1, CustomInputConfigSlots);
         settings.insert(QStringLiteral("input.config"), QString::number(inputConfig));
         settings.insert(QStringLiteral("input.joystick_deadzone"), QString::number(inputDeadzone->value()));
         settings.insert(QStringLiteral("input.joymouse_deadzone"), QString::number(inputDeadzone->value()));
@@ -12093,6 +12991,12 @@ private:
         }
         settings.insert(QStringLiteral("absolute_mouse"), absoluteMouse);
         settings.insert(QStringLiteral("tablet_library"), tabletLibrary->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
+        for (const QString &key : inputOwnedMappingKeys) {
+            const QString value = inputMappingSettings.value(key).trimmed();
+            if (!value.isEmpty()) {
+                settings.insert(key, value);
+            }
+        }
         return settings;
     }
 
@@ -12505,6 +13409,7 @@ private:
             QStringLiteral("tablet_library")
         };
         keys.append(expansionBoardOwnedKeys());
+        keys.append(inputOwnedMappingKeys);
         return keys;
     }
 
@@ -12725,11 +13630,14 @@ private:
         }
         clearCdSlots();
         clearExpansionBoardStates();
+        inputMappingSettings.clear();
+        inputOwnedMappingKeys.clear();
         for (const WinUaeQtConfig::Setting &setting : config.orderedSettings()) {
             applySetting(setting.key, setting.value);
         }
         updateOutputControlState();
         updateMountButtons();
+        refreshInputMappingList();
         refreshHardwareInfoPage();
         loadedConfig = config;
         configPath->setText(expandedPath);
@@ -12740,7 +13648,9 @@ private:
 
     void applySetting(const QString &key, const QString &value)
     {
-        if (key == QStringLiteral("config_description")) {
+        if (winUaeQtIsInputDeviceConfigKey(key)) {
+            inputMappingSettings.insert(key, value);
+        } else if (key == QStringLiteral("config_description")) {
             configDescription->setText(value);
         } else if (key == QStringLiteral("quickstart")) {
             const QStringList parts = value.split(QLatin1Char(','));
@@ -13403,7 +14313,7 @@ private:
             if (config <= 0) {
                 inputType->setCurrentText(QStringLiteral("Game Ports"));
             } else {
-                inputType->setCurrentIndex(qBound(0, config - 1, 3));
+                inputType->setCurrentIndex(qBound(0, config - 1, CustomInputConfigSlots));
             }
         } else if (key == QStringLiteral("input.joystick_deadzone") || key == QStringLiteral("input.joymouse_deadzone")) {
             inputDeadzone->setValue(qBound(inputDeadzone->minimum(), value.toInt(), inputDeadzone->maximum()));
