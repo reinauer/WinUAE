@@ -2899,6 +2899,12 @@ static QPushButton *smallButton(const QString &text)
     return w;
 }
 
+static void disableUnavailable(QWidget *widget, const QString &reason)
+{
+    widget->setEnabled(false);
+    widget->setToolTip(reason);
+}
+
 static QGroupBox *groupBox(const QString &title, QLayout *layout)
 {
     QGroupBox *box = new QGroupBox(title);
@@ -4448,7 +4454,7 @@ private:
         };
         auto disabledFeature = [](const QString &text) {
             QCheckBox *box = new QCheckBox(text);
-            box->setEnabled(false);
+            disableUnavailable(box, QStringLiteral("This hardware option is not implemented by the Unix chipset backend yet."));
             return box;
         };
 
@@ -6134,8 +6140,8 @@ private:
         hardwareCustomBoardOrder = new QCheckBox(QStringLiteral("Custom board order"));
         hardwareMoveUp = new QPushButton(QStringLiteral("Move up"));
         hardwareMoveDown = new QPushButton(QStringLiteral("Move down"));
-        hardwareMoveUp->setEnabled(false);
-        hardwareMoveDown->setEnabled(false);
+        disableUnavailable(hardwareMoveUp, QStringLiteral("Hardware board reordering is not connected to the Unix autoconfig model yet."));
+        disableUnavailable(hardwareMoveDown, QStringLiteral("Hardware board reordering is not connected to the Unix autoconfig model yet."));
         actions->addWidget(hardwareCustomBoardOrder);
         actions->addStretch();
         actions->addWidget(hardwareMoveUp);
@@ -6442,7 +6448,7 @@ private:
         filterTarget = combo(configChoiceDisplays(filterTargetChoices, int(sizeof(filterTargetChoices) / sizeof(filterTargetChoices[0]))), QStringLiteral("Native"));
         filterEnable = new QCheckBox(QStringLiteral("Enabled"));
         filterMode = combo(configChoiceDisplays(filterModeChoices, int(sizeof(filterModeChoices) / sizeof(filterModeChoices[0]))), QStringLiteral("None"));
-        filterMode->setEnabled(false);
+        disableUnavailable(filterMode, QStringLiteral("Native Unix shader/filter backend support is not implemented yet."));
         filterModeH = combo(configChoiceDisplays(filterModeHChoices, int(sizeof(filterModeHChoices) / sizeof(filterModeHChoices[0]))), QStringLiteral("1x"));
         filterModeV = combo(configChoiceDisplays(filterModeVChoices, int(sizeof(filterModeVChoices) / sizeof(filterModeVChoices[0]))), QStringLiteral("-"));
         filterAutoscale = combo({});
@@ -6542,9 +6548,9 @@ private:
         QPushButton *load = new QPushButton(QStringLiteral("Load"));
         QPushButton *save = new QPushButton(QStringLiteral("Save"));
         QPushButton *deletePreset = new QPushButton(QStringLiteral("Delete"));
-        load->setEnabled(false);
-        save->setEnabled(false);
-        deletePreset->setEnabled(false);
+        disableUnavailable(load, QStringLiteral("Filter preset storage is not connected to the Unix Qt frontend yet."));
+        disableUnavailable(save, QStringLiteral("Filter preset storage is not connected to the Unix Qt frontend yet."));
+        disableUnavailable(deletePreset, QStringLiteral("Filter preset storage is not connected to the Unix Qt frontend yet."));
         presets->setColumnStretch(0, 1);
         presets->addWidget(presetName, 0, 0);
         presets->addWidget(load, 0, 1);
@@ -6598,9 +6604,9 @@ private:
         outputNoSound = new QCheckBox(QStringLiteral("Disable sound output"));
         outputNoSoundSync = new QCheckBox(QStringLiteral("Disable sound sync"));
         QCheckBox *outputEnabled = new QCheckBox(QStringLiteral("AVI output enabled"));
-        audio->setEnabled(false);
-        video->setEnabled(false);
-        outputEnabled->setEnabled(false);
+        disableUnavailable(audio, QStringLiteral("Audio capture codec selection is not implemented in the Unix output backend yet."));
+        disableUnavailable(video, QStringLiteral("Video capture codec selection is not implemented in the Unix output backend yet."));
+        disableUnavailable(outputEnabled, QStringLiteral("AVI output capture is not implemented in the Unix output backend yet."));
 
         QGridLayout *properties = new QGridLayout;
         properties->setColumnStretch(1, 1);
@@ -6620,9 +6626,9 @@ private:
         QPushButton *saveScreenshot = new QPushButton(QStringLiteral("Save screenshot"));
         QPushButton *proWizard = new QPushButton(QStringLiteral("Pro Wizard 1.62"));
         QCheckBox *sampleRipper = new QCheckBox(QStringLiteral("Sample ripper"));
-        saveScreenshot->setEnabled(false);
-        proWizard->setEnabled(false);
-        sampleRipper->setEnabled(false);
+        disableUnavailable(saveScreenshot, QStringLiteral("Runtime screenshot capture is not connected to the Unix Qt frontend yet."));
+        disableUnavailable(proWizard, QStringLiteral("Pro Wizard integration is not connected to the Unix Qt frontend yet."));
+        disableUnavailable(sampleRipper, QStringLiteral("Sample ripper integration is not connected to the Unix Qt frontend yet."));
         screenshotOriginalSize = new QCheckBox(QStringLiteral("Take screenshot before filtering"));
         screenshotPaletted = new QCheckBox(QStringLiteral("Create 256 color palette indexed screenshot if possible"));
         screenshotClip = new QCheckBox(QStringLiteral("Autoclip screenshot"));
@@ -6646,9 +6652,9 @@ private:
         stateReplayRate->setEditable(true);
         stateReplayBuffers = combo({ QStringLiteral("50"), QStringLiteral("100"), QStringLiteral("500"), QStringLiteral("1000"), QStringLiteral("10000") }, QStringLiteral("100"));
         stateReplayBuffers->setEditable(true);
-        statePlay->setEnabled(false);
-        stateRecord->setEnabled(false);
-        stateSave->setEnabled(false);
+        disableUnavailable(statePlay, QStringLiteral("State recording playback is not implemented in the Unix runtime UI yet."));
+        disableUnavailable(stateRecord, QStringLiteral("State recording is not implemented in the Unix runtime UI yet."));
+        disableUnavailable(stateSave, QStringLiteral("State recording export is not implemented in the Unix runtime UI yet."));
         QGridLayout *recorder = new QGridLayout;
         recorder->setColumnStretch(4, 1);
         recorder->addWidget(statePlay, 0, 0);
@@ -7178,7 +7184,7 @@ private:
         printerPort = combo({ QStringLiteral("<None>") });
         printerType = combo(configChoiceDisplays(printerTypeChoices, int(sizeof(printerTypeChoices) / sizeof(printerTypeChoices[0]))));
         QPushButton *flushPrinter = new QPushButton(QStringLiteral("Flush print job"));
-        flushPrinter->setEnabled(false);
+        disableUnavailable(flushPrinter, QStringLiteral("Printer output is not connected to a Unix backend yet."));
         printerAutoFlush = new QSpinBox;
         printerAutoFlush->setRange(0, 3600);
         ghostscriptParams = new QLineEdit;
@@ -7351,8 +7357,8 @@ private:
         });
         QPushButton *inputTest = new QPushButton(QStringLiteral("Test"));
         QPushButton *inputRemap = new QPushButton(QStringLiteral("Remap"));
-        inputTest->setEnabled(false);
-        inputRemap->setEnabled(false);
+        disableUnavailable(inputTest, QStringLiteral("Input test dialog is not connected to the Unix SDL input backend yet."));
+        disableUnavailable(inputRemap, QStringLiteral("Input remap dialog is not connected to the Unix SDL input backend yet."));
         eventRow->addWidget(inputSubEvent);
         eventRow->addWidget(inputAmigaEvent, 1);
         eventRow->addWidget(inputTest);
@@ -7381,8 +7387,8 @@ private:
         });
         QPushButton *inputCopy = new QPushButton(QStringLiteral("Copy from:"));
         QPushButton *inputSwap = new QPushButton(QStringLiteral("Swap 1<>2"));
-        inputCopy->setEnabled(false);
-        inputSwap->setEnabled(false);
+        disableUnavailable(inputCopy, QStringLiteral("Input mapping copy is not connected to the Unix input adapter yet."));
+        disableUnavailable(inputSwap, QStringLiteral("Input mapping swap is not connected to the Unix input adapter yet."));
         inputPageUpEnd = new QCheckBox(QStringLiteral("Page Up = End"));
         inputSwapBackslashF11 = new QCheckBox(QStringLiteral("Swap Backslash/F11"));
         inputSwapBackslashF11->setTristate(true);
@@ -7516,7 +7522,7 @@ private:
         QPushButton *rescanRoms = new QPushButton(QStringLiteral("Rescan ROMs"));
         QPushButton *clearDiskHistory = new QPushButton(QStringLiteral("Clear disk history"));
         QPushButton *clearRegistry = new QPushButton(QStringLiteral("Clear registry"));
-        clearRegistry->setEnabled(false);
+        disableUnavailable(clearRegistry, QStringLiteral("Windows registry reset does not apply to the Unix configuration backend."));
         data->addWidget(rescanRoms, 1, 0);
         data->addWidget(clearDiskHistory, 1, 1);
         data->addWidget(clearRegistry, 1, 2);
@@ -7854,10 +7860,10 @@ private:
         miscWindowedStyle = combo({ QStringLiteral("Borderless"), QStringLiteral("Minimal"), QStringLiteral("Standard"), QStringLiteral("Extended") });
         miscVideoApi = combo({ QStringLiteral("Unix video backend") });
         miscVideoApiOptions = combo({ QStringLiteral("Default") });
-        miscScsiMode->setEnabled(false);
-        miscWindowedStyle->setEnabled(false);
-        miscVideoApi->setEnabled(false);
-        miscVideoApiOptions->setEnabled(false);
+        disableUnavailable(miscScsiMode, QStringLiteral("Windows SPTI/SCSI selector does not apply to the Unix backend yet."));
+        disableUnavailable(miscWindowedStyle, QStringLiteral("Windows window-style selector does not apply to the Unix SDL/Qt window backend."));
+        disableUnavailable(miscVideoApi, QStringLiteral("Unix video backend selection is not configurable from the Qt frontend yet."));
+        disableUnavailable(miscVideoApiOptions, QStringLiteral("Unix video backend options are not configurable from the Qt frontend yet."));
         miscOptions->addWidget(label(QStringLiteral("SCSI and CD/DVD access:")), 0, 0);
         miscOptions->addWidget(miscScsiMode, 0, 1);
         miscOptions->addWidget(label(QStringLiteral("Windowed style:")), 1, 0);
@@ -7877,14 +7883,14 @@ private:
         miscGuiResize = new QCheckBox(QStringLiteral("Resizeable GUI"));
         miscGuiFullscreen = new QCheckBox(QStringLiteral("Fullscreen GUI"));
         miscGuiDarkMode = new QCheckBox(QStringLiteral("Dark mode"));
-        guiFont->setEnabled(false);
-        osdFont->setEnabled(false);
-        setDefault->setEnabled(false);
-        miscGuiSize->setEnabled(false);
-        resetLists->setEnabled(false);
-        miscGuiResize->setEnabled(false);
-        miscGuiFullscreen->setEnabled(false);
-        miscGuiDarkMode->setEnabled(false);
+        disableUnavailable(guiFont, QStringLiteral("Qt GUI font selection is not implemented yet."));
+        disableUnavailable(osdFont, QStringLiteral("OSD font selection is not implemented yet."));
+        disableUnavailable(setDefault, QStringLiteral("GUI scaling defaults are not connected to the Unix Qt frontend yet."));
+        disableUnavailable(miscGuiSize, QStringLiteral("GUI scaling is not connected to the Unix Qt frontend yet."));
+        disableUnavailable(resetLists, QStringLiteral("List customization storage is not implemented in the Unix Qt frontend yet."));
+        disableUnavailable(miscGuiResize, QStringLiteral("Qt configuration window resize policy is currently fixed by the Unix frontend."));
+        disableUnavailable(miscGuiFullscreen, QStringLiteral("Fullscreen configuration UI is not implemented in the Unix Qt frontend."));
+        disableUnavailable(miscGuiDarkMode, QStringLiteral("macOS dark-mode polish is tracked as a later UI item."));
 
         QHBoxLayout *fontRow = new QHBoxLayout;
         fontRow->setContentsMargins(0, 0, 0, 0);
@@ -7929,7 +7935,7 @@ private:
             keyboard->addWidget(keyboardLed[i], 0, i);
         }
         keyboardLedUsb = new QCheckBox(QStringLiteral("USB mode"));
-        keyboardLedUsb->setEnabled(false);
+        disableUnavailable(keyboardLedUsb, QStringLiteral("Native host keyboard LED output is not implemented on Unix yet."));
         keyboard->addWidget(keyboardLedUsb, 0, 3);
         right->addWidget(groupBox(QStringLiteral("Keyboard LEDs"), keyboard));
         root->addLayout(right, 1);
@@ -8050,10 +8056,8 @@ private:
         associationActions->addStretch();
         QPushButton *associateAll = new QPushButton(QStringLiteral("Associate all"));
         QPushButton *deassociateAll = new QPushButton(QStringLiteral("Deassociate all"));
-        associateAll->setEnabled(false);
-        deassociateAll->setEnabled(false);
-        associateAll->setToolTip(QStringLiteral("Unix file-association install/uninstall is not implemented; macOS uses bundle document declarations."));
-        deassociateAll->setToolTip(QStringLiteral("Unix file-association install/uninstall is not implemented; macOS uses bundle document declarations."));
+        disableUnavailable(associateAll, QStringLiteral("Unix file-association install/uninstall is not implemented; macOS uses bundle document declarations."));
+        disableUnavailable(deassociateAll, QStringLiteral("Unix file-association install/uninstall is not implemented; macOS uses bundle document declarations."));
         associationActions->addWidget(associateAll);
         associationActions->addWidget(deassociateAll);
         associationActions->addStretch();
