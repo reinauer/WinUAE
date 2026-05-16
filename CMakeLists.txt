@@ -407,4 +407,12 @@ if(APPLE AND TARGET winuae_unix)
         COMMENT "Creating WinUAE drag-install DMG"
         VERBATIM
     )
+    if(TARGET winuae_unix_qt_frontend AND WINUAE_UNIX_WITH_INTEGRATED_QT_UI)
+        add_custom_target(winuae_unix_macos_app_smoke
+            COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tools/macos-smoke-app.sh" "${CMAKE_BINARY_DIR}/package/WinUAE.app"
+            DEPENDS winuae_unix_macos_app
+            COMMENT "Smoke testing packaged WinUAE.app Qt launch"
+            VERBATIM
+        )
+    endif()
 endif()

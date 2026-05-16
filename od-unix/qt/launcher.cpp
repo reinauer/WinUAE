@@ -4,6 +4,7 @@
 #include <QFileOpenEvent>
 #include <QUrl>
 
+#include <cstdio>
 #include <functional>
 
 #ifdef UAE_UNIX_WITH_SDL3
@@ -13632,6 +13633,21 @@ static void setupApplicationStyle(QApplication &app)
     ));
 }
 
+static void armQtSmokeExit(QDialog &dialog, QApplication *app = nullptr)
+{
+    if (!qEnvironmentVariableIsSet("WINUAE_MACOS_APP_SMOKE")) {
+        return;
+    }
+    QTimer::singleShot(750, &dialog, [&dialog, app]() {
+        std::fputs(dialog.isVisible() ? "WINUAE_QT_SMOKE_WINDOW_VISIBLE\n" : "WINUAE_QT_SMOKE_WINDOW_NOT_VISIBLE\n", stdout);
+        std::fflush(stdout);
+        dialog.reject();
+        if (app) {
+            app->quit();
+        }
+    });
+}
+
 int runWinUaeQtLauncher(QApplication &app)
 {
     setupApplicationStyle(app);
@@ -13645,6 +13661,7 @@ int runWinUaeQtLauncher(QApplication &app)
         });
     }
     dialog.show();
+    armQtSmokeExit(dialog, &app);
     return app.exec();
 }
 
@@ -13671,6 +13688,7 @@ WinUaeQtLauncherResult runWinUaeQtLauncherForConfig(QApplication &app, const QSt
             dialog.openConfigFile(path);
         });
     }
+    armQtSmokeExit(dialog);
     if (dialog.exec() == QDialog::Accepted) {
         return dialog.launcherResult();
     }
