@@ -1468,6 +1468,19 @@ static const MiscCheckChoice miscCheckChoices[] = {
     { "Warp mode reset", "warpboot", false }
 };
 
+static bool miscCheckChoiceEnabled(const QString &key)
+{
+    return key != QStringLiteral("clipboard_sharing");
+}
+
+static QString miscCheckChoiceDisabledReason(const QString &key)
+{
+    if (key == QStringLiteral("clipboard_sharing")) {
+        return QStringLiteral("Full Amiga clipboard sharing needs a native Unix clipboard-device backend. Host text paste is available through the paste input event.");
+    }
+    return QString();
+}
+
 struct ActivityPriorityChoice {
     const char *display;
     int value;
@@ -7717,10 +7730,16 @@ private:
         miscOptionList->setAlternatingRowColors(true);
         miscOptionItems.clear();
         for (const MiscCheckChoice &choice : miscCheckChoices) {
+            const QString key = QString::fromLatin1(choice.key);
             QListWidgetItem *item = new QListWidgetItem(QString::fromLatin1(choice.display), miscOptionList);
             item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
             item->setCheckState(choice.defaultChecked ? Qt::Checked : Qt::Unchecked);
-            miscOptionItems.insert(QString::fromLatin1(choice.key), item);
+            if (!miscCheckChoiceEnabled(key)) {
+                item->setFlags(item->flags() & ~Qt::ItemIsEnabled);
+                item->setCheckState(Qt::Unchecked);
+                item->setToolTip(miscCheckChoiceDisabledReason(key));
+            }
+            miscOptionItems.insert(key, item);
         }
         root->addWidget(miscOptionList, 2);
 
@@ -7825,6 +7844,10 @@ private:
     void setMiscOptionChecked(const QString &key, bool checked)
     {
         if (QListWidgetItem *item = miscOptionItems.value(key, nullptr)) {
+            if (!miscCheckChoiceEnabled(key)) {
+                item->setCheckState(Qt::Unchecked);
+                return;
+            }
             item->setCheckState(checked ? Qt::Checked : Qt::Unchecked);
         }
     }
