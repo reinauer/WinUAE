@@ -6,6 +6,12 @@
 
 #include <functional>
 
+#ifdef UAE_UNIX_WITH_SDL3
+#define SDL_MAIN_HANDLED
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_main.h>
+#endif
+
 #include "config.h"
 #include "launcher.h"
 #include "launcher_backend.h"
@@ -973,6 +979,30 @@ static QString magicMouseCursorText(const QString &value)
 
 static constexpr int SoundVolumeCount = 5;
 static constexpr int FloppySoundDriveCount = 4;
+
+static QVector<QPair<QString, QString>> soundDeviceChoices()
+{
+    QVector<QPair<QString, QString>> choices;
+    choices.append(qMakePair(QStringLiteral("SDL: Default audio device"), QStringLiteral("SDL:Default Audio Device")));
+
+#ifdef UAE_UNIX_WITH_SDL3
+    SDL_SetMainReady();
+    if (SDL_InitSubSystem(SDL_INIT_AUDIO)) {
+        int count = 0;
+        SDL_AudioDeviceID *devices = SDL_GetAudioPlaybackDevices(&count);
+        if (devices) {
+            for (int i = 0; i < count; i++) {
+                const char *name = SDL_GetAudioDeviceName(devices[i]);
+                const QString display = QString::fromUtf8(name && name[0] ? name : "Unknown audio device");
+                choices.append(qMakePair(QStringLiteral("SDL: %1").arg(display), QStringLiteral("SDL:%1").arg(display)));
+            }
+            SDL_free(devices);
+        }
+    }
+#endif
+
+    return choices;
+}
 
 static QString soundOutputConfigValue(int id)
 {
@@ -3444,6 +3474,7 @@ private:
     QComboBox *stateReplayRate = nullptr;
     QComboBox *stateReplayBuffers = nullptr;
     QButtonGroup *soundOutputButtons = nullptr;
+    QComboBox *soundDevice = nullptr;
     QCheckBox *soundAutomatic = nullptr;
     QSlider *soundMasterVolume = nullptr;
     QLabel *soundMasterVolumeValue = nullptr;
@@ -6554,7 +6585,11 @@ private:
         QWidget *page = makePage();
         QVBoxLayout *root = new QVBoxLayout(page);
         root->setContentsMargins(4, 4, 4, 4);
-        root->addWidget(combo({ QStringLiteral("Default audio device") }));
+        soundDevice = new QComboBox;
+        for (const auto &choice : soundDeviceChoices()) {
+            soundDevice->addItem(choice.first, choice.second);
+        }
+        root->addWidget(soundDevice);
 
         QHBoxLayout *top = new QHBoxLayout;
         QVBoxLayout *emulation = new QVBoxLayout;
@@ -6743,6 +6778,7 @@ private:
             soundVolumeSelect,
             soundSelectedVolume,
             soundBufferSize,
+            soundDevice,
             soundChannels,
             soundInterpolation,
             soundFrequency,
@@ -6841,6 +6877,24 @@ private:
         floppySoundDiskVolume->setValue(100 - floppySoundDiskAttenuation[drive]);
         floppySoundUpdating = false;
         updateFloppySoundVolumeLabels();
+    }
+
+    void selectSoundDeviceByConfigName(const QString &value)
+    {
+        if (!soundDevice || value.trimmed().isEmpty()) {
+            return;
+        }
+        const QString wanted = value.trimmed();
+        for (int i = 0; i < soundDevice->count(); i++) {
+            const QString configName = soundDevice->itemData(i).toString();
+            const QString displayName = soundDevice->itemText(i);
+            if (configName.compare(wanted, Qt::CaseInsensitive) == 0
+                || displayName.compare(wanted, Qt::CaseInsensitive) == 0
+                || configName.mid(4).compare(wanted, Qt::CaseInsensitive) == 0) {
+                soundDevice->setCurrentIndex(i);
+                return;
+            }
+        }
     }
 
     void setSoundSwapBit(bool paula, bool enabled)
@@ -9053,6 +9107,7 @@ private:
         if (QAbstractButton *button = soundOutputButtons->button(2)) {
             button->setChecked(true);
         }
+        soundDevice->setCurrentIndex(0);
         soundAutomatic->setChecked(false);
         soundMasterVolume->setValue(100);
         for (int i = 0; i < SoundVolumeCount; i++) {
@@ -10416,6 +10471,11 @@ private:
         settings.insert(QStringLiteral("comp_trustword"), trust);
         settings.insert(QStringLiteral("comp_trustlong"), trust);
         settings.insert(QStringLiteral("comp_trustnaddr"), trust);
+        settings.insert(QStringLiteral("unix.soundcard"), QString::number(qMax(0, soundDevice->currentIndex())));
+        const QString soundDeviceConfigName = soundDevice->currentData().toString();
+        if (!soundDeviceConfigName.isEmpty()) {
+            settings.insert(QStringLiteral("unix.soundcardname"), soundDeviceConfigName);
+        }
         settings.insert(QStringLiteral("sound_output"), soundOutputConfigValue(soundOutputButtons->checkedId()));
         settings.insert(QStringLiteral("sound_auto"), soundAutomatic->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
         settings.insert(QStringLiteral("sound_volume"), QString::number(100 - soundMasterVolume->value()));
@@ -10838,6 +10898,10 @@ private:
             QStringLiteral("comp_trustword"),
             QStringLiteral("comp_trustlong"),
             QStringLiteral("comp_trustnaddr"),
+            QStringLiteral("soundcard"),
+            QStringLiteral("soundcardname"),
+            QStringLiteral("unix.soundcard"),
+            QStringLiteral("unix.soundcardname"),
             QStringLiteral("sound_output"),
             QStringLiteral("sound_auto"),
             QStringLiteral("sound_volume"),
@@ -11740,6 +11804,14 @@ private:
             expansionScsiDevice->setChecked(lower != QStringLiteral("false") && lower != QStringLiteral("0") && !lower.isEmpty());
         } else if (key == QStringLiteral("sana2")) {
             expansionSana2->setChecked(configBoolValue(value));
+        } else if (key == QStringLiteral("unix.soundcard") || key == QStringLiteral("soundcard")) {
+            bool ok = false;
+            const int index = value.toInt(&ok);
+            if (ok && soundDevice && index >= 0 && index < soundDevice->count()) {
+                soundDevice->setCurrentIndex(index);
+            }
+        } else if (key == QStringLiteral("unix.soundcardname") || key == QStringLiteral("soundcardname")) {
+            selectSoundDeviceByConfigName(value);
         } else if (key == QStringLiteral("sound_output")) {
             if (QAbstractButton *button = soundOutputButtons->button(soundOutputId(value))) {
                 button->setChecked(true);

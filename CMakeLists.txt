@@ -313,6 +313,18 @@ if(WINUAE_UNIX_WITH_QT_UI OR WINUAE_UNIX_WITH_INTEGRATED_QT_UI)
             WINUAE_UNIX_VERSION_REVISION=${WINUAE_UNIX_VERSION_REVISION}
         )
         target_link_libraries(winuae_unix_qt_frontend PUBLIC ${WINUAE_UNIX_QT_WIDGETS_TARGET})
+        if(WINUAE_UNIX_SDL3_TARGET)
+            target_compile_definitions(winuae_unix_qt_frontend PRIVATE UAE_UNIX_WITH_SDL3=1)
+            target_link_libraries(winuae_unix_qt_frontend PUBLIC ${WINUAE_UNIX_SDL3_TARGET})
+        elseif(SDL3_FOUND)
+            target_compile_definitions(winuae_unix_qt_frontend PRIVATE UAE_UNIX_WITH_SDL3=1)
+            target_include_directories(winuae_unix_qt_frontend PRIVATE ${SDL3_INCLUDE_DIRS})
+            target_compile_options(winuae_unix_qt_frontend PRIVATE ${SDL3_CFLAGS_OTHER})
+            target_link_libraries(winuae_unix_qt_frontend PUBLIC ${SDL3_LIBRARIES})
+            if(SDL3_LIBRARY_DIRS)
+                target_link_directories(winuae_unix_qt_frontend PUBLIC ${SDL3_LIBRARY_DIRS})
+            endif()
+        endif()
 
         if(WINUAE_UNIX_WITH_QT_UI)
             add_executable(winuae_unix_qt

@@ -54,8 +54,8 @@ Status values:
 
 | Windows feature area | Unix status | Evidence | Next action |
 | --- | --- | --- | --- |
-| Paula audio output | Enabled | `od-unix/sound.cpp` uses SDL3 `SDL_AudioStream`; CMake defines `UAE_UNIX_WITH_SDL3` when SDL3 is found. | Add runtime audio smoke coverage and verify defaults against Windows. |
-| Floppy drive sounds | Enabled | Unix defines `DRIVESOUND`; `od-unix/sound.cpp` calls `driveclick_init()` and CMake links `od-unix/driveclick.cpp`. | Verify volume/default behavior with the Qt Sound page. |
+| Paula audio output | Enabled | `od-unix/sound.cpp` uses SDL3 `SDL_AudioStream`, enumerates SDL playback devices, and honors `unix.soundcard` / `unix.soundcardname` in the same index-plus-name pattern as Windows. The A1200 smoke test checks SDL dummy audio initialization. | Test real host output devices on macOS/Linux and keep advanced backends disabled until implemented. |
+| Floppy drive sounds | Enabled | Unix defines `DRIVESOUND`; `od-unix/sound.cpp` calls `driveclick_init()` and CMake links `od-unix/driveclick.cpp`. The Qt Sound page round-trips `floppyNsound` and per-drive empty/disk volumes. | Verify audible click behavior with real output hardware. |
 | AHI sound emulation | Deferred | Windows defines `AHI` and links `od-win32/ahidsound_*`; Unix does not define `AHI`. | Defer until core audio output and MIDI/sound-board work are stable. |
 | Sound boards, Toccata, DSP, MIDI emulation | Deferred | Windows defines `WITH_SNDBOARD`, `WITH_TOCCATA`, `WITH_DSP`, `WITH_MIDIEMU`; Unix does not link those sources. | Add native audio/MIDI backends before enabling UI controls. |
 | Native MIDI | Deferred | Windows defines `WITH_MIDI`, `WITH_PORTAUDIO`, `WITH_OPENAL` and links `od-win32/midi.cpp`; Unix does not. | Choose CoreMIDI on macOS and ALSA/PipeWire/PortMIDI on Linux. |
