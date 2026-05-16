@@ -162,6 +162,8 @@ When the integrated Qt UI is built, `winuae_unix` opens the configuration UI by 
 
 The executable also tries to load `~/default.uae` by default. A missing default config is ignored silently; explicit `-config` / `-f` load failures are still reported.
 
+Unix path expansion is supported for `~/`, `$VAR`, and `${VAR}` in core config paths and Qt file/config boundaries. `~user` expansion is not implemented; use an absolute path for another user's home directory.
+
 There is also a minimal example config at:
 
 ```sh

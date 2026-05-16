@@ -246,6 +246,7 @@ set(WINUAE_CORE_SOURCES
     od-unix/input.cpp
     od-unix/logging.cpp
     od-unix/mman.cpp
+    od-unix/path_expand.cpp
     od-unix/parallel.cpp
     od-unix/rtg.cpp
     od-unix/serial.cpp
@@ -266,6 +267,15 @@ if(WINUAE_UNIX_BUILD_EXECUTABLE)
     endif()
     target_link_libraries(winuae_unix PRIVATE pthread ${CMAKE_DL_LIBS} ZLIB::ZLIB ${WINUAE_UNIX_EXTRA_LIBRARIES})
 endif()
+
+add_executable(winuae_unix_path_expand_test EXCLUDE_FROM_ALL
+    od-unix/path_expand.cpp
+    od-unix/path_expand_test.cpp
+)
+target_include_directories(winuae_unix_path_expand_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/od-unix"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include"
+)
 
 if(WINUAE_UNIX_WITH_QT_UI OR WINUAE_UNIX_WITH_INTEGRATED_QT_UI)
     set(WINUAE_UNIX_VERSION_MAJOR 0)

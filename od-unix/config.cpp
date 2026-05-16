@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "options.h"
+#include "path_expand.h"
 #include "sound_unix.h"
 #include "uae/string.h"
 #include "uae.h"
@@ -75,67 +76,9 @@ static std::string join_path(const std::string &dir, const std::string &name)
     return dir + "/" + name;
 }
 
-static std::string expand_unix_path(const std::string &path)
-{
-    std::string out;
-    const char *home = getenv("HOME");
-
-    if (!path.empty() && path[0] == '~' && (path.size() == 1 || path[1] == '/')) {
-        out = home ? home : "";
-        out += path.substr(1);
-    } else {
-        out = path;
-    }
-
-    if (home) {
-        std::string homestr(home);
-        size_t slash = homestr.find_last_of('/');
-        std::string user = slash == std::string::npos ? homestr : homestr.substr(slash + 1);
-        std::string oldhome = "/home/" + user;
-        if (!user.empty() && out.compare(0, oldhome.size(), oldhome) == 0 &&
-            (out.size() == oldhome.size() || out[oldhome.size()] == '/')) {
-            out = homestr + out.substr(oldhome.size());
-        }
-    }
-
-    for (size_t i = 0; i < out.size(); i++) {
-        if (out[i] != '$') {
-            continue;
-        }
-        size_t start = i + 1;
-        size_t end = start;
-        std::string name;
-        if (start < out.size() && out[start] == '{') {
-            start++;
-            end = out.find('}', start);
-            if (end == std::string::npos) {
-                continue;
-            }
-            name = out.substr(start, end - start);
-            end++;
-        } else {
-            while (end < out.size() && (isalnum((unsigned char)out[end]) || out[end] == '_')) {
-                end++;
-            }
-            name = out.substr(start, end - start);
-        }
-        if (name.empty()) {
-            continue;
-        }
-        const char *value = getenv(name.c_str());
-        if (!value) {
-            continue;
-        }
-        out.replace(i, end - i, value);
-        i += strlen(value);
-    }
-
-    return out;
-}
-
 static std::string resolve_legacy_path(const std::string &value, const std::string &config_dir, const char *subdir)
 {
-    std::string path = expand_unix_path(trim_copy(value));
+    std::string path = unix_expand_path(trim_copy(value));
     if (path.size() >= 2 &&
         ((path[0] == '"' && path[path.size() - 1] == '"') || (path[0] == '\'' && path[path.size() - 1] == '\''))) {
         path = path.substr(1, path.size() - 2);
@@ -567,7 +510,7 @@ TCHAR *target_expand_environment(const TCHAR *path, TCHAR *out, int maxlen)
         return NULL;
     }
 
-    std::string expanded = expand_unix_path(path);
+    std::string expanded = unix_expand_path(path);
     if (out) {
         uae_tcslcpy(out, expanded.c_str(), maxlen);
         return out;
