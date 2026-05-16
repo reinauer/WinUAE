@@ -44,6 +44,7 @@ static constexpr int MaxCdSlots = 8;
 static constexpr int MaxRomBoards = 4;
 static constexpr int MaxDiskSwapperSlots = 20;
 static constexpr int MaxQuickstartConfigs = 6;
+static constexpr int MaxJoyportCustomSlots = 6;
 
 struct QuickstartModelChoice {
     const char *display;
@@ -787,7 +788,7 @@ static QString autoResolutionText(int value)
 
 static QStringList primaryPortDeviceItems()
 {
-    return {
+    QStringList items = {
         QStringLiteral("Mouse"),
         QStringLiteral("Keyboard Layout A"),
         QStringLiteral("Keyboard Layout B"),
@@ -795,14 +796,18 @@ static QStringList primaryPortDeviceItems()
         QStringLiteral("Joystick 1"),
         QStringLiteral("Joystick 2"),
         QStringLiteral("Joystick 3"),
-        QStringLiteral("Joystick 4"),
-        QStringLiteral("<None>")
+        QStringLiteral("Joystick 4")
     };
+    for (int i = 0; i < MaxJoyportCustomSlots; i++) {
+        items.append(QStringLiteral("Custom %1").arg(i + 1));
+    }
+    items.append(QStringLiteral("<None>"));
+    return items;
 }
 
 static QStringList parallelPortDeviceItems()
 {
-    return {
+    QStringList items = {
         QStringLiteral("<None>"),
         QStringLiteral("Keyboard Layout A"),
         QStringLiteral("Keyboard Layout B"),
@@ -812,6 +817,10 @@ static QStringList parallelPortDeviceItems()
         QStringLiteral("Joystick 3"),
         QStringLiteral("Joystick 4")
     };
+    for (int i = 0; i < MaxJoyportCustomSlots; i++) {
+        items.append(QStringLiteral("Custom %1").arg(i + 1));
+    }
+    return items;
 }
 
 static QString joyportDeviceConfigValue(const QString &text)
@@ -833,6 +842,13 @@ static QString joyportDeviceConfigValue(const QString &text)
         const int index = text.mid(9).toInt(&ok);
         if (ok && index > 0) {
             return QStringLiteral("joy%1").arg(index - 1);
+        }
+    }
+    if (text.startsWith(QStringLiteral("Custom "))) {
+        bool ok = false;
+        const int index = text.mid(7).toInt(&ok);
+        if (ok && index > 0 && index <= MaxJoyportCustomSlots) {
+            return QStringLiteral("custom%1").arg(index - 1);
         }
     }
     return QStringLiteral("none");
@@ -858,6 +874,13 @@ static QString joyportDeviceText(const QString &value, bool allowMouse)
         const int index = lower.mid(3).toInt(&ok);
         if (ok && index >= 0 && index < 4) {
             return QStringLiteral("Joystick %1").arg(index + 1);
+        }
+    }
+    if (lower.startsWith(QStringLiteral("custom"))) {
+        bool ok = false;
+        const int index = lower.mid(6).toInt(&ok);
+        if (ok && index >= 0 && index < MaxJoyportCustomSlots) {
+            return QStringLiteral("Custom %1").arg(index + 1);
         }
     }
     return QStringLiteral("<None>");
@@ -4069,6 +4092,7 @@ private:
     QComboBox *portDevice[4] = {};
     QComboBox *portAutofire[2] = {};
     QComboBox *portMode[2] = {};
+    QString joyportCustom[MaxJoyportCustomSlots];
     QCheckBox *portAutoswitch = nullptr;
     QSpinBox *mouseSpeed = nullptr;
     QCheckBox *virtualMouseDriver = nullptr;
@@ -9845,6 +9869,9 @@ private:
         portDevice[1]->setCurrentText(QStringLiteral("Keyboard Layout A"));
         portDevice[2]->setCurrentText(QStringLiteral("<None>"));
         portDevice[3]->setCurrentText(QStringLiteral("<None>"));
+        for (QString &custom : joyportCustom) {
+            custom.clear();
+        }
         for (int i = 0; i < 2; i++) {
             portAutofire[i]->setCurrentText(QStringLiteral("No autofire (normal)"));
             portMode[i]->setCurrentText(QStringLiteral("Default"));
@@ -11404,6 +11431,11 @@ private:
         for (int i = 0; i < 4; i++) {
             settings.insert(QStringLiteral("joyport%1").arg(i), joyportDeviceConfigValue(portDevice[i]->currentText()));
         }
+        for (int i = 0; i < MaxJoyportCustomSlots; i++) {
+            if (!joyportCustom[i].trimmed().isEmpty()) {
+                settings.insert(QStringLiteral("joyportcustom%1").arg(i), joyportCustom[i].trimmed());
+            }
+        }
         for (int i = 0; i < 2; i++) {
             settings.insert(QStringLiteral("joyport%1autofire").arg(i), autofireConfigValue(portAutofire[i]->currentText()));
             const QString mode = joyportModeConfigValue(portMode[i]->currentText());
@@ -11817,6 +11849,12 @@ private:
             QStringLiteral("joyport1"),
             QStringLiteral("joyport2"),
             QStringLiteral("joyport3"),
+            QStringLiteral("joyportcustom0"),
+            QStringLiteral("joyportcustom1"),
+            QStringLiteral("joyportcustom2"),
+            QStringLiteral("joyportcustom3"),
+            QStringLiteral("joyportcustom4"),
+            QStringLiteral("joyportcustom5"),
             QStringLiteral("joyport0autofire"),
             QStringLiteral("joyport1autofire"),
             QStringLiteral("joyport0mode"),
@@ -12699,6 +12737,12 @@ private:
             const int port = key.mid(7, 1).toInt(&ok);
             if (ok && port >= 0 && port < 4) {
                 portDevice[port]->setCurrentText(joyportDeviceText(value, port < 2));
+            }
+        } else if (key.startsWith(QStringLiteral("joyportcustom"))) {
+            bool ok = false;
+            const int slot = key.mid(13).toInt(&ok);
+            if (ok && slot >= 0 && slot < MaxJoyportCustomSlots) {
+                joyportCustom[slot] = value;
             }
         } else if (key.startsWith(QStringLiteral("joyport")) && key.endsWith(QStringLiteral("autofire"))) {
             bool ok = false;
