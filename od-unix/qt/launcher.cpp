@@ -8837,7 +8837,7 @@ private:
         miscGuiDarkMode = new QCheckBox(QStringLiteral("Dark mode"));
         disableUnavailable(osdFont, QStringLiteral("OSD font selection is not implemented yet."));
         disableUnavailable(resetLists, QStringLiteral("List customization storage is not implemented in the Unix Qt frontend yet."));
-        disableUnavailable(miscGuiDarkMode, QStringLiteral("macOS dark-mode polish is tracked as a later UI item."));
+        disableUnavailable(miscGuiDarkMode, QStringLiteral("The Qt frontend currently uses a Windows-compatible light palette; native dark mode still needs a separate pass."));
 
         QHBoxLayout *fontRow = new QHBoxLayout;
         fontRow->setContentsMargins(0, 0, 0, 0);
@@ -13601,15 +13601,35 @@ static void setupApplicationStyle(QApplication &app)
     QFont font(family);
     font.setPixelSize(12);
     app.setFont(font);
+
+    QPalette palette;
+    palette.setColor(QPalette::Window, QColor(0xf0, 0xf0, 0xf0));
+    palette.setColor(QPalette::WindowText, Qt::black);
+    palette.setColor(QPalette::Base, Qt::white);
+    palette.setColor(QPalette::AlternateBase, QColor(0xf7, 0xf7, 0xf7));
+    palette.setColor(QPalette::ToolTipBase, QColor(0xff, 0xff, 0xdc));
+    palette.setColor(QPalette::ToolTipText, Qt::black);
+    palette.setColor(QPalette::Text, Qt::black);
+    palette.setColor(QPalette::Button, QColor(0xf0, 0xf0, 0xf0));
+    palette.setColor(QPalette::ButtonText, Qt::black);
+    palette.setColor(QPalette::BrightText, Qt::white);
+    palette.setColor(QPalette::Highlight, QColor(0x33, 0x99, 0xff));
+    palette.setColor(QPalette::HighlightedText, Qt::white);
+    palette.setColor(QPalette::Disabled, QPalette::WindowText, QColor(0x80, 0x80, 0x80));
+    palette.setColor(QPalette::Disabled, QPalette::Text, QColor(0x80, 0x80, 0x80));
+    palette.setColor(QPalette::Disabled, QPalette::ButtonText, QColor(0x80, 0x80, 0x80));
+    app.setPalette(palette);
+
     app.setStyleSheet(QStringLiteral(
-        "QDialog, QWidget#page, QStackedWidget#pageStack { background: #f0f0f0; }"
+        "QDialog, QWidget#page, QStackedWidget#pageStack { background: #f0f0f0; color: #000000; }"
         "QFrame#outerFrame { border: 1px solid #808080; background: #f0f0f0; }"
-        "QTreeWidget { background: white; border: 1px solid #7f9db9; }"
+        "QTreeWidget, QListWidget, QTableWidget, QPlainTextEdit { background: #ffffff; color: #000000; border: 1px solid #7f9db9; alternate-background-color: #f7f7f7; }"
         "QGroupBox { margin-top: 14px; padding: 9px 6px 6px 6px; }"
         "QGroupBox::title { subcontrol-origin: margin; left: 8px; padding: 0 3px; font-size: 13px; }"
         "QPushButton { min-height: 20px; padding: 1px 10px; }"
-        "QLineEdit, QComboBox { min-height: 22px; }"
-        "QLabel#statusLine { padding-left: 6px; background: #f0f0f0; }"
+        "QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox { min-height: 22px; background: #ffffff; color: #000000; }"
+        "QLabel#statusLine { padding-left: 6px; background: #f0f0f0; color: #000000; }"
+        "QWidget:disabled { color: #808080; }"
     ));
 }
 
