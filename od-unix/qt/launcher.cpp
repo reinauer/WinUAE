@@ -3082,17 +3082,17 @@ public:
         addEventButton = new QPushButton(QStringLiteral("Add Event"));
         QPushButton *autofireButton = new QPushButton(QStringLiteral("Autofire"));
         testButton = new QPushButton(QStringLiteral("Test"));
-        QPushButton *remapButton = new QPushButton(QStringLiteral("Remap"));
-        QPushButton *deleteButton = new QPushButton(QStringLiteral("Delete"));
+        remapButton = new QPushButton(QStringLiteral("Remap"));
+        deleteButton = new QPushButton(QStringLiteral("Delete"));
         deleteAllButton = new QPushButton(QStringLiteral("Delete all"));
         QPushButton *exitButton = new QPushButton(QStringLiteral("Exit"));
 
         disableUnavailable(autofireButton, QStringLiteral("Autofire mapping edits need the shared preferences input adapter."));
-        disableUnavailable(remapButton, QStringLiteral("Sequential remap capture needs direct shared preferences input adapter support."));
-        disableUnavailable(deleteButton, QStringLiteral("Single mapping deletion is not connected yet."));
         if (port < 0) {
             disableUnavailable(addEvent, QStringLiteral("Custom game-port mappings are only available from the Game Ports page."));
             disableUnavailable(addEventButton, QStringLiteral("Custom game-port mappings are only available from the Game Ports page."));
+            disableUnavailable(remapButton, QStringLiteral("Custom game-port mappings are only available from the Game Ports page."));
+            disableUnavailable(deleteButton, QStringLiteral("Custom game-port mappings are only available from the Game Ports page."));
             disableUnavailable(deleteAllButton, QStringLiteral("Custom game-port mappings are only available from the Game Ports page."));
         }
 
@@ -3124,10 +3124,14 @@ public:
         connect(timer, &QTimer::timeout, this, [this]() { pollInput(); });
         connect(testButton, &QPushButton::clicked, this, [this]() { setTesting(!testing); });
         connect(addEventButton, &QPushButton::clicked, this, [this]() { addSelectedMapping(); });
+        connect(remapButton, &QPushButton::clicked, this, [this]() { toggleSequentialRemap(); });
+        connect(deleteButton, &QPushButton::clicked, this, [this]() { deleteSelectedMapping(); });
         connect(deleteAllButton, &QPushButton::clicked, this, [this]() {
+            remapping = false;
             customMappings.clear();
             changed = true;
             updateMappingLine();
+            updateActionState();
         });
         connect(exitButton, &QPushButton::clicked, this, &QDialog::accept);
         connect(list, &QTreeWidget::currentItemChanged, this, [this](QTreeWidgetItem *, QTreeWidgetItem *) {
@@ -3173,11 +3177,16 @@ private:
     QPlainTextEdit *mappingLine = nullptr;
     QComboBox *addEvent = nullptr;
     QPushButton *addEventButton = nullptr;
+    QPushButton *remapButton = nullptr;
+    QPushButton *deleteButton = nullptr;
     QPushButton *deleteAllButton = nullptr;
     QPushButton *testButton = nullptr;
     QTimer *timer = nullptr;
     bool testing = false;
     bool changed = false;
+    bool remapping = false;
+    bool remapWaitingForRelease = false;
+    int remapEventIndex = -1;
     QStringList customMappings;
 
 #ifdef UAE_UNIX_WITH_SDL3
@@ -3499,40 +3508,192 @@ private:
             return;
         }
         const bool hasSelection = list->currentItem() && !list->currentItem()->isDisabled();
-        addEvent->setEnabled(hasSelection && addEvent->count() > 0);
-        addEventButton->setEnabled(hasSelection && addEvent->count() > 0);
-        deleteAllButton->setEnabled(!customMappings.isEmpty());
+        const bool canEdit = hasSelection && addEvent->count() > 0 && !remapping;
+        addEvent->setEnabled(canEdit);
+        addEventButton->setEnabled(canEdit);
+        if (deleteButton) {
+            deleteButton->setEnabled(canEdit && !customMappings.isEmpty());
+        }
+        if (remapButton) {
+            remapButton->setEnabled(hasSelection && addEvent->count() > 0);
+            remapButton->setText(remapping ? QStringLiteral("Stop") : QStringLiteral("Remap"));
+        }
+        deleteAllButton->setEnabled(!remapping && !customMappings.isEmpty());
     }
+
+#ifdef UAE_UNIX_WITH_SDL3
+    int selectedDeviceIndex() const
+    {
+        const int deviceIndex = list->currentItem()->data(0, Qt::UserRole).toInt();
+        return deviceIndex >= 0 && deviceIndex < devices.size() ? deviceIndex : -1;
+    }
+
+    int selectedWidgetIndex(int deviceIndex) const
+    {
+        const int widgetIndex = list->currentItem()->data(0, Qt::UserRole + 1).toInt();
+        return deviceIndex >= 0 && deviceIndex < devices.size() && widgetIndex >= 0 && widgetIndex < devices[deviceIndex].widgets.size()
+            ? widgetIndex
+            : -1;
+    }
+
+    QString mappingPrefix(int deviceIndex, const UnixQtInputTestWidget &widget) const
+    {
+        return QStringLiteral("j.%1.%2.%3")
+            .arg(deviceIndex)
+            .arg(widget.mappingType)
+            .arg(widget.mappingIndex);
+    }
+
+    QString mappingFor(int deviceIndex, const UnixQtInputTestWidget &widget, const QString &event) const
+    {
+        return QStringLiteral("%1.0=%2").arg(mappingPrefix(deviceIndex, widget), event);
+    }
+
+    int removeMappings(const QString &prefix, const QString &event)
+    {
+        int removed = 0;
+        QStringList kept;
+        for (const QString &mapping : customMappings) {
+            const int equals = mapping.indexOf(QLatin1Char('='));
+            const QString left = equals >= 0 ? mapping.left(equals) : mapping;
+            const QString right = equals >= 0 ? mapping.mid(equals + 1) : QString();
+            if (left.startsWith(prefix + QLatin1Char('.')) && (event.isEmpty() || right == event)) {
+                removed++;
+            } else {
+                kept.append(mapping);
+            }
+        }
+        customMappings = kept;
+        return removed;
+    }
+
+    int nextRemapEventIndex(int start) const
+    {
+        for (int i = qMax(0, start); i < addEvent->count(); i++) {
+            if (!addEvent->itemData(i).toString().isEmpty()) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    void setRemapPrompt()
+    {
+        if (remapping && remapEventIndex >= 0) {
+            inputLine->setText(QStringLiteral("Press input for %1.").arg(addEvent->itemText(remapEventIndex)));
+        }
+    }
+
+    void finishSequentialRemap(const QString &message)
+    {
+        remapping = false;
+        remapWaitingForRelease = false;
+        remapEventIndex = -1;
+        if (testing) {
+            setTesting(false);
+        }
+        inputLine->setText(message);
+        updateActionState();
+    }
+
+    bool appendMappingFor(int deviceIndex, int widgetIndex, const QString &event)
+    {
+        if (deviceIndex < 0 || deviceIndex >= devices.size()) {
+            return false;
+        }
+        UnixQtInputTestDevice &device = devices[deviceIndex];
+        if (widgetIndex < 0 || widgetIndex >= device.widgets.size()) {
+            return false;
+        }
+        const UnixQtInputTestWidget &widget = device.widgets[widgetIndex];
+        const QString mapping = mappingFor(deviceIndex, widget, event);
+        customMappings.removeAll(mapping);
+        customMappings.append(mapping);
+        changed = true;
+        updateMappingLine();
+        updateActionState();
+        return true;
+    }
+#endif
 
     void addSelectedMapping()
     {
 #ifdef UAE_UNIX_WITH_SDL3
-        if (port < 0 || !list->currentItem()) {
-            return;
-        }
-        const int deviceIndex = list->currentItem()->data(0, Qt::UserRole).toInt();
-        const int widgetIndex = list->currentItem()->data(0, Qt::UserRole + 1).toInt();
-        if (deviceIndex < 0 || deviceIndex >= devices.size()) {
-            return;
-        }
-        UnixQtInputTestDevice &device = devices[deviceIndex];
-        if (widgetIndex < 0 || widgetIndex >= device.widgets.size()) {
+        if (port < 0 || !list->currentItem() || remapping) {
             return;
         }
         const QString event = addEvent->currentData().toString();
         if (event.isEmpty()) {
             return;
         }
-        const UnixQtInputTestWidget &widget = device.widgets[widgetIndex];
-        const QString mapping = QStringLiteral("j.%1.%2.%3.0=%4")
-            .arg(deviceIndex)
-            .arg(widget.mappingType)
-            .arg(widget.mappingIndex)
-            .arg(event);
-        customMappings.removeAll(mapping);
-        customMappings.append(mapping);
+        const int deviceIndex = selectedDeviceIndex();
+        appendMappingFor(deviceIndex, selectedWidgetIndex(deviceIndex), event);
+#endif
+    }
+
+    void deleteSelectedMapping()
+    {
+#ifdef UAE_UNIX_WITH_SDL3
+        if (port < 0 || !list->currentItem() || remapping) {
+            return;
+        }
+        const int deviceIndex = selectedDeviceIndex();
+        const int widgetIndex = selectedWidgetIndex(deviceIndex);
+        if (deviceIndex < 0 || widgetIndex < 0) {
+            return;
+        }
+        const QString event = addEvent->currentData().toString();
+        const QString prefix = mappingPrefix(deviceIndex, devices[deviceIndex].widgets[widgetIndex]);
+        int removed = event.isEmpty() ? 0 : removeMappings(prefix, event);
+        if (!removed) {
+            removed = removeMappings(prefix, QString());
+        }
+        if (removed) {
+            changed = true;
+            updateMappingLine();
+            updateActionState();
+        }
+#endif
+    }
+
+    void toggleSequentialRemap()
+    {
+#ifdef UAE_UNIX_WITH_SDL3
+        if (port < 0 || !list->currentItem()) {
+            return;
+        }
+        if (remapping) {
+            finishSequentialRemap(QStringLiteral("Remap canceled."));
+            return;
+        }
+        remapEventIndex = nextRemapEventIndex(0);
+        if (remapEventIndex < 0) {
+            return;
+        }
+        customMappings.clear();
         changed = true;
+        remapping = true;
+        remapWaitingForRelease = false;
+        addEvent->setCurrentIndex(remapEventIndex);
         updateMappingLine();
+        updateActionState();
+        if (!testing) {
+            setTesting(true);
+        }
+        setRemapPrompt();
+#endif
+    }
+
+    void advanceSequentialRemap()
+    {
+#ifdef UAE_UNIX_WITH_SDL3
+        remapEventIndex = nextRemapEventIndex(remapEventIndex + 1);
+        if (remapEventIndex < 0) {
+            finishSequentialRemap(QStringLiteral("Remap complete."));
+            return;
+        }
+        addEvent->setCurrentIndex(remapEventIndex);
+        setRemapPrompt();
         updateActionState();
 #endif
     }
@@ -3540,6 +3701,11 @@ private:
     void setTesting(bool enabled)
     {
         testing = enabled;
+        if (!testing && remapping) {
+            remapping = false;
+            remapWaitingForRelease = false;
+            remapEventIndex = -1;
+        }
         testButton->setText(testing ? QStringLiteral("Stop") : QStringLiteral("Test"));
         if (testing) {
             timer->start();
@@ -3547,6 +3713,7 @@ private:
             timer->stop();
             clearHighlights();
         }
+        updateActionState();
     }
 
     void clearHighlights()
@@ -3589,6 +3756,18 @@ private:
         if (activeItem) {
             list->setCurrentItem(activeItem);
             list->scrollToItem(activeItem, QAbstractItemView::PositionAtCenter);
+            if (remapping && !remapWaitingForRelease && remapEventIndex >= 0) {
+                const int deviceIndex = activeItem->data(0, Qt::UserRole).toInt();
+                const int widgetIndex = activeItem->data(0, Qt::UserRole + 1).toInt();
+                const QString event = addEvent->itemData(remapEventIndex).toString();
+                if (!event.isEmpty() && appendMappingFor(deviceIndex, widgetIndex, event)) {
+                    remapWaitingForRelease = true;
+                    advanceSequentialRemap();
+                }
+            }
+        } else if (remapping) {
+            remapWaitingForRelease = false;
+            setRemapPrompt();
         }
 #endif
     }
