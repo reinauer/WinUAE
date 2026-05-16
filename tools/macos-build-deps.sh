@@ -23,7 +23,8 @@ Environment:
   WINUAE_SKIP_SDL3=1              Do not build SDL3.
   WINUAE_SKIP_QT=1                Do not build Qt.
   WINUAE_SDL3_CMAKE_ARGS          Extra arguments passed to SDL3 CMake.
-  WINUAE_QT_CONFIGURE_ARGS        Extra arguments passed to Qt configure.
+  WINUAE_QT_CONFIGURE_ARGS        Extra arguments passed to Qt configure,
+                                  in addition to the release-safe defaults.
   WINUAE_QT_CMAKE_ARGS            Extra arguments passed to Qt CMake.
 EOF
 }
@@ -46,7 +47,10 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
     exit 1
 fi
 
-jobs="${WINUAE_DEPS_JOBS:-$(sysctl -n hw.ncpu)}"
+jobs="${WINUAE_DEPS_JOBS:-}"
+if [[ -z "${jobs}" ]]; then
+    jobs="$(sysctl -n hw.ncpu 2>/dev/null || echo 8)"
+fi
 export MACOSX_DEPLOYMENT_TARGET="${target}"
 
 require_source() {
@@ -72,6 +76,23 @@ run_cmake_build() {
     cmake --install "${bld}"
 }
 
+patch_qtbase_source() {
+    local header="${qt_source}/src/corelib/thread/qyieldcpu.h"
+    if [[ -f "${header}" ]] && grep -q "__yield();" "${header}" && ! grep -q "arm_acle.h" "${header}"; then
+        perl -0pi -e 's/(#include <QtCore\/qtconfigmacros\.h>\n)/$1\n#if defined(__has_include)\n#  if __has_include(<arm_acle.h>)\n#    include <arm_acle.h>\n#  endif\n#endif\n/' "${header}"
+    fi
+}
+
+split_extra_args() {
+    if [[ -n "${1:-}" ]]; then
+        # Intentionally split user-provided extra flags the same way a shell would.
+        # shellcheck disable=SC2206
+        extra_args=($1)
+    else
+        extra_args=()
+    fi
+}
+
 mkdir -p "${prefix}" "${build_dir}"
 
 if [[ "${WINUAE_SKIP_SDL3:-0}" != "1" ]]; then
@@ -92,6 +113,40 @@ if [[ "${WINUAE_SKIP_QT:-0}" != "1" ]]; then
     require_source "Qt" "${qt_source}"
     qt_build="${build_dir}/qt"
     mkdir -p "${qt_build}"
+    patch_qtbase_source
+
+    qt_configure_args=(
+        -force-bundled-libs
+        -no-dbus
+        -no-openssl
+        -no-glib
+        -no-icu
+        -no-cups
+        -no-fontconfig
+        -no-gtk
+        -qt-doubleconversion
+        -qt-pcre
+        -qt-zlib
+        -qt-libpng
+        -qt-libjpeg
+        -qt-freetype
+        -qt-harfbuzz
+    )
+    split_extra_args "${WINUAE_QT_CONFIGURE_ARGS:-}"
+    qt_configure_args+=("${extra_args[@]}")
+
+    qt_cmake_args=()
+    if ! xcodebuild -version >/dev/null 2>&1 && xcrun --show-sdk-path >/dev/null 2>&1; then
+        qt_cmake_args+=(-DQT_NO_XCODE_MIN_VERSION_CHECK=ON)
+    fi
+    split_extra_args "${WINUAE_QT_CMAKE_ARGS:-}"
+    qt_cmake_args+=("${extra_args[@]}")
+
+    qt_submodule_args=()
+    if [[ -d "${qt_source}/qtbase" || -f "${qt_source}/init-repository" ]]; then
+        qt_submodule_args=(-submodules qtbase)
+    fi
+
     if [[ -x "${qt_source}/configure" ]]; then
         (
             cd "${qt_build}"
@@ -102,11 +157,11 @@ if [[ "${WINUAE_SKIP_QT:-0}" != "1" ]]; then
                 -confirm-license \
                 -nomake examples \
                 -nomake tests \
-                -submodules qtbase \
-                ${WINUAE_QT_CONFIGURE_ARGS:-} \
+                "${qt_submodule_args[@]}" \
+                "${qt_configure_args[@]}" \
                 -- \
                 -DCMAKE_OSX_DEPLOYMENT_TARGET="${target}" \
-                ${WINUAE_QT_CMAKE_ARGS:-}
+                "${qt_cmake_args[@]}"
         )
         cmake --build "${qt_build}" -j "${jobs}"
         cmake --install "${qt_build}"
@@ -117,7 +172,7 @@ if [[ "${WINUAE_SKIP_QT:-0}" != "1" ]]; then
             -DCMAKE_OSX_DEPLOYMENT_TARGET="${target}" \
             -DQT_BUILD_EXAMPLES=OFF \
             -DQT_BUILD_TESTS=OFF \
-            ${WINUAE_QT_CMAKE_ARGS:-}
+            "${qt_cmake_args[@]}"
     fi
 fi
 
