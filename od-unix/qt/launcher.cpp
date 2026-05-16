@@ -3765,10 +3765,11 @@ private:
         mode->addWidget(quickstartMode);
         root->addWidget(groupBox(QStringLiteral("Mode"), mode));
 
-        QGridLayout *drives = new QGridLayout;
-        drives->setColumnStretch(5, 1);
+        QVBoxLayout *drives = new QVBoxLayout;
+        drives->setSpacing(10);
         addQuickDriveRow(drives, 0);
         addQuickDriveRow(drives, 1);
+        drives->addStretch();
         root->addWidget(groupBox(QStringLiteral("Emulated Drives"), drives), 1);
 
         connect(quickModel, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this]() {
@@ -3956,7 +3957,7 @@ private:
         updateCpuControlState();
     }
 
-    void addQuickDriveRow(QGridLayout *layout, int drive)
+    void addQuickDriveRow(QVBoxLayout *layout, int drive)
     {
         quickDfEnable[drive] = new QCheckBox(QStringLiteral("Floppy drive DF%1:").arg(drive));
         QPushButton *select = new QPushButton(QStringLiteral("Select image file"));
@@ -3966,15 +3967,25 @@ private:
         QPushButton *eject = new QPushButton(QStringLiteral("Eject"));
         quickDfPath[drive] = pathCombo();
         quickDfPath[drive]->setMinimumWidth(300);
-        const int row = drive * 2;
-        layout->addWidget(quickDfEnable[drive], row, 0);
-        layout->addWidget(select, row, 1);
-        layout->addWidget(quickDfType[drive], row, 2);
-        layout->addWidget(new QLabel(QStringLiteral("Write-protected")), row, 3);
-        layout->addWidget(quickDfWriteProtect[drive], row, 4);
-        layout->addWidget(info, row, 5);
-        layout->addWidget(eject, row, 6);
-        layout->addWidget(quickDfPath[drive], row + 1, 0, 1, 7);
+        QWidget *driveWidget = new QWidget;
+        QVBoxLayout *driveLayout = new QVBoxLayout(driveWidget);
+        driveLayout->setContentsMargins(0, 0, 0, 0);
+        driveLayout->setSpacing(4);
+
+        QHBoxLayout *controls = new QHBoxLayout;
+        controls->setContentsMargins(0, 0, 0, 0);
+        controls->setSpacing(6);
+        controls->addWidget(quickDfEnable[drive]);
+        controls->addWidget(select);
+        controls->addWidget(quickDfType[drive]);
+        controls->addWidget(new QLabel(QStringLiteral("Write-protected")));
+        controls->addWidget(quickDfWriteProtect[drive]);
+        controls->addWidget(info);
+        controls->addWidget(eject);
+        controls->addStretch();
+        driveLayout->addLayout(controls);
+        driveLayout->addWidget(quickDfPath[drive]);
+        layout->addWidget(driveWidget);
         quickDfEnable[drive]->setChecked(drive == 0);
         connect(info, &QPushButton::clicked, this, [this, drive]() {
             showFloppyInfo(quickDfPath[drive] ? quickDfPath[drive]->currentText() : QString(), drive);
@@ -3995,12 +4006,18 @@ private:
         root->setSpacing(6);
 
         QVBoxLayout *left = new QVBoxLayout;
+        left->setSpacing(6);
         cpuButtons = new QButtonGroup(this);
-        QVBoxLayout *cpu = new QVBoxLayout;
+        QGridLayout *cpu = new QGridLayout;
+        cpu->setHorizontalSpacing(12);
+        cpu->setVerticalSpacing(5);
+        cpu->setColumnStretch(0, 1);
+        cpu->setColumnStretch(1, 1);
         const QStringList cpus = { QStringLiteral("68000"), QStringLiteral("68010"), QStringLiteral("68020"), QStringLiteral("68030"), QStringLiteral("68040"), QStringLiteral("68060") };
-        for (const QString &name : cpus) {
+        for (int i = 0; i < cpus.size(); i++) {
+            const QString &name = cpus[i];
             QRadioButton *button = new QRadioButton(name);
-            cpu->addWidget(button);
+            cpu->addWidget(button, i / 2, i % 2);
             cpuButtons->addButton(button, name.mid(2).toInt() + 68000);
             connect(button, &QRadioButton::clicked, this, [this]() {
                 updateFpuControls();
@@ -4015,11 +4032,11 @@ private:
         cpuDataCache = new QCheckBox(QStringLiteral("Data cache emulation"));
         jit = new QCheckBox(QStringLiteral("JIT"));
         cpuUnimplemented = new QCheckBox(QStringLiteral("Unimplemented CPU emu"));
-        cpu->addWidget(cpu24Bit);
-        cpu->addWidget(moreCompatible);
-        cpu->addWidget(cpuDataCache);
-        cpu->addWidget(jit);
-        cpu->addWidget(cpuUnimplemented);
+        cpu->addWidget(cpu24Bit, 3, 0, 1, 2);
+        cpu->addWidget(moreCompatible, 4, 0, 1, 2);
+        cpu->addWidget(cpuDataCache, 5, 0, 1, 2);
+        cpu->addWidget(jit, 6, 0, 1, 2);
+        cpu->addWidget(cpuUnimplemented, 7, 0, 1, 2);
         left->addWidget(groupBox(QStringLiteral("CPU"), cpu));
 
         mmuButtons = new QButtonGroup(this);
@@ -4037,6 +4054,7 @@ private:
 
         fpuButtons = new QButtonGroup(this);
         QVBoxLayout *fpu = new QVBoxLayout;
+        fpu->setSpacing(5);
         const QStringList fpus = { QStringLiteral("None"), QStringLiteral("68881"), QStringLiteral("68882"), QStringLiteral("CPU internal") };
         for (int i = 0; i < fpus.size(); i++) {
             QRadioButton *button = new QRadioButton(fpus[i]);
@@ -4141,8 +4159,8 @@ private:
         updateFpuControls();
         updateCpuControlState();
 
-        root->addLayout(left, 1);
-        root->addLayout(right, 2);
+        root->addLayout(left, 2);
+        root->addLayout(right, 3);
         return page;
     }
 
@@ -4186,15 +4204,20 @@ private:
             QStringLiteral("Casablanca"),
             QStringLiteral("DraCo")
         }, QStringLiteral("A1200"));
-        QGridLayout *basic = new QGridLayout;
-        basic->setColumnStretch(1, 1);
-        basic->addWidget(label(QStringLiteral("Chipset:")), 0, 0);
-        basic->addWidget(chipset, 0, 1);
-        basic->addWidget(chipsetNtsc, 0, 2);
-        basic->addWidget(label(QStringLiteral("Chipset Extra:")), 1, 0);
-        basic->addWidget(chipsetCompatible, 1, 1, 1, 2);
-        basic->addWidget(chipsetCycleExact, 2, 1, 1, 2);
-        basic->addWidget(chipsetCycleExactMemory, 3, 1, 1, 2);
+        QVBoxLayout *basic = new QVBoxLayout;
+        basic->setSpacing(6);
+        QGridLayout *chipsetSelection = new QGridLayout;
+        chipsetSelection->setHorizontalSpacing(8);
+        chipsetSelection->setVerticalSpacing(5);
+        chipsetSelection->setColumnStretch(1, 1);
+        chipsetSelection->addWidget(label(QStringLiteral("Chipset:")), 0, 0);
+        chipsetSelection->addWidget(chipset, 0, 1);
+        chipsetSelection->addWidget(chipsetNtsc, 0, 2);
+        chipsetSelection->addWidget(label(QStringLiteral("Chipset Extra:")), 1, 0);
+        chipsetSelection->addWidget(chipsetCompatible, 1, 1, 1, 2);
+        basic->addLayout(chipsetSelection);
+        basic->addWidget(chipsetCycleExact);
+        basic->addWidget(chipsetCycleExactMemory);
         root->addWidget(groupBox(QStringLiteral("Chipset"), basic), 0, 0);
 
         immediateBlits = new QCheckBox(QStringLiteral("Immediate Blitter"));
@@ -4535,12 +4558,38 @@ private:
         extendedRomFile = pathCombo();
         mapRom = new QCheckBox(QStringLiteral("MapROM emulation"));
         kickShifter = new QCheckBox(QStringLiteral("ShapeShifter support"));
-        QGridLayout *system = new QGridLayout;
-        system->setColumnStretch(1, 1);
-        addPathRow(system, 0, QStringLiteral("Main ROM file:"), romFile, QStringLiteral("Select main ROM file"), QStringLiteral("ROM files (*.rom *.bin);;All files (*)"));
-        addPathRow(system, 1, QStringLiteral("Extended ROM file:"), extendedRomFile, QStringLiteral("Select extended ROM file"), QStringLiteral("ROM files (*.rom *.bin);;All files (*)"));
-        system->addWidget(mapRom, 4, 0);
-        system->addWidget(kickShifter, 4, 1);
+        QVBoxLayout *system = new QVBoxLayout;
+        system->setSpacing(5);
+
+        QPushButton *romBrowse = smallButton(QStringLiteral("..."));
+        QHBoxLayout *romRow = new QHBoxLayout;
+        romRow->setContentsMargins(0, 0, 0, 0);
+        romRow->addWidget(romFile, 1);
+        romRow->addWidget(romBrowse);
+        system->addWidget(new QLabel(QStringLiteral("Main ROM file:")));
+        system->addLayout(romRow);
+        connect(romBrowse, &QPushButton::clicked, this, [this]() {
+            addBrowse(romFile, this, QStringLiteral("Select main ROM file"), QStringLiteral("ROM files (*.rom *.bin);;All files (*)"));
+        });
+
+        QPushButton *extendedRomBrowse = smallButton(QStringLiteral("..."));
+        QHBoxLayout *extendedRomRow = new QHBoxLayout;
+        extendedRomRow->setContentsMargins(0, 0, 0, 0);
+        extendedRomRow->addWidget(extendedRomFile, 1);
+        extendedRomRow->addWidget(extendedRomBrowse);
+        system->addWidget(new QLabel(QStringLiteral("Extended ROM file:")));
+        system->addLayout(extendedRomRow);
+        connect(extendedRomBrowse, &QPushButton::clicked, this, [this]() {
+            addBrowse(extendedRomFile, this, QStringLiteral("Select extended ROM file"), QStringLiteral("ROM files (*.rom *.bin);;All files (*)"));
+        });
+
+        QHBoxLayout *romOptions = new QHBoxLayout;
+        romOptions->setContentsMargins(0, 2, 0, 0);
+        romOptions->addStretch();
+        romOptions->addWidget(mapRom);
+        romOptions->addWidget(kickShifter);
+        romOptions->addStretch();
+        system->addLayout(romOptions);
         root->addWidget(groupBox(QStringLiteral("System ROM Settings"), system));
 
         QGridLayout *advanced = new QGridLayout;
@@ -7765,7 +7814,10 @@ private:
         root->addWidget(miscOptionList, 2);
 
         QVBoxLayout *right = new QVBoxLayout;
+        right->setSpacing(6);
         QGridLayout *miscOptions = new QGridLayout;
+        miscOptions->setHorizontalSpacing(8);
+        miscOptions->setVerticalSpacing(5);
         miscOptions->setColumnStretch(1, 1);
         miscScsiMode = combo({ QStringLiteral("SCSI emulation"), QStringLiteral("SPTI"), QStringLiteral("SPTI + SCSI SCAN") });
         miscWindowedStyle = combo({ QStringLiteral("Borderless"), QStringLiteral("Minimal"), QStringLiteral("Standard"), QStringLiteral("Extended") });
@@ -7783,8 +7835,8 @@ private:
         miscOptions->addWidget(miscVideoApiOptions, 3, 1);
         right->addWidget(groupBox(QStringLiteral("Miscellaneous Options"), miscOptions));
 
-        QGridLayout *gui = new QGridLayout;
-        gui->setColumnStretch(1, 1);
+        QVBoxLayout *gui = new QVBoxLayout;
+        gui->setSpacing(5);
         miscLanguage = combo({ QStringLiteral("Autodetect"), QStringLiteral("English (built-in)") });
         QPushButton *guiFont = new QPushButton(QStringLiteral("GUI Font..."));
         QPushButton *osdFont = new QPushButton(QStringLiteral("OSD Font..."));
@@ -7802,15 +7854,26 @@ private:
         miscGuiResize->setEnabled(false);
         miscGuiFullscreen->setEnabled(false);
         miscGuiDarkMode->setEnabled(false);
-        gui->addWidget(miscLanguage, 0, 0, 1, 2);
-        gui->addWidget(guiFont, 1, 0);
-        gui->addWidget(osdFont, 1, 1);
-        gui->addWidget(setDefault, 2, 0);
-        gui->addWidget(miscGuiSize, 2, 1);
-        gui->addWidget(resetLists, 3, 0, 1, 2);
-        gui->addWidget(miscGuiResize, 4, 0, 1, 2);
-        gui->addWidget(miscGuiFullscreen, 5, 0, 1, 2);
-        gui->addWidget(miscGuiDarkMode, 6, 0, 1, 2);
+
+        QHBoxLayout *fontRow = new QHBoxLayout;
+        fontRow->setContentsMargins(0, 0, 0, 0);
+        fontRow->setSpacing(6);
+        fontRow->addWidget(guiFont);
+        fontRow->addWidget(osdFont);
+
+        QHBoxLayout *scaleRow = new QHBoxLayout;
+        scaleRow->setContentsMargins(0, 0, 0, 0);
+        scaleRow->setSpacing(6);
+        scaleRow->addWidget(setDefault);
+        scaleRow->addWidget(miscGuiSize, 1);
+
+        gui->addWidget(miscLanguage);
+        gui->addLayout(fontRow);
+        gui->addLayout(scaleRow);
+        gui->addWidget(resetLists);
+        gui->addWidget(miscGuiResize);
+        gui->addWidget(miscGuiFullscreen);
+        gui->addWidget(miscGuiDarkMode);
         right->addWidget(groupBox(QStringLiteral("GUI"), gui));
 
         QGridLayout *stateFiles = new QGridLayout;
