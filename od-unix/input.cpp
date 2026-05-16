@@ -9,6 +9,7 @@
 
 #include "options.h"
 #include "traps.h"
+#include "gui.h"
 #include "inputdevice.h"
 #include "input.h"
 
@@ -34,6 +35,10 @@ static TCHAR keyboard_friendly[] = _T("Unix Keyboard");
 static TCHAR keyboard_unique_name[] = _T("unix.keyboard");
 static bool mouse_active;
 static bool keyboard_state[512];
+static int capslockstate;
+static int host_capslockstate;
+static int host_numlockstate;
+static int host_scrolllockstate;
 
 #ifdef UAE_UNIX_WITH_SDL3
 enum {
@@ -1217,11 +1222,19 @@ bool unix_input_get_mouse_active(void)
     return mouse_active;
 }
 
-void unix_input_keyboard_key(int scancode, bool pressed)
+static void unix_input_update_lock_state(int lockstate)
+{
+    host_capslockstate = (lockstate & UNIX_INPUT_LOCK_CAPS) != 0;
+    host_numlockstate = (lockstate & UNIX_INPUT_LOCK_NUM) != 0;
+    host_scrolllockstate = (lockstate & UNIX_INPUT_LOCK_SCROLL) != 0;
+}
+
+void unix_input_keyboard_key(int scancode, bool pressed, int lockstate)
 {
     if (scancode <= 0 || scancode >= (int)(sizeof keyboard_state / sizeof keyboard_state[0])) {
         return;
     }
+    unix_input_update_lock_state(lockstate);
     if (keyboard_state[scancode] == pressed) {
         return;
     }
@@ -1384,4 +1397,29 @@ void setmouseactive(int, int active) { unix_input_set_mouse_active(active != 0);
 bool target_can_autoswitchdevice(void) { return false; }
 void target_inputdevice_acquire(void) {}
 void target_inputdevice_unacquire(bool) {}
-int getcapslockstate(void) { return 0; }
+int getcapslockstate(void) { return capslockstate; }
+void setcapslockstate(int state) { capslockstate = state; }
+int target_checkcapslock(int scancode, int *state)
+{
+    if (scancode != UKEY_CAPSLOCK && scancode != UKEY_NUMLOCKCLEAR && scancode != UKEY_SCROLLLOCK) {
+        return 0;
+    }
+    if (currprefs.keyboard_mode > 0) {
+        return 1;
+    }
+    if (*state == 0) {
+        return -1;
+    }
+    if (scancode == UKEY_CAPSLOCK) {
+        *state = host_capslockstate;
+        if (gui_data.capslock != (host_capslockstate != 0)) {
+            gui_data.capslock = host_capslockstate != 0;
+            gui_led(LED_CAPS, gui_data.capslock, -1);
+        }
+    } else if (scancode == UKEY_NUMLOCKCLEAR) {
+        *state = host_numlockstate;
+    } else if (scancode == UKEY_SCROLLLOCK) {
+        *state = host_scrolllockstate;
+    }
+    return 1;
+}
