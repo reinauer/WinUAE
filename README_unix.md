@@ -9,7 +9,8 @@ This is an early macOS/Linux port of the WinUAE source tree. The current Unix bu
 - SDL3 provides the current window, framebuffer presentation, mouse input, keyboard input, audio output, and playback-device selection.
 - SDL3 gamepads and non-gamepad joysticks are exposed through the WinUAE input-device layer for game-port use; the remap/test dialogs are still disabled.
 - Qt Widgets provides an initial Windows-style configuration UI. When Qt is available, it is integrated into `winuae_unix` and the standalone `winuae_unix_qt` launcher is also built.
-- Floppy drive click sounds use the built-in WinUAE sample resources when SDL3 audio is active.
+- Host clipboard text paste is available through the same paste input event as Windows. Full Amiga clipboard sharing is still incomplete.
+- Floppy drive click sound config and sample loading are present, but audible click output still needs follow-up.
 - Native Unix serial support is available for POSIX serial devices and TCP listener endpoints.
 - A2065 Ethernet can use the built-in SLIRP user-mode NAT backend.
 - UAE Zorro II/Zorro III RTG RAM can be configured and autoconfigured, with an initial Unix `uaegfx.card` install path; guest Picasso96 monitor-driver testing and accelerated RTG operations are still incomplete.
@@ -192,6 +193,12 @@ SDL3 audio uses the WinUAE `sound_output`, `sound_frequency`, `sound_channels`, 
 ```
 
 The Qt Sound page lists SDL playback devices and writes both `unix.soundcard` and `unix.soundcardname` so saved configs can recover by name if the device index changes. Floppy click sounds are off by default, matching the shared WinUAE defaults; enable them per drive with `floppy0sound=1` through `floppy3sound=1`.
+
+## Clipboard
+
+Host clipboard text can be pasted into the emulated keyboard through `SPC_PASTE`. The default keyboard mapping follows Windows: the special qualifier plus Insert triggers paste. On macOS the Unix backend reads text with `pbpaste`; on Linux it tries `wl-paste`, `xclip`, then `xsel` if available.
+
+This is paste-to-keyboard only. Full transparent Amiga clipboard-device sharing is still disabled.
 
 ## Serial
 
