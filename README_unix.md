@@ -140,6 +140,14 @@ The app bundle is written to:
 
 The bundling script copies the Qt UI resources and runs `macdeployqt` when it is available. It does not bundle Kickstart ROMs, disks, or other Amiga system media.
 
+For a GUI launch smoke test of the packaged app, run:
+
+```sh
+cmake --build /tmp/winuae_cmake_build --target winuae_unix_macos_app_smoke
+```
+
+This starts `WinUAE.app` from an isolated temporary home directory and uses an opt-in smoke-test environment variable to verify that the Qt configuration window reaches a visible state.
+
 To create a drag-install DMG with `WinUAE.app`, an `/Applications` link, a volume icon, and a Finder background arrow:
 
 ```sh
