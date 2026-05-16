@@ -2905,6 +2905,532 @@ static void disableUnavailable(QWidget *widget, const QString &reason)
     widget->setToolTip(reason);
 }
 
+#ifdef UAE_UNIX_WITH_SDL3
+enum class UnixQtInputWidgetKind {
+    Axis,
+    Button,
+    GamepadDpadX,
+    GamepadDpadY,
+    JoystickHatX,
+    JoystickHatY
+};
+
+struct UnixQtInputTestWidget {
+    QString name;
+    UnixQtInputWidgetKind kind = UnixQtInputWidgetKind::Axis;
+    int code = 0;
+    int state = 0;
+    QTreeWidgetItem *item = nullptr;
+};
+
+struct UnixQtInputTestDevice {
+    QString name;
+    SDL_JoystickID instanceId = 0;
+    SDL_Gamepad *gamepad = nullptr;
+    SDL_Joystick *joystick = nullptr;
+    QVector<UnixQtInputTestWidget> widgets;
+};
+
+static QString sdlGamepadAxisName(SDL_GamepadAxis axis)
+{
+    switch (axis) {
+    case SDL_GAMEPAD_AXIS_LEFTX:
+        return QStringLiteral("Left X Axis");
+    case SDL_GAMEPAD_AXIS_LEFTY:
+        return QStringLiteral("Left Y Axis");
+    case SDL_GAMEPAD_AXIS_RIGHTX:
+        return QStringLiteral("Right X Axis");
+    case SDL_GAMEPAD_AXIS_RIGHTY:
+        return QStringLiteral("Right Y Axis");
+    case SDL_GAMEPAD_AXIS_LEFT_TRIGGER:
+        return QStringLiteral("Left Trigger");
+    case SDL_GAMEPAD_AXIS_RIGHT_TRIGGER:
+        return QStringLiteral("Right Trigger");
+    default:
+        return QStringLiteral("Axis %1").arg(int(axis) + 1);
+    }
+}
+
+static QString sdlGamepadButtonName(SDL_GamepadButton button)
+{
+    switch (button) {
+    case SDL_GAMEPAD_BUTTON_SOUTH:
+        return QStringLiteral("South Button");
+    case SDL_GAMEPAD_BUTTON_EAST:
+        return QStringLiteral("East Button");
+    case SDL_GAMEPAD_BUTTON_WEST:
+        return QStringLiteral("West Button");
+    case SDL_GAMEPAD_BUTTON_NORTH:
+        return QStringLiteral("North Button");
+    case SDL_GAMEPAD_BUTTON_LEFT_SHOULDER:
+        return QStringLiteral("Left Shoulder");
+    case SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER:
+        return QStringLiteral("Right Shoulder");
+    case SDL_GAMEPAD_BUTTON_START:
+        return QStringLiteral("Start Button");
+    case SDL_GAMEPAD_BUTTON_BACK:
+        return QStringLiteral("Back Button");
+    case SDL_GAMEPAD_BUTTON_LEFT_STICK:
+        return QStringLiteral("Left Stick Button");
+    case SDL_GAMEPAD_BUTTON_RIGHT_STICK:
+        return QStringLiteral("Right Stick Button");
+    case SDL_GAMEPAD_BUTTON_GUIDE:
+        return QStringLiteral("Guide Button");
+    case SDL_GAMEPAD_BUTTON_MISC1:
+        return QStringLiteral("Misc Button 1");
+    case SDL_GAMEPAD_BUTTON_RIGHT_PADDLE1:
+        return QStringLiteral("Right Paddle 1");
+    case SDL_GAMEPAD_BUTTON_LEFT_PADDLE1:
+        return QStringLiteral("Left Paddle 1");
+    case SDL_GAMEPAD_BUTTON_RIGHT_PADDLE2:
+        return QStringLiteral("Right Paddle 2");
+    case SDL_GAMEPAD_BUTTON_LEFT_PADDLE2:
+        return QStringLiteral("Left Paddle 2");
+    case SDL_GAMEPAD_BUTTON_TOUCHPAD:
+        return QStringLiteral("Touchpad Button");
+    case SDL_GAMEPAD_BUTTON_MISC2:
+        return QStringLiteral("Misc Button 2");
+    case SDL_GAMEPAD_BUTTON_MISC3:
+        return QStringLiteral("Misc Button 3");
+    case SDL_GAMEPAD_BUTTON_MISC4:
+        return QStringLiteral("Misc Button 4");
+    case SDL_GAMEPAD_BUTTON_MISC5:
+        return QStringLiteral("Misc Button 5");
+    case SDL_GAMEPAD_BUTTON_MISC6:
+        return QStringLiteral("Misc Button 6");
+    default:
+        return QStringLiteral("Button %1").arg(int(button) + 1);
+    }
+}
+
+static bool unixQtInputWidgetActive(UnixQtInputWidgetKind kind, int state)
+{
+    if (kind == UnixQtInputWidgetKind::Button) {
+        return state != 0;
+    }
+    if (kind == UnixQtInputWidgetKind::GamepadDpadX || kind == UnixQtInputWidgetKind::GamepadDpadY ||
+        kind == UnixQtInputWidgetKind::JoystickHatX || kind == UnixQtInputWidgetKind::JoystickHatY) {
+        return state != 0;
+    }
+    return qAbs(state) > 8000;
+}
+#endif
+
+class UnixQtInputMapDialog final : public QDialog {
+public:
+    explicit UnixQtInputMapDialog(const QString &context, QWidget *parent = nullptr)
+        : QDialog(parent)
+    {
+        setWindowTitle(QStringLiteral("Input Remap"));
+        resize(640, 440);
+        setMinimumSize(560, 360);
+
+        list = new QTreeWidget;
+        list->setRootIsDecorated(false);
+        list->setAlternatingRowColors(true);
+        list->setSelectionMode(QAbstractItemView::SingleSelection);
+        list->setHeaderLabels({
+            QStringLiteral("Host widget"),
+            QStringLiteral("Device"),
+            QStringLiteral("Type"),
+            QStringLiteral("State")
+        });
+        list->header()->setStretchLastSection(false);
+        list->header()->setSectionResizeMode(0, QHeaderView::Stretch);
+        list->header()->setSectionResizeMode(1, QHeaderView::Stretch);
+        list->header()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
+        list->header()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
+
+        inputLine = new QLineEdit;
+        inputLine->setReadOnly(true);
+        inputLine->setEnabled(false);
+        mappingLine = new QPlainTextEdit;
+        mappingLine->setReadOnly(true);
+        mappingLine->setEnabled(false);
+        mappingLine->setFixedHeight(48);
+        mappingLine->setPlainText(context);
+
+        addEvent = new QComboBox;
+        addEvent->addItems({
+            QStringLiteral("Joystick 1 Fire"),
+            QStringLiteral("Joystick 1 Up"),
+            QStringLiteral("Joystick 1 Down"),
+            QStringLiteral("Joystick 1 Left"),
+            QStringLiteral("Joystick 1 Right"),
+            QStringLiteral("Left mouse button"),
+            QStringLiteral("Right mouse button")
+        });
+        QPushButton *addEventButton = new QPushButton(QStringLiteral("Add Event"));
+        QPushButton *autofireButton = new QPushButton(QStringLiteral("Autofire"));
+        testButton = new QPushButton(QStringLiteral("Test"));
+        QPushButton *remapButton = new QPushButton(QStringLiteral("Remap"));
+        QPushButton *deleteButton = new QPushButton(QStringLiteral("Delete"));
+        QPushButton *deleteAllButton = new QPushButton(QStringLiteral("Delete all"));
+        QPushButton *exitButton = new QPushButton(QStringLiteral("Exit"));
+
+        disableUnavailable(addEvent, QStringLiteral("Custom input event insertion needs the shared preferences input adapter."));
+        disableUnavailable(addEventButton, QStringLiteral("Custom input event insertion needs the shared preferences input adapter."));
+        disableUnavailable(autofireButton, QStringLiteral("Autofire mapping edits need the shared preferences input adapter."));
+        disableUnavailable(remapButton, QStringLiteral("Input remap capture needs the shared preferences input adapter."));
+        disableUnavailable(deleteButton, QStringLiteral("Input mapping edits need the shared preferences input adapter."));
+        disableUnavailable(deleteAllButton, QStringLiteral("Input mapping edits need the shared preferences input adapter."));
+
+        QHBoxLayout *addRow = new QHBoxLayout;
+        addRow->setContentsMargins(0, 0, 0, 0);
+        addRow->addWidget(addEvent, 1);
+        addRow->addWidget(addEventButton);
+        addRow->addWidget(autofireButton);
+
+        QHBoxLayout *buttonRow = new QHBoxLayout;
+        buttonRow->setContentsMargins(0, 0, 0, 0);
+        buttonRow->addWidget(testButton);
+        buttonRow->addWidget(remapButton);
+        buttonRow->addWidget(deleteButton);
+        buttonRow->addWidget(deleteAllButton);
+        buttonRow->addWidget(exitButton);
+
+        QVBoxLayout *root = new QVBoxLayout(this);
+        root->setContentsMargins(6, 6, 6, 6);
+        root->setSpacing(5);
+        root->addWidget(list, 1);
+        root->addWidget(inputLine);
+        root->addWidget(mappingLine);
+        root->addLayout(addRow);
+        root->addLayout(buttonRow);
+
+        timer = new QTimer(this);
+        timer->setInterval(30);
+        connect(timer, &QTimer::timeout, this, [this]() { pollInput(); });
+        connect(testButton, &QPushButton::clicked, this, [this]() { setTesting(!testing); });
+        connect(exitButton, &QPushButton::clicked, this, &QDialog::accept);
+
+        loadDevices();
+        populateList();
+        if (list->topLevelItemCount() == 0) {
+            QTreeWidgetItem *item = new QTreeWidgetItem(list, {
+                QStringLiteral("<None>"),
+                QStringLiteral("SDL3"),
+                QStringLiteral("Input"),
+                QString()
+            });
+            item->setDisabled(true);
+            inputLine->setText(QStringLiteral("No SDL3 joystick/gamepad devices detected."));
+        }
+    }
+
+    ~UnixQtInputMapDialog() override
+    {
+        closeDevices();
+    }
+
+private:
+    QTreeWidget *list = nullptr;
+    QLineEdit *inputLine = nullptr;
+    QPlainTextEdit *mappingLine = nullptr;
+    QComboBox *addEvent = nullptr;
+    QPushButton *testButton = nullptr;
+    QTimer *timer = nullptr;
+    bool testing = false;
+
+#ifdef UAE_UNIX_WITH_SDL3
+    QVector<UnixQtInputTestDevice> devices;
+
+    void addGamepad(SDL_JoystickID instanceId)
+    {
+        SDL_Gamepad *gamepad = SDL_OpenGamepad(instanceId);
+        if (!gamepad) {
+            return;
+        }
+
+        UnixQtInputTestDevice device;
+        device.instanceId = instanceId;
+        device.gamepad = gamepad;
+        const char *name = SDL_GetGamepadName(gamepad);
+        device.name = QString::fromUtf8(name && name[0] ? name : "SDL Gamepad");
+
+        const SDL_GamepadAxis axes[] = {
+            SDL_GAMEPAD_AXIS_LEFTX,
+            SDL_GAMEPAD_AXIS_LEFTY,
+            SDL_GAMEPAD_AXIS_RIGHTX,
+            SDL_GAMEPAD_AXIS_RIGHTY,
+            SDL_GAMEPAD_AXIS_LEFT_TRIGGER,
+            SDL_GAMEPAD_AXIS_RIGHT_TRIGGER
+        };
+        for (SDL_GamepadAxis axis : axes) {
+            if (SDL_GamepadHasAxis(gamepad, axis)) {
+                UnixQtInputTestWidget widget;
+                widget.name = sdlGamepadAxisName(axis);
+                widget.kind = UnixQtInputWidgetKind::Axis;
+                widget.code = int(axis);
+                device.widgets.append(widget);
+            }
+        }
+
+        UnixQtInputTestWidget dpadX;
+        dpadX.name = QStringLiteral("DPad X Axis");
+        dpadX.kind = UnixQtInputWidgetKind::GamepadDpadX;
+        device.widgets.append(dpadX);
+        UnixQtInputTestWidget dpadY;
+        dpadY.name = QStringLiteral("DPad Y Axis");
+        dpadY.kind = UnixQtInputWidgetKind::GamepadDpadY;
+        device.widgets.append(dpadY);
+
+        const SDL_GamepadButton buttons[] = {
+            SDL_GAMEPAD_BUTTON_SOUTH,
+            SDL_GAMEPAD_BUTTON_EAST,
+            SDL_GAMEPAD_BUTTON_WEST,
+            SDL_GAMEPAD_BUTTON_NORTH,
+            SDL_GAMEPAD_BUTTON_LEFT_SHOULDER,
+            SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER,
+            SDL_GAMEPAD_BUTTON_START,
+            SDL_GAMEPAD_BUTTON_BACK,
+            SDL_GAMEPAD_BUTTON_LEFT_STICK,
+            SDL_GAMEPAD_BUTTON_RIGHT_STICK,
+            SDL_GAMEPAD_BUTTON_GUIDE,
+            SDL_GAMEPAD_BUTTON_MISC1,
+            SDL_GAMEPAD_BUTTON_RIGHT_PADDLE1,
+            SDL_GAMEPAD_BUTTON_LEFT_PADDLE1,
+            SDL_GAMEPAD_BUTTON_RIGHT_PADDLE2,
+            SDL_GAMEPAD_BUTTON_LEFT_PADDLE2,
+            SDL_GAMEPAD_BUTTON_TOUCHPAD,
+            SDL_GAMEPAD_BUTTON_MISC2,
+            SDL_GAMEPAD_BUTTON_MISC3,
+            SDL_GAMEPAD_BUTTON_MISC4,
+            SDL_GAMEPAD_BUTTON_MISC5,
+            SDL_GAMEPAD_BUTTON_MISC6
+        };
+        for (SDL_GamepadButton button : buttons) {
+            if (SDL_GamepadHasButton(gamepad, button)) {
+                UnixQtInputTestWidget widget;
+                widget.name = sdlGamepadButtonName(button);
+                widget.kind = UnixQtInputWidgetKind::Button;
+                widget.code = int(button);
+                device.widgets.append(widget);
+            }
+        }
+
+        devices.append(device);
+    }
+
+    void addJoystick(SDL_JoystickID instanceId)
+    {
+        if (SDL_IsGamepad(instanceId)) {
+            return;
+        }
+        SDL_Joystick *joystick = SDL_OpenJoystick(instanceId);
+        if (!joystick) {
+            return;
+        }
+
+        UnixQtInputTestDevice device;
+        device.instanceId = instanceId;
+        device.joystick = joystick;
+        const char *name = SDL_GetJoystickName(joystick);
+        device.name = QString::fromUtf8(name && name[0] ? name : "SDL Joystick");
+
+        const int axisCount = qMax(0, SDL_GetNumJoystickAxes(joystick));
+        for (int i = 0; i < axisCount; i++) {
+            UnixQtInputTestWidget widget;
+            widget.name = QStringLiteral("Axis %1").arg(i + 1);
+            widget.kind = UnixQtInputWidgetKind::Axis;
+            widget.code = i;
+            device.widgets.append(widget);
+        }
+
+        const int hatCount = qMax(0, SDL_GetNumJoystickHats(joystick));
+        for (int i = 0; i < hatCount; i++) {
+            UnixQtInputTestWidget hatX;
+            hatX.name = QStringLiteral("Hat %1 X Axis").arg(i + 1);
+            hatX.kind = UnixQtInputWidgetKind::JoystickHatX;
+            hatX.code = i;
+            device.widgets.append(hatX);
+            UnixQtInputTestWidget hatY;
+            hatY.name = QStringLiteral("Hat %1 Y Axis").arg(i + 1);
+            hatY.kind = UnixQtInputWidgetKind::JoystickHatY;
+            hatY.code = i;
+            device.widgets.append(hatY);
+        }
+
+        const int buttonCount = qMax(0, SDL_GetNumJoystickButtons(joystick));
+        for (int i = 0; i < buttonCount; i++) {
+            UnixQtInputTestWidget widget;
+            widget.name = QStringLiteral("Button %1").arg(i + 1);
+            widget.kind = UnixQtInputWidgetKind::Button;
+            widget.code = i;
+            device.widgets.append(widget);
+        }
+
+        devices.append(device);
+    }
+
+    void loadDevices()
+    {
+        SDL_SetMainReady();
+        if (!SDL_InitSubSystem(SDL_INIT_EVENTS | SDL_INIT_JOYSTICK | SDL_INIT_GAMEPAD)) {
+            inputLine->setText(QStringLiteral("SDL3 input backend is unavailable: %1").arg(QString::fromUtf8(SDL_GetError())));
+            return;
+        }
+
+        int count = 0;
+        SDL_JoystickID *ids = SDL_GetGamepads(&count);
+        if (ids) {
+            for (int i = 0; i < count; i++) {
+                addGamepad(ids[i]);
+            }
+            SDL_free(ids);
+        }
+
+        count = 0;
+        ids = SDL_GetJoysticks(&count);
+        if (ids) {
+            for (int i = 0; i < count; i++) {
+                addJoystick(ids[i]);
+            }
+            SDL_free(ids);
+        }
+    }
+
+    void closeDevices()
+    {
+        for (UnixQtInputTestDevice &device : devices) {
+            if (device.gamepad) {
+                SDL_CloseGamepad(device.gamepad);
+                device.gamepad = nullptr;
+            }
+            if (device.joystick) {
+                SDL_CloseJoystick(device.joystick);
+                device.joystick = nullptr;
+            }
+        }
+    }
+
+    int readWidgetState(const UnixQtInputTestDevice &device, const UnixQtInputTestWidget &widget) const
+    {
+        if (device.gamepad) {
+            switch (widget.kind) {
+            case UnixQtInputWidgetKind::Axis:
+                return SDL_GetGamepadAxis(device.gamepad, SDL_GamepadAxis(widget.code));
+            case UnixQtInputWidgetKind::Button:
+                return SDL_GetGamepadButton(device.gamepad, SDL_GamepadButton(widget.code)) ? 1 : 0;
+            case UnixQtInputWidgetKind::GamepadDpadX:
+                return (SDL_GetGamepadButton(device.gamepad, SDL_GAMEPAD_BUTTON_DPAD_RIGHT) ? 1 : 0) -
+                    (SDL_GetGamepadButton(device.gamepad, SDL_GAMEPAD_BUTTON_DPAD_LEFT) ? 1 : 0);
+            case UnixQtInputWidgetKind::GamepadDpadY:
+                return (SDL_GetGamepadButton(device.gamepad, SDL_GAMEPAD_BUTTON_DPAD_DOWN) ? 1 : 0) -
+                    (SDL_GetGamepadButton(device.gamepad, SDL_GAMEPAD_BUTTON_DPAD_UP) ? 1 : 0);
+            case UnixQtInputWidgetKind::JoystickHatX:
+            case UnixQtInputWidgetKind::JoystickHatY:
+                return 0;
+            }
+        }
+        if (device.joystick) {
+            switch (widget.kind) {
+            case UnixQtInputWidgetKind::Axis:
+                return SDL_GetJoystickAxis(device.joystick, widget.code);
+            case UnixQtInputWidgetKind::Button:
+                return SDL_GetJoystickButton(device.joystick, widget.code) ? 1 : 0;
+            case UnixQtInputWidgetKind::JoystickHatX:
+            {
+                const Uint8 hat = SDL_GetJoystickHat(device.joystick, widget.code);
+                return ((hat & SDL_HAT_RIGHT) ? 1 : 0) - ((hat & SDL_HAT_LEFT) ? 1 : 0);
+            }
+            case UnixQtInputWidgetKind::JoystickHatY:
+            {
+                const Uint8 hat = SDL_GetJoystickHat(device.joystick, widget.code);
+                return ((hat & SDL_HAT_DOWN) ? 1 : 0) - ((hat & SDL_HAT_UP) ? 1 : 0);
+            }
+            case UnixQtInputWidgetKind::GamepadDpadX:
+            case UnixQtInputWidgetKind::GamepadDpadY:
+                return 0;
+            }
+        }
+        return 0;
+    }
+#else
+    void loadDevices()
+    {
+        inputLine->setText(QStringLiteral("SDL3 input backend is not compiled into this build."));
+    }
+
+    void closeDevices()
+    {
+    }
+#endif
+
+    void populateList()
+    {
+#ifdef UAE_UNIX_WITH_SDL3
+        for (UnixQtInputTestDevice &device : devices) {
+            for (UnixQtInputTestWidget &widget : device.widgets) {
+                const QString type = widget.kind == UnixQtInputWidgetKind::Button ? QStringLiteral("Button") : QStringLiteral("Axis");
+                widget.item = new QTreeWidgetItem(list, {
+                    widget.name,
+                    device.name,
+                    type,
+                    QStringLiteral("0")
+                });
+            }
+        }
+#endif
+    }
+
+    void setTesting(bool enabled)
+    {
+        testing = enabled;
+        testButton->setText(testing ? QStringLiteral("Stop") : QStringLiteral("Test"));
+        if (testing) {
+            timer->start();
+        } else {
+            timer->stop();
+            clearHighlights();
+        }
+    }
+
+    void clearHighlights()
+    {
+        for (int i = 0; i < list->topLevelItemCount(); i++) {
+            QTreeWidgetItem *item = list->topLevelItem(i);
+            for (int column = 0; column < list->columnCount(); column++) {
+                item->setBackground(column, QBrush());
+            }
+        }
+    }
+
+    void pollInput()
+    {
+#ifdef UAE_UNIX_WITH_SDL3
+        SDL_UpdateGamepads();
+        SDL_UpdateJoysticks();
+        bool foundActive = false;
+        QTreeWidgetItem *activeItem = nullptr;
+        const QColor activeColor = palette().color(QPalette::Highlight).lighter(170);
+
+        for (UnixQtInputTestDevice &device : devices) {
+            for (UnixQtInputTestWidget &widget : device.widgets) {
+                const int state = readWidgetState(device, widget);
+                if (widget.item) {
+                    widget.item->setText(3, QString::number(state));
+                    const bool active = unixQtInputWidgetActive(widget.kind, state);
+                    for (int column = 0; column < list->columnCount(); column++) {
+                        widget.item->setBackground(column, active ? QBrush(activeColor) : QBrush());
+                    }
+                    if (active && !foundActive) {
+                        foundActive = true;
+                        activeItem = widget.item;
+                        inputLine->setText(QStringLiteral("%1, %2").arg(widget.name, device.name));
+                    }
+                }
+                widget.state = state;
+            }
+        }
+        if (activeItem) {
+            list->setCurrentItem(activeItem);
+            list->scrollToItem(activeItem, QAbstractItemView::PositionAtCenter);
+        }
+#endif
+    }
+};
+
 static QGroupBox *groupBox(const QString &title, QLayout *layout)
 {
     QGroupBox *box = new QGroupBox(title);
@@ -7056,10 +7582,15 @@ private:
         QPushButton *port1Remap = new QPushButton(QStringLiteral("Remap / Test"));
         QPushButton *port2Remap = new QPushButton(QStringLiteral("Remap / Test"));
         QPushButton *port3Remap = new QPushButton(QStringLiteral("Remap / Test"));
-        for (QPushButton *button : { port0Remap, port1Remap, port2Remap, port3Remap }) {
-            button->setEnabled(false);
-            button->setToolTip(QStringLiteral("Input remap/test dialog is not connected on Unix yet."));
-        }
+        const auto wireRemapButton = [this](QPushButton *button, int port) {
+            connect(button, &QPushButton::clicked, this, [this, port]() {
+                openInputMapDialog(port);
+            });
+        };
+        wireRemapButton(port0Remap, 0);
+        wireRemapButton(port1Remap, 1);
+        wireRemapButton(port2Remap, 2);
+        wireRemapButton(port3Remap, 3);
 
         QGridLayout *ports = new QGridLayout;
         ports->setColumnStretch(1, 1);
@@ -7097,6 +7628,23 @@ private:
             portAutofire[1]->setCurrentText(port0Autofire);
             portMode[1]->setCurrentText(port0Mode);
         });
+        const auto updateRemapButtons = [this, port0Remap, port1Remap, port2Remap, port3Remap]() {
+            QPushButton *buttons[] = { port0Remap, port1Remap, port2Remap, port3Remap };
+            for (int i = 0; i < 4; i++) {
+                const QString device = portDevice[i] ? portDevice[i]->currentText().trimmed() : QString();
+                const bool enabled = !device.isEmpty() && device != QStringLiteral("<None>");
+                buttons[i]->setEnabled(enabled);
+                buttons[i]->setToolTip(enabled
+                    ? QStringLiteral("Open input remap/test dialog.")
+                    : QStringLiteral("Select a host input device first."));
+            }
+        };
+        for (QComboBox *device : portDevice) {
+            connect(device, &QComboBox::currentTextChanged, this, [updateRemapButtons](const QString &) {
+                updateRemapButtons();
+            });
+        }
+        updateRemapButtons();
 
         QGridLayout *mouse = new QGridLayout;
         mouse->setColumnStretch(1, 1);
@@ -7134,6 +7682,23 @@ private:
         connect(tabletMode, &QComboBox::currentTextChanged, this, [this](const QString &) { updateMouseExtraState(); });
         updateMouseExtraState();
         return page;
+    }
+
+    void openInputMapDialog(int port)
+    {
+        QString context;
+        if (port >= 0 && port < 4) {
+            context = QStringLiteral("Port %1: %2").arg(port + 1).arg(portDevice[port] ? portDevice[port]->currentText() : QStringLiteral("<None>"));
+            if (port < 2) {
+                context += QStringLiteral("\nMode: %1\nAutofire: %2")
+                    .arg(portMode[port] ? portMode[port]->currentText() : QStringLiteral("Default"))
+                    .arg(portAutofire[port] ? portAutofire[port]->currentText() : QStringLiteral("No autofire (normal)"));
+            }
+        } else {
+            context = QStringLiteral("Input: %1").arg(inputDevice ? inputDevice->currentText() : QStringLiteral("Device"));
+        }
+        UnixQtInputMapDialog dialog(context, this);
+        dialog.exec();
     }
 
     void updateMouseExtraState()
@@ -7357,8 +7922,8 @@ private:
         });
         QPushButton *inputTest = new QPushButton(QStringLiteral("Test"));
         QPushButton *inputRemap = new QPushButton(QStringLiteral("Remap"));
-        disableUnavailable(inputTest, QStringLiteral("Input test dialog is not connected to the Unix SDL input backend yet."));
-        disableUnavailable(inputRemap, QStringLiteral("Input remap dialog is not connected to the Unix SDL input backend yet."));
+        connect(inputTest, &QPushButton::clicked, this, [this]() { openInputMapDialog(-1); });
+        disableUnavailable(inputRemap, QStringLiteral("Input remap capture needs the shared preferences input adapter."));
         eventRow->addWidget(inputSubEvent);
         eventRow->addWidget(inputAmigaEvent, 1);
         eventRow->addWidget(inputTest);
