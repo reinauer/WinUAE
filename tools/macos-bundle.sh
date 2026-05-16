@@ -59,6 +59,20 @@ if [[ -z "${deployment_target}" ]]; then
     deployment_target="14.0"
 fi
 
+cmake_cache_value() {
+    local key="$1"
+    if [[ -f "${build_dir}/CMakeCache.txt" ]]; then
+        awk -F= -v key="${key}" '$1 ~ "^" key ":" { print $2; exit }' "${build_dir}/CMakeCache.txt"
+    fi
+}
+
+append_qt_plugin_candidate() {
+    local candidate="$1"
+    if [[ -n "${candidate}" && -f "${candidate}/platforms/libqcocoa.dylib" ]]; then
+        qt_plugin_candidates+=("${candidate}")
+    fi
+}
+
 rm -rf "${app_dir}"
 mkdir -p "${macos_dir}" "${resources_dir}/od-win32/resources"
 
@@ -120,11 +134,38 @@ cat > "${contents_dir}/Info.plist" <<EOF
 </plist>
 EOF
 
-if [[ "${WINUAE_SKIP_MACDEPLOYQT:-0}" != "1" ]] && command -v macdeployqt >/dev/null 2>&1; then
-    macdeployqt "${app_dir}" -always-overwrite -no-codesign -no-plugins -verbose=0
+macdeployqt_executable="${WINUAE_MACDEPLOYQT:-}"
+if [[ -z "${macdeployqt_executable}" ]]; then
+    macdeployqt_executable="$(cmake_cache_value MACDEPLOYQT_EXECUTABLE)"
+fi
+if [[ -z "${macdeployqt_executable}" ]]; then
+    macdeployqt_executable="$(command -v macdeployqt || true)"
+fi
+
+if [[ "${WINUAE_SKIP_MACDEPLOYQT:-0}" != "1" && -n "${macdeployqt_executable}" && -x "${macdeployqt_executable}" ]]; then
+    "${macdeployqt_executable}" "${app_dir}" -always-overwrite -no-codesign -no-plugins -verbose=0
 
     qt_plugin_root=""
-    for candidate in \
+    qt_plugin_candidates=()
+    append_qt_plugin_candidate "${WINUAE_QT_PLUGIN_ROOT:-}"
+
+    qt6_dir="$(cmake_cache_value Qt6_DIR)"
+    if [[ -n "${qt6_dir}" && -d "${qt6_dir}" ]]; then
+        qt_prefix="$(cd "${qt6_dir}/../../.." && pwd)"
+        append_qt_plugin_candidate "${qt_prefix}/plugins"
+        append_qt_plugin_candidate "${qt_prefix}/share/qt/plugins"
+        append_qt_plugin_candidate "${qt_prefix}/share/qt6/plugins"
+        if [[ -x "${qt_prefix}/bin/qtpaths" ]]; then
+            append_qt_plugin_candidate "$("${qt_prefix}/bin/qtpaths" --plugin-dir 2>/dev/null || true)"
+        fi
+    fi
+
+    macdeployqt_dir="$(cd "$(dirname "${macdeployqt_executable}")" && pwd)"
+    if [[ -x "${macdeployqt_dir}/qtpaths" ]]; then
+        append_qt_plugin_candidate "$("${macdeployqt_dir}/qtpaths" --plugin-dir 2>/dev/null || true)"
+    fi
+
+    for candidate in "${qt_plugin_candidates[@]}" \
         /opt/homebrew/share/qt/plugins \
         /opt/homebrew/opt/qt/share/qt/plugins \
         /opt/homebrew/opt/qt6/share/qt/plugins \
@@ -134,7 +175,7 @@ if [[ "${WINUAE_SKIP_MACDEPLOYQT:-0}" != "1" ]] && command -v macdeployqt >/dev/
         /usr/local/opt/qt6/share/qt/plugins \
         /usr/local/opt/qt@6/share/qt/plugins
     do
-        if [[ -f "${candidate}/platforms/libqcocoa.dylib" ]]; then
+        if [[ -n "${candidate}" && -f "${candidate}/platforms/libqcocoa.dylib" ]]; then
             qt_plugin_root="${candidate}"
             break
         fi
@@ -158,7 +199,7 @@ if [[ "${WINUAE_SKIP_MACDEPLOYQT:-0}" != "1" ]] && command -v macdeployqt >/dev/
 fi
 
 if [[ "${WINUAE_SKIP_MACOS_DEPLOYMENT_CHECK:-0}" != "1" ]]; then
-    "${script_dir}/macos-check-deployment-target.sh" "${app_dir}" "${deployment_target}"
+    "${script_dir}/macos-check-deployment-target.sh" "${app_dir}" "${deployment_target}" >&2
 fi
 
 if [[ "${WINUAE_SKIP_CODESIGN:-0}" != "1" ]] && command -v codesign >/dev/null 2>&1; then

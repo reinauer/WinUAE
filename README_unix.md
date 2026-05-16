@@ -48,26 +48,26 @@ The system zlib is normally enough on macOS.
 
 The macOS build defaults to `CMAKE_OSX_DEPLOYMENT_TARGET=14.0` so the app is not accidentally tied to the build machine's current macOS release. Bundled libraries and frameworks must support the same or an older deployment target. The packaging script checks every bundled Mach-O file and fails if, for example, Homebrew SDL3 was built with a newer `minos` than the app target. The current Homebrew Qt on this machine reports `minos 14.0`, so packaged Qt builds made with it require macOS 14 or newer.
 
-For repeatable release builds, build SDL3 and Qt into a private prefix with the same deployment target instead of using Homebrew bottles:
+For repeatable release builds, build SDL3 and QtBase into a private prefix with the same deployment target instead of using Homebrew bottles. The helper defaults QtBase to bundled third-party libraries so Homebrew dylibs with newer deployment targets are not pulled into the release app:
 
 ```sh
-WINUAE_MACOS_DEPLOYMENT_TARGET=14.0 \
+WINUAE_MACOS_DEPLOYMENT_TARGET=13.0 \
 WINUAE_SDL3_SOURCE=/path/to/SDL3-source \
-WINUAE_QT_SOURCE=/path/to/qt6-source \
-tools/macos-build-deps.sh /opt/winuae-macos-14
+WINUAE_QT_SOURCE=/path/to/qtbase-source \
+tools/macos-build-deps.sh /opt/winuae-macos-13
 
-source /opt/winuae-macos-14/winuae-macos-deps-env.sh
+source /opt/winuae-macos-13/winuae-macos-deps-env.sh
 cmake -S . -B /tmp/winuae_cmake_build \
   -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-  -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0 \
-  -DCMAKE_PREFIX_PATH=/opt/winuae-macos-14
+  -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0 \
+  -DCMAKE_PREFIX_PATH=/opt/winuae-macos-13
 ```
 
 The same helper is available as a CMake target after configure; pass source paths through the environment:
 
 ```sh
 WINUAE_SDL3_SOURCE=/path/to/SDL3-source \
-WINUAE_QT_SOURCE=/path/to/qt6-source \
+WINUAE_QT_SOURCE=/path/to/qtbase-source \
 cmake --build /tmp/winuae_cmake_build --target winuae_unix_macos_deps
 ```
 
