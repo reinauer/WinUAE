@@ -213,6 +213,4 @@ uae_u32 emulib_target_getcpurate(uae_u32, uae_u32 *low)
     }
     return 0;
 }
-void setcapslockstate(int) {}
-int target_checkcapslock(int, int *) { return 0; }
 int is_touch_lightpen(void) { return 0; }
