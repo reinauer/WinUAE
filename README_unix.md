@@ -6,7 +6,7 @@ This is an early macOS/Linux port of the WinUAE source tree. The current Unix bu
 
 - Builds with CMake as `winuae_unix`.
 - Uses `od-unix/` host abstractions.
-- SDL3 provides the current window, framebuffer presentation, mouse input, keyboard input, and audio output.
+- SDL3 provides the current window, framebuffer presentation, mouse input, keyboard input, audio output, and playback-device selection.
 - SDL3 gamepads and non-gamepad joysticks are exposed through the WinUAE input-device layer for game-port use; the remap/test dialogs are still disabled.
 - Qt Widgets provides an initial Windows-style configuration UI. When Qt is available, it is integrated into `winuae_unix` and the standalone `winuae_unix_qt` launcher is also built.
 - Floppy drive click sounds use the built-in WinUAE sample resources when SDL3 audio is active.
@@ -180,6 +180,18 @@ configs/unix-a1200-install32-rtg-z3.uae.example
 ```
 
 Copy an example to a writable location and replace the ROM and ADF paths before using it with `-config` or `-f`.
+
+## Audio
+
+SDL3 audio uses the WinUAE `sound_output`, `sound_frequency`, `sound_channels`, `sound_volume*`, and floppy drive sound config keys. Unix playback device selection follows the same target-prefixed style as Windows:
+
+```sh
+/tmp/winuae_cmake_build/winuae_unix \
+  -s unix.soundcard=0 \
+  -s 'unix.soundcardname=SDL:Default Audio Device'
+```
+
+The Qt Sound page lists SDL playback devices and writes both `unix.soundcard` and `unix.soundcardname` so saved configs can recover by name if the device index changes. Floppy click sounds are off by default, matching the shared WinUAE defaults; enable them per drive with `floppy0sound=1` through `floppy3sound=1`.
 
 ## Serial
 
