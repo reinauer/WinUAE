@@ -9,7 +9,7 @@ This is an early macOS/Linux port of the WinUAE source tree. The current Unix bu
 - SDL3 provides the current window, framebuffer presentation, mouse input, keyboard input, audio output, and playback-device selection.
 - SDL3 gamepads and non-gamepad joysticks are exposed through the WinUAE input-device layer for game-port use; the remap/test dialogs are still disabled.
 - Qt Widgets provides an initial Windows-style configuration UI. When Qt is available, it is integrated into `winuae_unix` and the standalone `winuae_unix_qt` launcher is also built.
-- Host clipboard text paste is available through the same paste input event as Windows. Full Amiga clipboard sharing is still incomplete.
+- Host clipboard text paste is available through the same paste input event as Windows. The `clipboard_sharing` option has a first native text clipboard-device backend; image clipboard sharing is still incomplete.
 - Floppy drive click sound config and sample loading are present, but audible click output still needs follow-up.
 - Native Unix serial support is available for POSIX serial devices and TCP listener endpoints.
 - A2065 Ethernet can use the built-in SLIRP user-mode NAT backend.
@@ -225,7 +225,7 @@ The Qt Sound page lists SDL playback devices and writes both `unix.soundcard` an
 
 Host clipboard text can be pasted into the emulated keyboard through `SPC_PASTE`. The default keyboard mapping follows Windows: the special qualifier plus Insert triggers paste. On macOS the Unix backend reads text with `pbpaste`; on Linux it tries `wl-paste`, `xclip`, then `xsel` if available.
 
-This is paste-to-keyboard only. Full transparent Amiga clipboard-device sharing is still disabled.
+Transparent Amiga clipboard-device sharing can also be enabled with `clipboard_sharing=true`. The first Unix backend supports text in both directions using `pbpaste`/`pbcopy` on macOS or `wl-paste`/`wl-copy`, `xclip`, or `xsel` on Linux. Bitmap/image clipboard sharing remains deferred.
 
 ## Serial
 
