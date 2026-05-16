@@ -4351,6 +4351,7 @@ private:
     QCheckBox *filterKeepAutoscaleAspect = nullptr;
     QCheckBox *filterKeepAspect = nullptr;
     QComboBox *filterAspect = nullptr;
+    QComboBox *filterPresetName = nullptr;
     QCheckBox *filterNtscPixels = nullptr;
     QCheckBox *filterBilinear = nullptr;
     QSpinBox *filterScanlines = nullptr;
@@ -7414,15 +7415,15 @@ private:
         root->addWidget(groupBox(QStringLiteral("Extra Settings"), extra));
 
         QGridLayout *presets = new QGridLayout;
-        QComboBox *presetName = combo({ QStringLiteral("") });
+        filterPresetName = combo({ QStringLiteral("") });
+        filterPresetName->setEditable(true);
+        filterPresetName->setInsertPolicy(QComboBox::NoInsert);
+        filterPresetName->lineEdit()->setClearButtonEnabled(true);
         QPushButton *load = new QPushButton(QStringLiteral("Load"));
         QPushButton *save = new QPushButton(QStringLiteral("Save"));
         QPushButton *deletePreset = new QPushButton(QStringLiteral("Delete"));
-        disableUnavailable(load, QStringLiteral("Filter preset storage is not connected to the Unix Qt frontend yet."));
-        disableUnavailable(save, QStringLiteral("Filter preset storage is not connected to the Unix Qt frontend yet."));
-        disableUnavailable(deletePreset, QStringLiteral("Filter preset storage is not connected to the Unix Qt frontend yet."));
         presets->setColumnStretch(0, 1);
-        presets->addWidget(presetName, 0, 0);
+        presets->addWidget(filterPresetName, 0, 0);
         presets->addWidget(load, 0, 1);
         presets->addWidget(save, 0, 2);
         presets->addWidget(deletePreset, 0, 3);
@@ -7448,8 +7449,12 @@ private:
             filterStates[currentFilterTarget] = defaultFilterState(currentFilterTarget);
             loadFilterStateToUi(currentFilterTarget);
         });
+        connect(load, &QPushButton::clicked, this, [this]() { loadFilterPreset(); });
+        connect(save, &QPushButton::clicked, this, [this]() { saveFilterPreset(); });
+        connect(deletePreset, &QPushButton::clicked, this, [this]() { deleteFilterPreset(); });
 
         resetFilterStates();
+        refreshFilterPresetList();
         return page;
     }
 
@@ -9814,6 +9819,167 @@ private:
         filterNoise->setValue(state.noise);
         filterUpdating = false;
         updateFilterControlState();
+    }
+
+    QMap<QString, QString> filterPresetSettings(const WinUaeQtFilterState &state, int target) const
+    {
+        QMap<QString, QString> settings;
+        settings.insert(QStringLiteral("gfx_filter_mode"), state.modeH);
+        settings.insert(QStringLiteral("gfx_filter_mode2"), state.modeV);
+        settings.insert(QStringLiteral("gfx_filter_horiz_zoomf"), QString::number(state.horizZoom, 'f', 1));
+        settings.insert(QStringLiteral("gfx_filter_vert_zoomf"), QString::number(state.vertZoom, 'f', 1));
+        settings.insert(QStringLiteral("gfx_filter_horiz_zoom_multf"), QString::number(state.horizZoomMult, 'f', 2));
+        settings.insert(QStringLiteral("gfx_filter_vert_zoom_multf"), QString::number(state.vertZoomMult, 'f', 2));
+        settings.insert(QStringLiteral("gfx_filter_horiz_offsetf"), QString::number(state.horizOffset, 'f', 1));
+        settings.insert(QStringLiteral("gfx_filter_vert_offsetf"), QString::number(state.vertOffset, 'f', 1));
+        settings.insert(QStringLiteral("gfx_filter_keep_aspect"), state.keepAspect);
+        settings.insert(QStringLiteral("gfx_filter_keep_autoscale_aspect"), state.keepAutoscaleAspect ? QStringLiteral("1") : QStringLiteral("0"));
+        settings.insert(QStringLiteral("gfx_filter_autoscale"), target == 1 && !isRtgAutoscaleValue(state.autoscale) ? QStringLiteral("resize") : state.autoscale);
+        settings.insert(QStringLiteral("gfx_filter_autoscale_limit"), state.integerLimit);
+        settings.insert(QStringLiteral("gfx_filter_luminance"), QString::number(state.luminance));
+        settings.insert(QStringLiteral("gfx_filter_contrast"), QString::number(state.contrast));
+        settings.insert(QStringLiteral("gfx_filter_saturation"), QString::number(state.saturation));
+        settings.insert(QStringLiteral("gfx_filter_gamma"), QString::number(state.gamma));
+        settings.insert(QStringLiteral("gfx_filter_blur"), QString::number(state.blur));
+        settings.insert(QStringLiteral("gfx_filter_noise"), QString::number(state.noise));
+        settings.insert(QStringLiteral("gfx_filter_bilinear"), state.bilinear ? QStringLiteral("1") : QStringLiteral("0"));
+        settings.insert(QStringLiteral("gfx_filter_scanlines"), QString::number(state.scanlines));
+        settings.insert(QStringLiteral("gfx_filter_scanlinelevel"), QString::number(state.scanlineLevel));
+        settings.insert(QStringLiteral("gfx_filter_scanlineoffset"), QString::number(state.scanlineOffset));
+        settings.insert(QStringLiteral("gfx_filter_enable"), state.enable ? QStringLiteral("1") : QStringLiteral("0"));
+        return settings;
+    }
+
+    QString filterPresetDirectoryPath() const
+    {
+        QString base = dataPath ? dataPath->text().trimmed() : QString();
+        if (base.isEmpty()) {
+            base = unixDefaultDataPath();
+        }
+        return QDir(expandedPathText(base)).filePath(QStringLiteral("FilterPresets"));
+    }
+
+    QString normalizedFilterPresetName(QString name) const
+    {
+        name = name.trimmed();
+        QString result;
+        for (const QChar ch : name) {
+            result.append(ch.isLetterOrNumber() || ch == QLatin1Char(' ') || ch == QLatin1Char('_') || ch == QLatin1Char('-')
+                ? ch
+                : QLatin1Char('_'));
+        }
+        result = result.simplified();
+        return result.isEmpty() ? QStringLiteral("Preset") : result.left(80);
+    }
+
+    QString filterPresetPath(const QString &name) const
+    {
+        return QDir(filterPresetDirectoryPath()).filePath(normalizedFilterPresetName(name) + QStringLiteral(".filter"));
+    }
+
+    void refreshFilterPresetList(const QString &preferred = QString())
+    {
+        if (!filterPresetName) {
+            return;
+        }
+        const QString current = preferred.isEmpty() ? filterPresetName->currentText().trimmed() : preferred;
+        QSignalBlocker blocker(filterPresetName);
+        filterPresetName->clear();
+        filterPresetName->addItem(QString());
+        QDir dir(filterPresetDirectoryPath());
+        const QStringList files = dir.entryList({ QStringLiteral("*.filter") }, QDir::Files, QDir::Name | QDir::IgnoreCase);
+        for (const QString &file : files) {
+            filterPresetName->addItem(QFileInfo(file).completeBaseName());
+        }
+        filterPresetName->setCurrentText(current);
+    }
+
+    bool writeFilterPresetFile(const QString &path, const QMap<QString, QString> &settings)
+    {
+        QFile file(path);
+        if (!file.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate)) {
+            QMessageBox::warning(this, windowTitle(), QStringLiteral("Could not write %1:\n%2").arg(path, file.errorString()));
+            return false;
+        }
+        QTextStream out(&file);
+        out << "# WinUAE Qt filter preset\n";
+        for (auto it = settings.constBegin(); it != settings.constEnd(); ++it) {
+            out << it.key() << "=" << it.value() << "\n";
+        }
+        return true;
+    }
+
+    void saveFilterPreset()
+    {
+        if (!filterPresetName) {
+            return;
+        }
+        QString name = normalizedFilterPresetName(filterPresetName->currentText());
+        if (name.isEmpty()) {
+            name = QStringLiteral("Preset");
+        }
+        QDir dir(filterPresetDirectoryPath());
+        if (!dir.exists() && !dir.mkpath(QStringLiteral("."))) {
+            QMessageBox::warning(this, windowTitle(), QStringLiteral("Could not create %1.").arg(dir.absolutePath()));
+            return;
+        }
+        storeFilterUiToState();
+        const QString path = filterPresetPath(name);
+        if (writeFilterPresetFile(path, filterPresetSettings(filterStates[currentFilterTarget], currentFilterTarget))) {
+            refreshFilterPresetList(name);
+            status->setText(QStringLiteral("Filter preset saved: %1").arg(name));
+        }
+    }
+
+    void loadFilterPreset()
+    {
+        if (!filterPresetName) {
+            return;
+        }
+        const QString name = normalizedFilterPresetName(filterPresetName->currentText());
+        if (name.isEmpty()) {
+            return;
+        }
+        QFile file(filterPresetPath(name));
+        if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            QMessageBox::warning(this, windowTitle(), QStringLiteral("Could not read %1:\n%2").arg(file.fileName(), file.errorString()));
+            return;
+        }
+        filterStates[currentFilterTarget] = defaultFilterState(currentFilterTarget);
+        QTextStream in(&file);
+        while (!in.atEnd()) {
+            const QString line = in.readLine().trimmed();
+            if (line.isEmpty() || line.startsWith(QLatin1Char('#'))) {
+                continue;
+            }
+            const int equals = line.indexOf(QLatin1Char('='));
+            if (equals <= 0) {
+                continue;
+            }
+            const QString key = line.left(equals).trimmed();
+            const QString value = line.mid(equals + 1).trimmed();
+            applyFilterSetting(filterKey(key, currentFilterTarget), value);
+        }
+        loadFilterStateToUi(currentFilterTarget);
+        status->setText(QStringLiteral("Filter preset loaded: %1").arg(name));
+    }
+
+    void deleteFilterPreset()
+    {
+        if (!filterPresetName) {
+            return;
+        }
+        const QString name = normalizedFilterPresetName(filterPresetName->currentText());
+        if (name.isEmpty()) {
+            return;
+        }
+        const QString path = filterPresetPath(name);
+        if (QFile::exists(path) && !QFile::remove(path)) {
+            QMessageBox::warning(this, windowTitle(), QStringLiteral("Could not delete %1.").arg(path));
+            return;
+        }
+        refreshFilterPresetList();
+        status->setText(QStringLiteral("Filter preset deleted: %1").arg(name));
     }
 
     bool applyFilterSetting(const QString &key, const QString &value)
