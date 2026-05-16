@@ -7364,14 +7364,20 @@ private:
                 outputFile->setText(selected);
             }
         });
+        connect(outputFrameLimiter, &QCheckBox::toggled, this, [this](bool) { updateOutputControlState(); });
         connect(screenshotOriginalSize, &QCheckBox::toggled, this, [this](bool) { updateOutputControlState(); });
+        updateOutputControlState();
         return page;
     }
 
     void updateOutputControlState()
     {
-        if (!screenshotOriginalSize || !screenshotClip) {
+        if (!screenshotOriginalSize || !screenshotClip || !outputFrameLimiter || !outputNoSound) {
             return;
+        }
+        outputNoSound->setEnabled(!outputFrameLimiter->isChecked());
+        if (outputFrameLimiter->isChecked()) {
+            outputNoSound->setChecked(true);
         }
         screenshotClip->setEnabled(screenshotOriginalSize->isChecked());
         if (!screenshotOriginalSize->isChecked()) {
@@ -9977,7 +9983,7 @@ private:
             button->setChecked(true);
         }
         resetFilterStates();
-        outputFile->setText(QDir(QDir::homePath()).filePath(QStringLiteral("Videos/output.avi")));
+        outputFile->setText(unixDefaultDataSubPath(QStringLiteral("Videos/output.avi")));
         outputFrameLimiter->setChecked(false);
         outputOriginalSize->setChecked(false);
         outputNoSound->setChecked(false);
@@ -9987,7 +9993,7 @@ private:
         screenshotClip->setChecked(false);
         screenshotClip->setEnabled(false);
         screenshotAuto->setChecked(false);
-        stateReplayAutoplay->setChecked(false);
+        stateReplayAutoplay->setChecked(true);
         stateReplayRate->setCurrentText(QStringLiteral("5"));
         stateReplayBuffers->setCurrentText(QStringLiteral("100"));
         if (QAbstractButton *button = soundOutputButtons->button(2)) {
@@ -10113,6 +10119,7 @@ private:
         fullLogging->setChecked(false);
         logWindow->setChecked(false);
         updateLogPathText();
+        updateOutputControlState();
         refreshConfigList();
         status->setText(QStringLiteral("Ready"));
     }
