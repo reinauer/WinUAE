@@ -94,7 +94,7 @@ Status values:
 | Windows feature area | Unix status | Evidence | Next action |
 | --- | --- | --- | --- |
 | Threads, timers, memory mapping, dynamic loading | Enabled | CMake links `od-unix/threading.cpp`, `od-unix/time.cpp`, `od-unix/mman.cpp`, and shared `dlopen.cpp`; Unix defines `SUPPORT_THREADS`. | Keep covered by normal boot and filesystem tests. |
-| Logging and console | Partial | `od-unix/logging.cpp` logs to stderr/file paths; console input helpers are no-ops. | Add log-open/export polish through Qt; debugger console input remains later work. |
+| Logging and console | Partial | `od-unix/logging.cpp` logs to stderr/file paths and keeps a rolling in-memory buffer for `save_log()` / savestate log chunks. Console input helpers are still no-ops. | Add log-open/export polish through Qt; debugger console input remains later work. |
 | Clipboard | Partial | `od-unix/clipboard.cpp` implements host text paste-to-keyboard through `keybuf_inject`, using `pbpaste` on macOS and `wl-paste`/`xclip`/`xsel` on Linux. The Amiga clipboard-device hooks still return no data. | Add a native full clipboard sharing backend before enabling the Clipboard sharing UI control. |
 | Caps Lock / keyboard LED host state | Partial | `od-unix/input.cpp` tracks SDL Caps/Num/Scroll lock modifier state, mirrors the Windows `target_checkcapslock` behavior for normal keyboard mode, and updates the WinUAE Caps LED. It does not drive native host keyboard LEDs. | Add native keyboard LED output only if compatibility requires it. |
 | Config path and Unix path expansion | Enabled/Partial | `od-unix/config.cpp` and Qt expand `~/`, `$VAR`, and `${VAR}`; `~user` and relative-path policy are still open. | Add tests and decide/document `~user`. |

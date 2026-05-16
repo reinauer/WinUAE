@@ -61,14 +61,6 @@ void update_debug_info(void) {}
 void statusline_updated(int) {}
 void bsdsock_fake_int_handler(void) { bsd_int_requested = 0; }
 
-uae_u8 *save_log(int, size_t *len)
-{
-    if (len) {
-        *len = 0;
-    }
-    return NULL;
-}
-
 uae_u8 *save_screenshot(int, size_t *len)
 {
     if (len) {
