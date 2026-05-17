@@ -297,6 +297,15 @@ For manual A4091 autoconfig smoke tests, use an A4000/A4000T-style config, disab
 
 For image-backed hardfiles on the A4091, choose `A4091 (SCSI)` in the Qt hardfile dialog or use a hardfile tail such as `scsi0_a4091`. A manual A4091 ROM plus HDF boot has been validated; other NCR/NCR9x boards still need real-ROM validation.
 
+To automate the A4091 HDF smoke path:
+
+```sh
+export WINUAE_A4000_KICKSTART_ROM=/path/to/A4000.rom
+export WINUAE_A4091_ROM=/path/to/a4091.rom
+export WINUAE_A4091_HDF=/path/to/disk.hdf
+tools/unix-smoke-a4091-hdf.sh
+```
+
 To let the boot continue long enough to verify `uaegfx.card` installation:
 
 ```sh
