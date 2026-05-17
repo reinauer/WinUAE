@@ -428,5 +428,18 @@ if(APPLE AND TARGET winuae_unix)
             COMMENT "Smoke testing packaged WinUAE.app Qt launch"
             VERBATIM
         )
+        add_custom_target(winuae_unix_macos_release_check
+            COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tools/macos-smoke-app.sh" "${CMAKE_BINARY_DIR}/package/WinUAE.app"
+            DEPENDS winuae_unix_macos_dmg
+            COMMENT "Release checking packaged WinUAE DMG and Qt app launch"
+            VERBATIM
+        )
+    else()
+        add_custom_target(winuae_unix_macos_release_check
+            COMMAND "${CMAKE_COMMAND}" -E echo "Qt integrated UI is disabled; release check is limited to DMG verification"
+            DEPENDS winuae_unix_macos_dmg
+            COMMENT "Release checking packaged WinUAE DMG"
+            VERBATIM
+        )
     endif()
 endif()

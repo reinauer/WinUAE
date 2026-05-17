@@ -161,6 +161,14 @@ The DMG target verifies the generated image by mounting it, checking the app bun
 tools/macos-verify-dmg.sh /tmp/winuae_cmake_build/package/WinUAE-6.1.0.dmg
 ```
 
+For a single local release gate, build:
+
+```sh
+cmake --build /tmp/winuae_cmake_build --target winuae_unix_macos_release_check -j
+```
+
+This produces and verifies the DMG, then launches the packaged Qt app from an isolated temporary home directory when the integrated Qt UI is enabled. A macOS 13-targeted private-dependency DMG has been smoke-tested on macOS 13; keep using the private dependency prefix path for release artifacts instead of newer Homebrew Qt/SDL bottles.
+
 To force a configure from scratch:
 
 ```sh
@@ -286,6 +294,8 @@ For manual A4091 autoconfig smoke tests, use an A4000/A4000T-style config, disab
   -s cpu_model=68030 \
   -s cpu_24bit_addressing=false
 ```
+
+For image-backed hardfiles on the A4091, choose `A4091 (SCSI)` in the Qt hardfile dialog or use a hardfile tail such as `scsi0_a4091`. A manual A4091 ROM plus HDF boot has been validated; other NCR/NCR9x boards still need real-ROM validation.
 
 To let the boot continue long enough to verify `uaegfx.card` installation:
 
