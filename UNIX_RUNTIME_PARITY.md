@@ -33,7 +33,7 @@ Status values:
 | CD image support | Partial | CMake links `blkdev.cpp`, `blkdev_cdimage.cpp`, `cdrom.cpp`, `isofs.cpp`; native optical drive masks in `od-unix/stubs.cpp` return zero. | Keep image-backed CDs enabled; add native optical-device enumeration only if needed. |
 | Native SCSI, SPTI, raw optical, tape/scanner media | Deferred/Stubbed | Windows defines `SCSIEMU`, `WITH_SCSI_IOCTL`, `WITH_SCSI_SPTI` and links Win32 SPTI/IOCTL code; Unix does not define `SCSIEMU`, and `scsi_get_cd_drive_mask`, `scsi_add_tape`, save/restore scsidev stubs return empty results. | Add POSIX/Linux/macOS native SCSI/media passthrough behind explicit feature flags. |
 | A2091/A590 SCSI controller emulation | Enabled | Unix defines `A2091` and CMake links `a2091.cpp`, `scsi.cpp`, `scsitape.cpp`. | Test image-backed SCSI hardfiles separately from native device passthrough. |
-| NCR/NCR9X SCSI controllers | Deferred | Windows defines `NCR` and `NCR9X` and links `ncr_scsi.cpp` / `ncr9x_scsi.cpp`; Unix does not. | Defer until expansion-board parity work. |
+| NCR/NCR9X SCSI controllers | Partial | CMake option `WINUAE_UNIX_WITH_NCR_SCSI` defaults on, defines `NCR` / `NCR9X`, and links `ncr_scsi.cpp`, `ncr9x_scsi.cpp`, and the required `qemuvga` SCSI helper sources. PPC CPU-board callbacks used by the same source remain stubbed in `od-unix/stubs.cpp`. | Validate A4091, Fastlane, Oktagon, and related image-backed SCSI hardfile setups with real board ROMs; keep PPC CPU-board SCSI deferred until PPC support exists. |
 | ArchiveAccess, ZIP/RAR/7z/LHA/LZX/DMS/WRP, CHD | Stubbed/Deferred | Windows defines `ARCHIVEACCESS`, `WITH_CHD`, and archive format flags; Unix does not define them, CMake does not link `zfile_archive.cpp` or most archive sources, and `od-unix/stubs.cpp` returns `NULL` for archive access. | Decide whether to link portable archive implementations or keep archive browsing disabled. |
 
 ## Graphics, Display, And RTG
@@ -47,7 +47,7 @@ Status values:
 | Screenshots and video/audio capture | Stubbed | Windows links `screenshot.cpp`, `avioutput.cpp`, `win32_videograb.cpp`; Unix `save_screenshot`, `save_p96`, and videograb helpers are no-ops. | Add SDL/native screenshot first; defer capture codec work. |
 | Picasso96 / `uaegfx.card` Amiga-side entry points | Partial | Unix defines `PICASSO96`; `od-unix/rtg.cpp` installs a first `uaegfx.card` path and `od-unix/graphics.cpp` renders basic RTG buffers. | Validate with guest Picasso96 monitor drivers and expand accelerated operations. |
 | UAE Zorro II/Zorro III RTG RAM | Partial | Unix `od-unix/rtg.cpp` advertises only `GFXBOARD_UAE_Z2` and `GFXBOARD_UAE_Z3`. | Keep this path; add tests for Z2/Z3 boot, mode switch, and CLUT/direct-color modes. |
-| Hardware graphics boards, PCI graphics, Voodoo, QEMU VGA | Deferred | Windows defines `GFXBOARD`, `WITH_PCI`, `WITH_QEMU_CPU`, and links `gfxboard.cpp`, `pci.cpp`, `pcem/*`, `qemuvga/*`, `mame/*`; Unix does not link those sources. | Re-enable board families one at a time after RTG core is solid. |
+| Hardware graphics boards, PCI graphics, Voodoo, QEMU VGA | Deferred | Windows defines `GFXBOARD`, `WITH_PCI`, `WITH_QEMU_CPU`, and links `gfxboard.cpp`, `pci.cpp`, `pcem/*`, `qemuvga/*`, `mame/*`; Unix only links the `qemuvga` SCSI helper subset needed by NCR/NCR9x SCSI. | Re-enable board families one at a time after RTG core is solid. |
 | Picasso96 accelerated blits and write-watch | Partial/Stubbed | Unix routes unsupported P96 board functions to `unix_picasso_default_unsupported`; `picasso_getwritewatch` returns the whole VRAM dirty region. Windows has full `picasso96_win.cpp`. | Implement operations needed by common P96 drivers first, then optimize. |
 
 ## Audio And Input
@@ -83,7 +83,7 @@ Status values:
 | Windows feature area | Unix status | Evidence | Next action |
 | --- | --- | --- | --- |
 | Accelerator/CPU boards, MapROM, board flash | Stubbed | Windows defines `WITH_CPUBOARD` and links `cpuboard.cpp`; Unix stubs all `cpuboard_*` functions in `od-unix/stubs.cpp`. | Link and validate board families one at a time, keeping unsupported UI controls disabled. |
-| PPC accelerators and QEMU CPU | Deferred | Windows defines `WITH_PPC`, `WITH_QEMU_CPU` and links `ppc/*`; Unix does not. | Separate future task; not needed for first native 68k parity. |
+| PPC accelerators and QEMU CPU | Deferred | Windows defines `WITH_PPC`, `WITH_QEMU_CPU` and links `ppc/*`; Unix does not. The PPC IRQ/RAM callbacks referenced by NCR SCSI CPU-board variants are no-op stubs. | Separate future task; not needed for first native 68k parity. |
 | PCI, bridgeboards, PCem x86 hardware | Deferred | Windows defines `WITH_PCI`, `WITH_X86` and links `pci.cpp`, `x86.cpp`, and `pcem/*`; Unix does not. | Defer until core/RTG/networking are stable. |
 | Additional Ethernet boards: Ariadne II, Hydra, LanRover, X-Surf, X-Surf 100 | Stubbed | `od-unix/stubs.cpp` returns false for each board init. | Enable only with a shared Ethernet backend and UI coverage. |
 | Special monitors, BeamRacer, Draco | Deferred | Windows defines `WITH_SPECIALMONITORS`, `WITH_BEAMRACER`, `WITH_DRACO`; Unix does not. | Keep deferred and hide advanced controls until backend exists. |

@@ -308,11 +308,13 @@ export WINUAE_SMOKE_LOG=/tmp/winuae_unix_smoke.log
 -DWINUAE_UNIX_BUILD_EXECUTABLE=ON
 -DWINUAE_UNIX_WITH_SDL3=ON
 -DWINUAE_UNIX_WITH_SLIRP=ON
+-DWINUAE_UNIX_WITH_NCR_SCSI=ON
 -DWINUAE_UNIX_WITH_QT_UI=ON
 -DWINUAE_UNIX_WITH_INTEGRATED_QT_UI=ON
 ```
 
 `WINUAE_UNIX_WITH_SDL3` is enabled by default. If SDL3 is not found through CMake package discovery or pkg-config, the build currently falls back to the null video presenter.
 `WINUAE_UNIX_WITH_SLIRP` is enabled by default and builds the bundled SLIRP backend plus A2065 emulation.
+`WINUAE_UNIX_WITH_NCR_SCSI` is enabled by default and builds the NCR/NCR9x SCSI controller emulation used by boards such as A4091. ROM-backed controller boards still need a valid board ROM path in the config.
 `WINUAE_UNIX_WITH_QT_UI` is enabled by default, but the `winuae_unix_qt` target is skipped when Qt Widgets is not installed.
 `WINUAE_UNIX_WITH_INTEGRATED_QT_UI` is enabled by default. When Qt Widgets is not installed, the build continues without the integrated UI.

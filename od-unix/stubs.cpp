@@ -103,6 +103,14 @@ bool cpuboard_forced_hardreset(void) { return false; }
 bool cpuboard_fc_check(uaecptr, uae_u32 *, int, bool) { return false; }
 void cpuboard_gvpmaprom(int) {}
 void unprotect_maprom(void) {}
+void cyberstorm_scsi_ram_put(uaecptr, uae_u32) {}
+uae_u32 cyberstorm_scsi_ram_get(uaecptr) { return 0; }
+int REGPARAM2 cyberstorm_scsi_ram_check(uaecptr, uae_u32) { return 0; }
+uae_u8 *REGPARAM2 cyberstorm_scsi_ram_xlate(uaecptr) { return NULL; }
+void cyberstorm_mk3_ppc_irq(int, int) {}
+void blizzardppc_irq(int, int) {}
+void cyberstorm_mk3_ppc_irq_setonly(int, int) {}
+void wildfire_ncr815_irq(int, int) {}
 
 void keymcu_reset(void) {}
 void keymcu_init(void) {}

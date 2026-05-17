@@ -15,6 +15,7 @@ project(winuae_unix_port LANGUAGES C CXX)
 option(WINUAE_UNIX_BUILD_EXECUTABLE "Link the initial Unix command-line executable" ON)
 option(WINUAE_UNIX_WITH_SDL3 "Build the Unix SDL3 video/audio backend" ON)
 option(WINUAE_UNIX_WITH_SLIRP "Build built-in SLIRP user-mode networking and A2065 Ethernet support" ON)
+option(WINUAE_UNIX_WITH_NCR_SCSI "Build NCR/NCR9x SCSI controller emulation" ON)
 option(WINUAE_UNIX_WITH_QT_UI "Build the optional Unix Qt launcher/config UI" ON)
 option(WINUAE_UNIX_WITH_INTEGRATED_QT_UI "Allow winuae_unix to host the Unix Qt frontend" ON)
 
@@ -89,6 +90,19 @@ if(WINUAE_UNIX_WITH_SLIRP)
         slirp/tcp_timer.cpp
         slirp/tftp.cpp
         slirp/udp.cpp
+    )
+endif()
+
+if(WINUAE_UNIX_WITH_NCR_SCSI)
+    target_compile_definitions(winuae_core PRIVATE NCR=1 NCR9X=1)
+    set_source_files_properties(ncr_scsi.cpp ncr9x_scsi.cpp PROPERTIES COMPILE_DEFINITIONS WITH_QEMU_CPU=1)
+    list(APPEND WINUAE_UNIX_EXTRA_SOURCES
+        ncr_scsi.cpp
+        ncr9x_scsi.cpp
+        qemuvga/esp.cpp
+        qemuvga/lsi53c710.cpp
+        qemuvga/lsi53c895a.cpp
+        qemuvga/qemuuaeglue.cpp
     )
 endif()
 
