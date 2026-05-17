@@ -7077,10 +7077,12 @@ private:
         expansionBoardOption = combo({ QStringLiteral("None") });
         expansionBoardOption->setEnabled(false);
         expansionRom24BitDma = new QCheckBox(QStringLiteral("24-bit DMA"));
-        expansionRomEnabled = new QCheckBox(QStringLiteral("Enabled"));
+        expansionRomEnabled = new QCheckBox(QStringLiteral("Enable board"));
+        expansionRomEnabled->setToolTip(QStringLiteral("Adds the selected expansion board to the configuration."));
         expansionRomAutobootDisabled = new QCheckBox(QStringLiteral("Autoboot disabled"));
         expansionRomPcmciaInserted = new QCheckBox(QStringLiteral("PCMCIA inserted"));
-        expansionBoardOptionCheck = new QCheckBox(QStringLiteral("Enabled"));
+        expansionBoardOptionCheck = new QCheckBox(QStringLiteral("Enable option"));
+        expansionBoardOptionCheck->setToolTip(QStringLiteral("Applies the selected board option."));
         expansionBoardOptionCheck->setEnabled(false);
         QPushButton *romBrowse = smallButton(QStringLiteral("..."));
         board->setColumnStretch(2, 1);
@@ -7519,6 +7521,13 @@ private:
                 settings.insert(it.key() + QStringLiteral("_rom_options"), options);
             }
         }
+    }
+
+    WinUaeQtConfig::Settings currentExpansionBoardSettings() const
+    {
+        WinUaeQtConfig::Settings settings;
+        insertExpansionBoardSettings(settings);
+        return settings;
     }
 
     QStringList expansionBoardOwnedKeys() const
@@ -13585,7 +13594,6 @@ private:
                 settings.insert(QStringLiteral("cpuboard_settings"), cpuBoardSettingsRaw.trimmed());
             }
         }
-        insertExpansionBoardSettings(settings);
         settings.insert(QStringLiteral("bsdsocket_emu"), expansionBsdsocket->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
         settings.insert(QStringLiteral("scsi"), expansionScsiDevice->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
         settings.insert(QStringLiteral("sana2"), expansionSana2->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
@@ -14132,7 +14140,6 @@ private:
             QStringLiteral("absolute_mouse"),
             QStringLiteral("tablet_library")
         };
-        keys.append(expansionBoardOwnedKeys());
         keys.append(hardwareOrderOwnedKeys);
         keys.append(inputOwnedMappingKeys);
         return keys;
@@ -14157,8 +14164,15 @@ private:
     WinUaeQtConfig mergedConfig() const
     {
         WinUaeQtConfig config = loadedConfig;
+        const QStringList expansionKeys = expansionBoardOwnedKeys();
+        const QStringList mountKeys = uiOwnedMountKeys();
+        // Quickstart presets can clear board ROMs while parsing, so rewrite
+        // expansion boards after normal settings and before controller mounts.
+        config.applySettings(WinUaeQtConfig::Settings(), expansionKeys);
+        config.applyRepeatedSettings(WinUaeQtConfig::OrderedSettings(), mountKeys);
         config.applySettings(currentSettings(), uiOwnedKeys());
-        config.applyRepeatedSettings(currentMountSettings(), uiOwnedMountKeys());
+        config.applySettings(currentExpansionBoardSettings(), expansionKeys);
+        config.applyRepeatedSettings(currentMountSettings(), mountKeys);
         return config;
     }
 
