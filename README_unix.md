@@ -306,10 +306,18 @@ export WINUAE_A4091_HDF=/path/to/disk.hdf
 tools/unix-smoke-a4091-hdf.sh
 ```
 
-To let the boot continue long enough to verify `uaegfx.card` installation:
+To let the boot continue long enough to verify Zorro III RTG RAM autoconfig and `uaegfx.card` installation:
 
 ```sh
 tools/unix-smoke-uaegfx.sh
+```
+
+That smoke verifies the current Unix install-level RTG path: Z3 RTG RAM is mapped, `uaegfx.card` is installed, and P96 resolution memory is allocated. It does not prove a guest Picasso96 monitor driver has opened the board or switched to an RTG screen. For a Workbench/Picasso96 setup that should exercise those paths, enable stricter log checks and append any config or override arguments needed by that setup:
+
+```sh
+export WINUAE_SMOKE_UAEGFX_DRIVER=1
+export WINUAE_SMOKE_UAEGFX_SCREEN=1
+tools/unix-smoke-uaegfx.sh -f /path/to/p96-workbench.uae
 ```
 
 Optional overrides:
