@@ -437,6 +437,63 @@ enum MountDataRole {
     MountHardfileTailRole
 };
 
+enum WinUaeQtMountControllerBus {
+    MountControllerBusUnknown,
+    MountControllerBusUae,
+    MountControllerBusIde,
+    MountControllerBusScsi
+};
+
+struct WinUaeQtMountControllerChoice {
+    const char *display;
+    const char *boardKey;
+    WinUaeQtMountControllerBus bus;
+    int maxUnit;
+};
+
+static const WinUaeQtMountControllerChoice mountControllerChoices[] = {
+    { "UAE (uaehf.device)", "", MountControllerBusUae, MaxControllerUnits - 1 },
+    { "IDE (Auto)", "", MountControllerBusIde, 3 },
+    { "SCSI (Auto)", "", MountControllerBusScsi, MaxControllerUnits - 1 },
+
+    { "A590/A2091 (SCSI)", "a2091", MountControllerBusScsi, MaxControllerUnits - 1 },
+    { "A4091 (SCSI)", "a4091", MountControllerBusScsi, MaxControllerUnits - 1 },
+    { "A2090a (SCSI)", "a2090a", MountControllerBusScsi, MaxControllerUnits - 1 },
+    { "A2090 Combitec (SCSI)", "a2090b", MountControllerBusScsi, MaxControllerUnits - 1 },
+    { "ADD-500 (SCSI)", "add500", MountControllerBusScsi, MaxControllerUnits - 1 },
+    { "AddHard (SCSI)", "addhard", MountControllerBusScsi, MaxControllerUnits - 1 },
+    { "AdIDE (IDE)", "adide", MountControllerBusIde, 1 },
+    { "AdSCSI Advantage 2000/2080 (SCSI)", "adscsi2000", MountControllerBusScsi, MaxControllerUnits - 1 },
+    { "AlfaPower/AT-Bus 2008 (IDE)", "alfapower", MountControllerBusIde, 1 },
+    { "AlfaPower Plus (IDE)", "alfapowerplus", MountControllerBusIde, 1 },
+    { "Apollo 500/2000 (IDE)", "apollo", MountControllerBusIde, 1 },
+    { "Apollo 500/2000 (SCSI)", "apollo", MountControllerBusScsi, MaxControllerUnits - 1 },
+    { "Buddha (IDE)", "buddha", MountControllerBusIde, 5 },
+    { "SA series (SCSI)", "comspec", MountControllerBusScsi, MaxControllerUnits - 1 },
+    { "DataFlyer Plus (IDE)", "dataflyerplus", MountControllerBusIde, 1 },
+    { "DataFlyer Plus (SCSI)", "dataflyerplus", MountControllerBusScsi, MaxControllerUnits - 1 },
+    { "DataFlyer SCSI+ (SCSI)", "dataflyerscsiplus", MountControllerBusScsi, MaxControllerUnits - 1 },
+    { "FastATA 4000 (IDE)", "fastata4000", MountControllerBusIde, 3 },
+    { "Fastlane (SCSI)", "fastlane", MountControllerBusScsi, MaxControllerUnits - 1 },
+    { "GVP Series II (SCSI)", "gvp", MountControllerBusScsi, MaxControllerUnits - 1 },
+    { "GVP Series I (SCSI)", "gvp1", MountControllerBusScsi, MaxControllerUnits - 1 },
+    { "GVP A1208 (SCSI)", "gvpa1208", MountControllerBusScsi, MaxControllerUnits - 1 },
+    { "HardFrame (SCSI)", "hardframe", MountControllerBusScsi, MaxControllerUnits - 1 },
+    { "Oktagon 2008 (SCSI)", "oktagon2008", MountControllerBusScsi, MaxControllerUnits - 1 },
+    { "PCMCIA IDE (IDE)", "pcmciaide", MountControllerBusIde, 1 },
+    { "RapidFire/SpitFire (SCSI)", "rapidfire", MountControllerBusScsi, MaxControllerUnits - 1 },
+    { "RIPPLE (IDE)", "ripple", MountControllerBusIde, 3 },
+    { "SupraDrive (SCSI)", "supradrive", MountControllerBusScsi, MaxControllerUnits - 1 },
+    { "Surf Squirrel (SCSI)", "surfsquirrel", MountControllerBusScsi, MaxControllerUnits - 1 },
+    { "Tandem (IDE)", "tandem", MountControllerBusIde, 1 },
+    { "Trifecta (IDE)", "trifecta", MountControllerBusIde, 1 },
+    { "Trifecta (SCSI)", "trifecta", MountControllerBusScsi, MaxControllerUnits - 1 },
+    { "Trumpcard (SCSI)", "trumpcard", MountControllerBusScsi, MaxControllerUnits - 1 },
+    { "Trumpcard 500AT (IDE)", "trumpcardat", MountControllerBusIde, 1 },
+    { "Grand Slam (SCSI)", "trumpcardpro", MountControllerBusScsi, MaxControllerUnits - 1 },
+    { nullptr, nullptr, MountControllerBusUnknown, 0 }
+};
+
 static QStringList mountControllerParts(QString tail)
 {
     if (!tail.startsWith(QLatin1Char(','))) {
@@ -462,16 +519,140 @@ static QString mountTailWithController(const WinUaeQtMountEntry &entry, const QS
     return winUaeQtConfigJoinFields(parts);
 }
 
-static QString mountControllerFamily(const WinUaeQtMountEntry &entry, const QString &fallback)
+static QString mountControllerBaseDisplay(const QString &display)
 {
-    const QString value = mountControllerValue(entry, fallback).toLower();
-    if (value.startsWith(QStringLiteral("scsi"))) {
-        return QStringLiteral("SCSI (Auto)");
+    const int start = display.lastIndexOf(QStringLiteral(" ["));
+    if (start < 0 || !display.endsWith(QLatin1Char(']'))) {
+        return display;
     }
-    if (value.startsWith(QStringLiteral("ide"))) {
+    bool ok = false;
+    display.mid(start + 2, display.size() - start - 3).toInt(&ok);
+    return ok ? display.left(start) : display;
+}
+
+static int mountControllerDuplicateFromDisplay(const QString &display)
+{
+    const int start = display.lastIndexOf(QStringLiteral(" ["));
+    if (start < 0 || !display.endsWith(QLatin1Char(']'))) {
+        return 0;
+    }
+    bool ok = false;
+    const int oneBased = display.mid(start + 2, display.size() - start - 3).toInt(&ok);
+    return ok && oneBased >= 2 ? qBound(1, oneBased - 1, 8) : 0;
+}
+
+static QString mountControllerDuplicateDisplaySuffix(int duplicate)
+{
+    return duplicate > 0 ? QStringLiteral(" [%1]").arg(duplicate + 1) : QString();
+}
+
+static QString mountControllerDuplicateConfigSuffix(int duplicate)
+{
+    return duplicate > 0 ? QStringLiteral("-%1").arg(duplicate + 1) : QString();
+}
+
+static WinUaeQtMountControllerBus mountControllerBusFromConfigValue(const QString &value)
+{
+    const QString lower = value.trimmed().toLower();
+    if (lower.startsWith(QStringLiteral("uae"))) {
+        return MountControllerBusUae;
+    }
+    if (lower.startsWith(QStringLiteral("ide"))) {
+        return MountControllerBusIde;
+    }
+    if (lower.startsWith(QStringLiteral("scsi"))) {
+        return MountControllerBusScsi;
+    }
+    return MountControllerBusUnknown;
+}
+
+static QString mountControllerExpansionKeyFromConfigValue(const QString &value)
+{
+    const int underscore = value.indexOf(QLatin1Char('_'));
+    if (underscore < 0) {
+        return QString();
+    }
+    QString key = value.mid(underscore + 1).toLower();
+    const int dash = key.lastIndexOf(QLatin1Char('-'));
+    if (dash > 0) {
+        bool ok = false;
+        const int duplicate = key.mid(dash + 1).toInt(&ok);
+        if (ok && duplicate >= 2) {
+            key = key.left(dash);
+        }
+    }
+    return key;
+}
+
+static int mountControllerDuplicateFromConfigValue(const QString &value)
+{
+    const int underscore = value.indexOf(QLatin1Char('_'));
+    const int dash = value.lastIndexOf(QLatin1Char('-'));
+    if (underscore < 0 || dash <= underscore) {
+        return 0;
+    }
+    bool ok = false;
+    const int oneBased = value.mid(dash + 1).toInt(&ok);
+    return ok && oneBased >= 2 ? qBound(1, oneBased - 1, 8) : 0;
+}
+
+static const WinUaeQtMountControllerChoice *mountControllerChoiceByDisplay(const QString &display)
+{
+    const QString baseDisplay = mountControllerBaseDisplay(display);
+    for (const WinUaeQtMountControllerChoice *choice = mountControllerChoices; choice->display; choice++) {
+        if (baseDisplay == QString::fromLatin1(choice->display)) {
+            return choice;
+        }
+    }
+    return nullptr;
+}
+
+static const WinUaeQtMountControllerChoice *mountControllerChoiceByKeyAndBus(const QString &key, WinUaeQtMountControllerBus bus)
+{
+    for (const WinUaeQtMountControllerChoice *choice = mountControllerChoices; choice->display; choice++) {
+        if (choice->bus == bus && key.compare(QString::fromLatin1(choice->boardKey), Qt::CaseInsensitive) == 0) {
+            return choice;
+        }
+    }
+    return nullptr;
+}
+
+static QString mountControllerGenericDisplay(WinUaeQtMountControllerBus bus)
+{
+    if (bus == MountControllerBusIde) {
         return QStringLiteral("IDE (Auto)");
     }
+    if (bus == MountControllerBusScsi) {
+        return QStringLiteral("SCSI (Auto)");
+    }
     return QStringLiteral("UAE (uaehf.device)");
+}
+
+static QString mountControllerDisplayForConfigValue(const QString &value)
+{
+    const QString trimmed = value.trimmed();
+    const WinUaeQtMountControllerBus bus = mountControllerBusFromConfigValue(trimmed);
+    const QString key = mountControllerExpansionKeyFromConfigValue(trimmed);
+    if (!key.isEmpty()) {
+        if (const WinUaeQtMountControllerChoice *choice = mountControllerChoiceByKeyAndBus(key, bus)) {
+            return QString::fromLatin1(choice->display) + mountControllerDuplicateDisplaySuffix(mountControllerDuplicateFromConfigValue(trimmed));
+        }
+        return trimmed;
+    }
+    return mountControllerGenericDisplay(bus);
+}
+
+static WinUaeQtMountControllerBus mountControllerBusFromDisplay(const QString &display)
+{
+    if (const WinUaeQtMountControllerChoice *choice = mountControllerChoiceByDisplay(display)) {
+        return choice->bus;
+    }
+    return mountControllerBusFromConfigValue(display);
+}
+
+static QString mountControllerFamily(const WinUaeQtMountEntry &entry, const QString &fallback)
+{
+    return mountControllerDisplayForConfigValue(mountControllerValue(entry, fallback));
 }
 
 static int mountControllerUnit(const WinUaeQtMountEntry &entry, const QString &fallback)
@@ -484,32 +665,68 @@ static int mountControllerUnit(const WinUaeQtMountEntry &entry, const QString &f
     if (index >= value.size()) {
         return 0;
     }
-    return qBound(0, value.mid(index).toInt(), MaxControllerUnits - 1);
+    int end = index;
+    while (end < value.size() && value.at(end).isDigit()) {
+        end++;
+    }
+    return qBound(0, value.mid(index, end - index).toInt(), MaxControllerUnits - 1);
 }
 
-static QString mountControllerConfigValue(const QString &family, int unit)
+static QString mountControllerConfigPrefix(WinUaeQtMountControllerBus bus)
 {
-    const int clampedUnit = qBound(0, unit, MaxControllerUnits - 1);
-    if (family == QStringLiteral("SCSI (Auto)")) {
-        return QStringLiteral("scsi%1").arg(clampedUnit);
+    if (bus == MountControllerBusIde) {
+        return QStringLiteral("ide");
     }
-    if (family == QStringLiteral("IDE (Auto)")) {
-        return QStringLiteral("ide%1").arg(qBound(0, clampedUnit, 3));
+    if (bus == MountControllerBusScsi) {
+        return QStringLiteral("scsi");
     }
-    return QStringLiteral("uae%1").arg(clampedUnit);
+    return QStringLiteral("uae");
+}
+
+static int mountControllerMaxUnit(const QString &display)
+{
+    if (const WinUaeQtMountControllerChoice *choice = mountControllerChoiceByDisplay(display)) {
+        return choice->maxUnit;
+    }
+    return mountControllerBusFromDisplay(display) == MountControllerBusIde ? 3 : MaxControllerUnits - 1;
+}
+
+static QString mountControllerConfigValue(const QString &display, int unit)
+{
+    const int duplicate = mountControllerDuplicateFromDisplay(display);
+    if (const WinUaeQtMountControllerChoice *choice = mountControllerChoiceByDisplay(display)) {
+        QString value = mountControllerConfigPrefix(choice->bus) + QString::number(qBound(0, unit, choice->maxUnit));
+        if (choice->boardKey && choice->boardKey[0]) {
+            value += QStringLiteral("_") + QString::fromLatin1(choice->boardKey) + mountControllerDuplicateConfigSuffix(duplicate);
+        }
+        return value;
+    }
+
+    const WinUaeQtMountControllerBus bus = mountControllerBusFromConfigValue(display);
+    const QString key = mountControllerExpansionKeyFromConfigValue(display);
+    QString value = mountControllerConfigPrefix(bus) + QString::number(qBound(0, unit, mountControllerMaxUnit(display)));
+    if (!key.isEmpty()) {
+        value += QStringLiteral("_") + key + mountControllerDuplicateConfigSuffix(mountControllerDuplicateFromConfigValue(display));
+    }
+    return value;
 }
 
 static QString mountControllerDisplay(const WinUaeQtMountEntry &entry)
 {
     const QString fallback = entry.kind == QStringLiteral("cd") ? QStringLiteral("ide0") : QStringLiteral("uae0");
-    const QString value = mountControllerValue(entry, fallback).toUpper();
-    if (value.startsWith(QStringLiteral("IDE"))) {
+    const QString value = mountControllerValue(entry, fallback);
+    const QString display = mountControllerDisplayForConfigValue(value);
+    if (mountControllerChoiceByDisplay(display) && display != QStringLiteral("IDE (Auto)") && display != QStringLiteral("SCSI (Auto)") && display != QStringLiteral("UAE (uaehf.device)")) {
+        return QStringLiteral("%1:%2").arg(mountControllerBaseDisplay(display)).arg(mountControllerUnit(entry, fallback));
+    }
+    const QString upper = value.toUpper();
+    if (upper.startsWith(QStringLiteral("IDE"))) {
         return QStringLiteral("IDE:%1").arg(mountControllerUnit(entry, fallback));
     }
-    if (value.startsWith(QStringLiteral("SCSI"))) {
+    if (upper.startsWith(QStringLiteral("SCSI"))) {
         return QStringLiteral("SCSI:%1").arg(mountControllerUnit(entry, fallback));
     }
-    if (value.startsWith(QStringLiteral("UAE"))) {
+    if (upper.startsWith(QStringLiteral("UAE"))) {
         return QStringLiteral("UAE:%1").arg(mountControllerUnit(entry, fallback));
     }
     return value;
@@ -617,7 +834,8 @@ static bool hardfileTailHasToken(const WinUaeQtMountEntry &entry, const QString 
 
 static QString hardfileFeatureText(const WinUaeQtMountEntry &entry, const QString &controllerFamily)
 {
-    if (controllerFamily == QStringLiteral("IDE (Auto)")) {
+    const WinUaeQtMountControllerBus bus = mountControllerBusFromDisplay(controllerFamily);
+    if (bus == MountControllerBusIde) {
         if (hardfileTailHasToken(entry, QStringLiteral("ATA2+S"))) {
             return QStringLiteral("ATA-2+ Strict");
         }
@@ -627,7 +845,7 @@ static QString hardfileFeatureText(const WinUaeQtMountEntry &entry, const QStrin
         if (hardfileTailHasToken(entry, QStringLiteral("ATA1"))) {
             return QStringLiteral("ATA-1");
         }
-    } else if (controllerFamily == QStringLiteral("SCSI (Auto)")) {
+    } else if (bus == MountControllerBusScsi) {
         if (hardfileTailHasToken(entry, QStringLiteral("SASI_CHS"))) {
             return QStringLiteral("SASI CHS");
         }
@@ -2539,6 +2757,7 @@ static const WinUaeQtExpansionBoardChoice expansionBoardChoices[] = {
     { "oktagon2008", "Oktagon 2008 (BSC/Alfa Data)", "SCSI/IDE controllers", false, false },
     { "pcmciaide", "PCMCIA IDE", "SCSI/IDE controllers", false, true },
     { "rapidfire", "RapidFire/SpitFire (DKB)", "SCSI/IDE controllers", false, false },
+    { "ripple", "RIPPLE (Matt Harlum)", "SCSI/IDE controllers", false, false },
     { "supradrive", "SupraDrive (Supra Corporation)", "SCSI/IDE controllers", false, false },
     { "surfsquirrel", "Surf Squirrel (HiSoft)", "SCSI/IDE controllers", false, false },
     { "tandem", "Tandem (BSC)", "SCSI/IDE controllers", false, false },
@@ -12448,6 +12667,51 @@ private:
         return true;
     }
 
+    void appendActiveMountControllerChoices(QStringList *items, WinUaeQtMountControllerBus bus) const
+    {
+        if (!items) {
+            return;
+        }
+        for (auto it = expansionBoardStates.constBegin(); it != expansionBoardStates.constEnd(); ++it) {
+            if (!it.value().present) {
+                continue;
+            }
+            int slot = 0;
+            const QString boardKey = expansionBoardBaseKey(it.key(), &slot);
+            for (const WinUaeQtMountControllerChoice *choice = mountControllerChoices; choice->display; choice++) {
+                if (choice->bus != bus || boardKey.compare(QString::fromLatin1(choice->boardKey), Qt::CaseInsensitive) != 0) {
+                    continue;
+                }
+                const QString display = QString::fromLatin1(choice->display) + mountControllerDuplicateDisplaySuffix(slot);
+                if (!items->contains(display)) {
+                    items->append(display);
+                }
+            }
+        }
+    }
+
+    QStringList mountControllerItemsForDialog(bool includeUae, bool includeIde, bool includeScsi, const WinUaeQtMountEntry &entry, const QString &fallback) const
+    {
+        QStringList items;
+        if (includeUae) {
+            items.append(QStringLiteral("UAE (uaehf.device)"));
+        }
+        if (includeIde) {
+            items.append(QStringLiteral("IDE (Auto)"));
+            appendActiveMountControllerChoices(&items, MountControllerBusIde);
+        }
+        if (includeScsi) {
+            items.append(QStringLiteral("SCSI (Auto)"));
+            appendActiveMountControllerChoices(&items, MountControllerBusScsi);
+        }
+
+        const QString current = mountControllerFamily(entry, fallback);
+        if (!current.isEmpty() && !items.contains(current)) {
+            items.append(current);
+        }
+        return items;
+    }
+
     bool showHardfileMountDialog(WinUaeQtMountEntry *entry, const QString &title)
     {
         if (!entry) {
@@ -12499,11 +12763,7 @@ private:
         physicalHeads->setValue(physicalGeometry.value(1).toInt());
         physicalSectors->setValue(physicalGeometry.value(2).toInt());
 
-        QComboBox *controller = combo({
-            QStringLiteral("UAE (uaehf.device)"),
-            QStringLiteral("IDE (Auto)"),
-            QStringLiteral("SCSI (Auto)")
-        }, mountControllerFamily(*entry, QStringLiteral("uae0")));
+        QComboBox *controller = combo(mountControllerItemsForDialog(true, true, true, *entry, QStringLiteral("uae0")), mountControllerFamily(*entry, QStringLiteral("uae0")));
         QSpinBox *controllerUnit = new QSpinBox;
         controllerUnit->setRange(0, MaxControllerUnits - 1);
         controllerUnit->setValue(mountControllerUnit(*entry, QStringLiteral("uae0")));
@@ -12582,19 +12842,19 @@ private:
             physicalSectors->setEnabled(enabled);
         };
         auto setFeatureItems = [controller, featureLevel, mediaType](const QString &preferred) {
-            const QString family = controller->currentText();
+            const WinUaeQtMountControllerBus bus = mountControllerBusFromDisplay(controller->currentText());
             QSignalBlocker blocker(featureLevel);
             featureLevel->clear();
             featureLevel->addItem(QStringLiteral("Default"));
-            if (family == QStringLiteral("IDE (Auto)")) {
+            if (bus == MountControllerBusIde) {
                 featureLevel->addItems({ QStringLiteral("ATA-1"), QStringLiteral("ATA-2+"), QStringLiteral("ATA-2+ Strict") });
-            } else if (family == QStringLiteral("SCSI (Auto)")) {
+            } else if (bus == MountControllerBusScsi) {
                 featureLevel->addItems({ QStringLiteral("SCSI-1"), QStringLiteral("SCSI-2"), QStringLiteral("SASI"), QStringLiteral("SASI CHS") });
             }
             const int index = featureLevel->findText(preferred);
             featureLevel->setCurrentIndex(index >= 0 ? index : 0);
-            featureLevel->setEnabled(family != QStringLiteral("UAE (uaehf.device)"));
-            mediaType->setEnabled(family == QStringLiteral("IDE (Auto)"));
+            featureLevel->setEnabled(bus == MountControllerBusIde || bus == MountControllerBusScsi);
+            mediaType->setEnabled(bus == MountControllerBusIde);
         };
 
         updateBootChecks();
@@ -12694,7 +12954,7 @@ private:
                 tailFields.append(geometryFile->text().trimmed());
             }
         }
-        if (controller->currentText() == QStringLiteral("IDE (Auto)") && mediaType->currentText() == QStringLiteral("CF")) {
+        if (mountControllerBusFromDisplay(controller->currentText()) == MountControllerBusIde && mediaType->currentText() == QStringLiteral("CF")) {
             tailFields.append(QStringLiteral("CF"));
         }
         const QString featureToken = hardfileFeatureToken(featureLevel->currentText());
@@ -12711,8 +12971,7 @@ private:
         if (!unit) {
             return;
         }
-        const int maximum = family == QStringLiteral("IDE (Auto)") ? 3 : MaxControllerUnits - 1;
-        unit->setMaximum(maximum);
+        unit->setMaximum(mountControllerMaxUnit(family));
     }
 
     bool showCdDriveMountDialog(WinUaeQtMountEntry *entry, const QString &title)
@@ -12727,7 +12986,7 @@ private:
         QSpinBox *cdUnit = new QSpinBox;
         cdUnit->setRange(0, MaxControllerUnits - 1);
         cdUnit->setValue(qBound(0, entry->emuUnit, MaxControllerUnits - 1));
-        QComboBox *controller = combo({ QStringLiteral("IDE (Auto)"), QStringLiteral("SCSI (Auto)") }, mountControllerFamily(*entry, QStringLiteral("ide0")));
+        QComboBox *controller = combo(mountControllerItemsForDialog(false, true, true, *entry, QStringLiteral("ide0")), mountControllerFamily(*entry, QStringLiteral("ide0")));
         QSpinBox *controllerUnit = new QSpinBox;
         controllerUnit->setRange(0, MaxControllerUnits - 1);
         controllerUnit->setValue(mountControllerUnit(*entry, QStringLiteral("ide0")));
@@ -12781,7 +13040,7 @@ private:
         QSpinBox *tapeUnit = new QSpinBox;
         tapeUnit->setRange(0, MaxControllerUnits - 1);
         tapeUnit->setValue(qBound(0, entry->emuUnit, MaxControllerUnits - 1));
-        QComboBox *controller = combo({ QStringLiteral("UAE (uaehf.device)"), QStringLiteral("IDE (Auto)"), QStringLiteral("SCSI (Auto)") }, mountControllerFamily(*entry, QStringLiteral("uae0")));
+        QComboBox *controller = combo(mountControllerItemsForDialog(true, true, true, *entry, QStringLiteral("uae0")), mountControllerFamily(*entry, QStringLiteral("uae0")));
         QSpinBox *controllerUnit = new QSpinBox;
         controllerUnit->setRange(0, MaxControllerUnits - 1);
         controllerUnit->setValue(mountControllerUnit(*entry, QStringLiteral("uae0")));

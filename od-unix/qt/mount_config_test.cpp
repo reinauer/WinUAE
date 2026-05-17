@@ -72,6 +72,11 @@ static bool testHardfileMount()
     minimalEntry.readOnly = true;
     minimalEntry.bootPri = 4;
     ok = requireText(serializeWinUaeQtHardfile2MountValue(minimalEntry), QStringLiteral("ro,DH4:/tmp/min.hdf,16,2,1,512,4"), "minimal hardfile serialized value") && ok;
+    WinUaeQtMountEntry expansionEntry;
+    const QString expansionConfig = QStringLiteral("rw,DH5:/tmp/ripple.hdf,32,1,2,512,0,,ide0_ripple,ATA2+");
+    ok = require(parseWinUaeQtHardfile2MountValue(expansionConfig, &expansionEntry), "expansion-controller hardfile did not parse") && ok;
+    ok = requireText(expansionEntry.hardfileTail, QStringLiteral(",ide0_ripple,ATA2+"), "expansion-controller hardfile tail") && ok;
+    ok = requireText(serializeWinUaeQtHardfile2MountValue(expansionEntry), expansionConfig, "expansion-controller hardfile serialized value") && ok;
     return ok;
 }
 
@@ -86,6 +91,10 @@ static bool testCdMount()
     ok = requireText(entry.hardfileGeometry, QStringLiteral("0,0,0,2048"), "cd geometry") && ok;
     ok = requireText(entry.hardfileTail, QStringLiteral(",ide1"), "cd tail") && ok;
     ok = requireText(serializeWinUaeQtUaehfCdMountValue(entry), QStringLiteral("cd1,ro,:,0,0,0,2048,0,,ide1"), "uaehf cd serialized value") && ok;
+    WinUaeQtMountEntry expansionEntry;
+    ok = require(parseWinUaeQtUaehfMountValue(QStringLiteral("cd0,ro,:,0,0,0,2048,0,,scsi0_a4091"), &expansionEntry), "expansion-controller cd did not parse") && ok;
+    ok = requireText(expansionEntry.hardfileTail, QStringLiteral(",scsi0_a4091"), "expansion-controller cd tail") && ok;
+    ok = requireText(serializeWinUaeQtUaehfCdMountValue(expansionEntry), QStringLiteral("cd0,ro,:,0,0,0,2048,0,,scsi0_a4091"), "expansion-controller cd serialized value") && ok;
     return ok;
 }
 
@@ -100,6 +109,10 @@ static bool testTapeMount()
     ok = requireText(entry.hardfileGeometry, QStringLiteral("0,0,0,512"), "tape geometry") && ok;
     ok = requireText(entry.hardfileTail, QStringLiteral(",uae0"), "tape tail") && ok;
     ok = requireText(serializeWinUaeQtUaehfTapeMountValue(entry), QStringLiteral("tape0,rw,:\"/tmp/Tape,One\",0,0,0,512,0,,uae0"), "uaehf tape serialized value") && ok;
+    WinUaeQtMountEntry expansionEntry;
+    ok = require(parseWinUaeQtUaehfMountValue(QStringLiteral("tape1,rw,:,0,0,0,512,0,,ide1_alfapower"), &expansionEntry), "expansion-controller tape did not parse") && ok;
+    ok = requireText(expansionEntry.hardfileTail, QStringLiteral(",ide1_alfapower"), "expansion-controller tape tail") && ok;
+    ok = requireText(serializeWinUaeQtUaehfTapeMountValue(expansionEntry), QStringLiteral("tape1,rw,:,0,0,0,512,0,,ide1_alfapower"), "expansion-controller tape serialized value") && ok;
     return ok;
 }
 
