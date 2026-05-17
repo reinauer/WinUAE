@@ -184,5 +184,64 @@ int main()
     ok = !args.contains(QStringLiteral("kickstart_ext_rom_file=/old-ext.rom")) && ok;
     ok = requireCount(args.join(QLatin1Char('\n')), QStringLiteral("filesystem2="), 2) && ok;
 
+    const QString expansionInputPath = QDir(tempDir.path()).filePath(QStringLiteral("expansion-input.uae"));
+    const QString expansionOutputPath = QDir(tempDir.path()).filePath(QStringLiteral("expansion-output.uae"));
+    const QString expansionInput =
+        QStringLiteral("config_description=A4000\n")
+        + QStringLiteral("a4091_rom_file=/old-a4091.rom\n")
+        + QStringLiteral("hardfile2=rw,SCSI_0:/old/disk.hdf,0,0,0,512,0,,scsi0\n")
+        + QStringLiteral("quickstart=A4000,1\n")
+        + QStringLiteral("chipset_compatible=A4000\n");
+
+    if (!writeText(expansionInputPath, expansionInput)) {
+        return 1;
+    }
+
+    WinUaeQtConfig expansionConfig;
+    if (!expansionConfig.load(expansionInputPath, &error)) {
+        qWarning().noquote() << error;
+        return 1;
+    }
+
+    const QStringList expansionKeys {
+        QStringLiteral("a4091_rom_file"),
+        QStringLiteral("a4091_rom_options")
+    };
+    const QStringList mountKeys {
+        QStringLiteral("hardfile2")
+    };
+
+    expansionConfig.applySettings(WinUaeQtConfig::Settings(), expansionKeys);
+    expansionConfig.applyRepeatedSettings(WinUaeQtConfig::OrderedSettings(), mountKeys);
+
+    WinUaeQtConfig::Settings expansionEdited;
+    expansionEdited.insert(QStringLiteral("quickstart"), QStringLiteral("A4000,1"));
+    expansionEdited.insert(QStringLiteral("chipset_compatible"), QStringLiteral("A4000"));
+    expansionConfig.applySettings(expansionEdited, {
+        QStringLiteral("quickstart"),
+        QStringLiteral("chipset_compatible")
+    });
+
+    WinUaeQtConfig::Settings expansionBoardEdited;
+    expansionBoardEdited.insert(QStringLiteral("a4091_rom_file"), QStringLiteral("/new-a4091.rom"));
+    expansionConfig.applySettings(expansionBoardEdited, expansionKeys);
+    expansionConfig.applyRepeatedSettings({
+        { QStringLiteral("hardfile2"), QStringLiteral("rw,SCSI_0:/new/disk.hdf,0,0,0,512,0,,scsi0_a4091") }
+    }, mountKeys);
+
+    if (!expansionConfig.save(expansionOutputPath, &error)) {
+        qWarning().noquote() << error;
+        return 1;
+    }
+
+    const QString expansionOutput = readText(expansionOutputPath);
+    ok = requireContains(expansionOutput, QStringLiteral("quickstart=A4000,1\n")) && ok;
+    ok = requireContains(expansionOutput, QStringLiteral("a4091_rom_file=/new-a4091.rom\n")) && ok;
+    ok = requireContains(expansionOutput, QStringLiteral("hardfile2=rw,SCSI_0:/new/disk.hdf,0,0,0,512,0,,scsi0_a4091\n")) && ok;
+    ok = requireBefore(expansionOutput, QStringLiteral("quickstart=A4000,1\n"), QStringLiteral("a4091_rom_file=/new-a4091.rom\n")) && ok;
+    ok = requireBefore(expansionOutput, QStringLiteral("a4091_rom_file=/new-a4091.rom\n"), QStringLiteral("hardfile2=rw,SCSI_0:/new/disk.hdf,0,0,0,512,0,,scsi0_a4091\n")) && ok;
+    ok = requireNotContains(expansionOutput, QStringLiteral("/old-a4091.rom")) && ok;
+    ok = requireNotContains(expansionOutput, QStringLiteral("/old/disk.hdf")) && ok;
+
     return ok ? 0 : 1;
 }
