@@ -9,6 +9,8 @@ RUN_SECONDS=${WINUAE_SMOKE_SECONDS:-5}
 A2065=${WINUAE_SMOKE_A2065:-0}
 RTG_Z3=${WINUAE_SMOKE_RTG_Z3:-0}
 UAEGFX=${WINUAE_SMOKE_UAEGFX:-0}
+UAEGFX_DRIVER=${WINUAE_SMOKE_UAEGFX_DRIVER:-0}
+UAEGFX_SCREEN=${WINUAE_SMOKE_UAEGFX_SCREEN:-0}
 
 ROM=${WINUAE_KICKSTART_ROM:-}
 ADF=${WINUAE_FLOPPY0:-}
@@ -39,7 +41,7 @@ SDL_AUDIODRIVER=${SDL_AUDIODRIVER:-dummy}
 SDL_VIDEODRIVER=${SDL_VIDEODRIVER:-dummy}
 export SDL_AUDIODRIVER SDL_VIDEODRIVER
 
-set --
+set -- "$@"
 if [ "$A2065" = "1" ]; then
     set -- "$@" -s a2065=slirp
 fi
@@ -86,6 +88,16 @@ fi
 if [ "$UAEGFX" = "1" ]; then
     grep -q "Unix uaegfx.card" "$LOG"
     grep -q "Unix RTG P96 RESINFO" "$LOG"
+fi
+if [ "$UAEGFX_DRIVER" = "1" ]; then
+    grep -q "Unix RTG FindCard:" "$LOG"
+    grep -q "Unix RTG InitCard:" "$LOG"
+    grep -q "Unix RTG uaegfx.card code:" "$LOG"
+fi
+if [ "$UAEGFX_SCREEN" = "1" ]; then
+    grep -q "Unix RTG SetGC:" "$LOG"
+    grep -q "Unix RTG SetPanning:" "$LOG"
+    grep -q "Unix RTG SetSwitch:" "$LOG"
 fi
 if grep -q "failed to load config" "$LOG" || grep -q "cfgfile_load_2 failed" "$LOG"; then
     echo "Unexpected config load failure in smoke log: $LOG" >&2
