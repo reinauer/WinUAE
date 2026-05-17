@@ -476,6 +476,8 @@ int target_parse_option(struct uae_prefs *p, const TCHAR *option, const TCHAR *v
 
 void target_save_options(struct zfile *f, struct uae_prefs *p)
 {
+    cfgfile_target_dwrite_str(f, _T("serial_port"), p->sername[0] ? p->sername : _T("none"));
+
     int index = p->win32_soundcard;
     if (index < 0 || index >= unix_sound_device_count()) {
         index = 0;

@@ -105,6 +105,7 @@ int main()
         + QStringLiteral("malformed line without separator\n")
         + QStringLiteral("# keep this too\n")
         + QStringLiteral("chipset=ecs\n")
+        + QStringLiteral("serial_port=TCP:127.0.0.1:1234\n")
         + QStringLiteral("filesystem2=rw,DH0:Old:/old/System,0\n")
         + QStringLiteral("; keep mount comment\n")
         + QStringLiteral("filesystem2=rw,DH1:Old2:/old/Work,0\n")
@@ -125,12 +126,15 @@ int main()
     edited.insert(QStringLiteral("kickstart_rom_file"), QStringLiteral("/new.rom"));
     edited.insert(QStringLiteral("chipset"), QStringLiteral("aga"));
     edited.insert(QStringLiteral("cpu_model"), QStringLiteral("68020"));
+    edited.insert(QStringLiteral("unix.serial_port"), QStringLiteral("TCP://0.0.0.0:1234"));
     edited.insert(QStringLiteral("unix.ui.config_path"), QStringLiteral("/configs"));
     config.applySettings(edited, {
         QStringLiteral("kickstart_rom_file"),
         QStringLiteral("kickstart_ext_rom_file"),
         QStringLiteral("chipset"),
         QStringLiteral("cpu_model"),
+        QStringLiteral("serial_port"),
+        QStringLiteral("unix.serial_port"),
         QStringLiteral("unix.ui.config_path")
     });
     config.applyRepeatedSettings({
@@ -157,6 +161,7 @@ int main()
     ok = requireContains(output, QStringLiteral("kickstart_rom_file=/new.rom\n")) && ok;
     ok = requireContains(output, QStringLiteral("chipset=aga\n")) && ok;
     ok = requireContains(output, QStringLiteral("cpu_model=68020\n")) && ok;
+    ok = requireContains(output, QStringLiteral("unix.serial_port=TCP://0.0.0.0:1234\n")) && ok;
     ok = requireContains(output, QStringLiteral("unix.ui.config_path=/configs\n")) && ok;
     ok = requireContains(output, QStringLiteral("filesystem2=rw,DH0:System:/new/System,0\n")) && ok;
     ok = requireContains(output, QStringLiteral("filesystem2=ro,DH1:Work:\"/new/Work,Disk\",5\n")) && ok;
@@ -164,12 +169,14 @@ int main()
     ok = requireBefore(output, QStringLiteral("filesystem2=rw,DH0:System:/new/System,0\n"), QStringLiteral("filesystem2=ro,DH1:Work:\"/new/Work,Disk\",5\n")) && ok;
     ok = requireNotContains(output, QStringLiteral("kickstart_ext_rom_file=")) && ok;
     ok = requireNotContains(output, QStringLiteral("/old.rom")) && ok;
+    ok = requireNotContains(output, QStringLiteral("serial_port=TCP:127.0.0.1:1234\n")) && ok;
     ok = requireNotContains(output, QStringLiteral("/old/System")) && ok;
     ok = requireNotContains(output, QStringLiteral("hardfile2=")) && ok;
 
     const QStringList args = config.commandArguments();
     ok = args.contains(QStringLiteral("unknown_setting=keep-me")) && ok;
     ok = args.contains(QStringLiteral("kickstart_rom_file=/new.rom")) && ok;
+    ok = args.contains(QStringLiteral("unix.serial_port=TCP://0.0.0.0:1234")) && ok;
     ok = !args.contains(QStringLiteral("unix.ui.config_path=/configs")) && ok;
     ok = args.contains(QStringLiteral("filesystem2=rw,DH0:System:/new/System,0")) && ok;
     ok = args.contains(QStringLiteral("filesystem2=ro,DH1:Work:\"/new/Work,Disk\",5")) && ok;
