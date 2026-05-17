@@ -2668,8 +2668,8 @@ static QString filterAutoscaleDisplay(const QString &value, int target)
 static QStringList unixSerialPortItems()
 {
     QStringList items { QStringLiteral("<None>") };
-    items.append(QStringLiteral("TCP:127.0.0.1:1234"));
-    items.append(QStringLiteral("TCP:127.0.0.1:1234/wait"));
+    items.append(QStringLiteral("TCP://0.0.0.0:1234"));
+    items.append(QStringLiteral("TCP://0.0.0.0:1234/wait"));
     const QStringList filters {
         QStringLiteral("cu.*"),
         QStringLiteral("tty.*"),
@@ -13934,6 +13934,7 @@ private:
             QStringLiteral("parallel_autoflush"),
             QStringLiteral("ghostscript_parameters"),
             QStringLiteral("sampler_stereo"),
+            QStringLiteral("serial_port"),
             QStringLiteral("unix.serial_port"),
             QStringLiteral("serial_on_demand"),
             QStringLiteral("serial_hardware_ctsrts"),

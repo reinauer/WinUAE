@@ -245,12 +245,12 @@ The Unix serial backend follows the same target-prefixed config style as Windows
   -s unix.serial_port=/dev/cu.usbserial-0001 \
   -s serial_hardware_ctsrts=true
 
-# Telnet-style TCP listener on localhost:1234
+# Telnet-style TCP listener on all local interfaces, port 1234
 /tmp/winuae_cmake_build/winuae_unix \
-  -s unix.serial_port=TCP:127.0.0.1:1234
+  -s unix.serial_port=TCP://0.0.0.0:1234
 ```
 
-`TCP:host:port`, `TCP://host:port`, and `TCP:port` are accepted. Add `/wait` to delay startup until a client connects, for example `TCP:127.0.0.1:1234/wait`.
+`TCP:host:port`, `TCP://host:port`, and `TCP:port` are accepted. Add `/wait` to delay startup until a client connects, for example `TCP://0.0.0.0:1234/wait`. Connect locally with `telnet 127.0.0.1 1234` or `nc 127.0.0.1 1234`.
 
 ## Smoke Test
 
