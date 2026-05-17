@@ -3508,17 +3508,17 @@ public:
         addEvent = new QComboBox;
         populateEventChoices();
         addEventButton = new QPushButton(QStringLiteral("Add Event"));
-        QPushButton *autofireButton = new QPushButton(QStringLiteral("Autofire"));
+        autofireButton = new QPushButton(QStringLiteral("Autofire"));
         testButton = new QPushButton(QStringLiteral("Test"));
         remapButton = new QPushButton(QStringLiteral("Remap"));
         deleteButton = new QPushButton(QStringLiteral("Delete"));
         deleteAllButton = new QPushButton(QStringLiteral("Delete all"));
         QPushButton *exitButton = new QPushButton(QStringLiteral("Exit"));
 
-        disableUnavailable(autofireButton, QStringLiteral("Autofire mapping edits need the shared preferences input adapter."));
         if (port < 0) {
             disableUnavailable(addEvent, QStringLiteral("Custom game-port mappings are only available from the Game Ports page."));
             disableUnavailable(addEventButton, QStringLiteral("Custom game-port mappings are only available from the Game Ports page."));
+            disableUnavailable(autofireButton, QStringLiteral("Custom game-port mappings are only available from the Game Ports page."));
             disableUnavailable(remapButton, QStringLiteral("Custom game-port mappings are only available from the Game Ports page."));
             disableUnavailable(deleteButton, QStringLiteral("Custom game-port mappings are only available from the Game Ports page."));
             disableUnavailable(deleteAllButton, QStringLiteral("Custom game-port mappings are only available from the Game Ports page."));
@@ -3552,6 +3552,7 @@ public:
         connect(timer, &QTimer::timeout, this, [this]() { pollInput(); });
         connect(testButton, &QPushButton::clicked, this, [this]() { setTesting(!testing); });
         connect(addEventButton, &QPushButton::clicked, this, [this]() { addSelectedMapping(); });
+        connect(autofireButton, &QPushButton::clicked, this, [this]() { toggleSelectedMappingAutofire(); });
         connect(remapButton, &QPushButton::clicked, this, [this]() { toggleSequentialRemap(); });
         connect(deleteButton, &QPushButton::clicked, this, [this]() { deleteSelectedMapping(); });
         connect(deleteAllButton, &QPushButton::clicked, this, [this]() {
@@ -3648,6 +3649,7 @@ private:
     QPlainTextEdit *mappingLine = nullptr;
     QComboBox *addEvent = nullptr;
     QPushButton *addEventButton = nullptr;
+    QPushButton *autofireButton = nullptr;
     QPushButton *remapButton = nullptr;
     QPushButton *deleteButton = nullptr;
     QPushButton *deleteAllButton = nullptr;
@@ -3996,6 +3998,21 @@ private:
         const bool canEdit = hasSelection && addEvent->count() > 0 && !remapping;
         addEvent->setEnabled(canEdit);
         addEventButton->setEnabled(canEdit);
+        if (autofireButton) {
+            autofireButton->setEnabled(canEdit);
+#ifdef UAE_UNIX_WITH_SDL3
+            const int flags = selectedMappingFlags();
+            if ((flags & (InputFlagInvertToggle | InputFlagAutofire)) == (InputFlagInvertToggle | InputFlagAutofire)) {
+                autofireButton->setText(QStringLiteral("Autofire: Toggle"));
+            } else if (flags & InputFlagAutofire) {
+                autofireButton->setText(QStringLiteral("Autofire: On"));
+            } else {
+                autofireButton->setText(QStringLiteral("Autofire"));
+            }
+#else
+            autofireButton->setText(QStringLiteral("Autofire"));
+#endif
+        }
         if (deleteButton) {
             deleteButton->setEnabled(canEdit && !customMappings.isEmpty());
         }
@@ -4029,9 +4046,51 @@ private:
             .arg(widget.mappingIndex);
     }
 
-    QString mappingFor(int deviceIndex, const UnixQtInputTestWidget &widget, const QString &event) const
+    QString mappingFor(int deviceIndex, const UnixQtInputTestWidget &widget, const QString &event, int flags = 0) const
     {
-        return QStringLiteral("%1.0=%2").arg(mappingPrefix(deviceIndex, widget), event);
+        return QStringLiteral("%1.%2=%3").arg(mappingPrefix(deviceIndex, widget)).arg(flags).arg(event);
+    }
+
+    static QString mappingLeft(const QString &mapping)
+    {
+        const int equals = mapping.indexOf(QLatin1Char('='));
+        return equals >= 0 ? mapping.left(equals) : mapping;
+    }
+
+    static QString mappingRight(const QString &mapping)
+    {
+        const int equals = mapping.indexOf(QLatin1Char('='));
+        return equals >= 0 ? mapping.mid(equals + 1) : QString();
+    }
+
+    static int mappingFlags(const QString &left, const QString &prefix)
+    {
+        if (!left.startsWith(prefix + QLatin1Char('.'))) {
+            return 0;
+        }
+        QString suffix = left.mid(prefix.size() + 1);
+        const int dot = suffix.indexOf(QLatin1Char('.'));
+        if (dot >= 0) {
+            suffix = suffix.left(dot);
+        }
+        bool ok = false;
+        const int flags = suffix.toInt(&ok);
+        return ok ? flags : 0;
+    }
+
+    static int toggledAutofireFlags(int flags)
+    {
+        if ((flags & (InputFlagInvertToggle | InputFlagAutofire)) == (InputFlagInvertToggle | InputFlagAutofire)) {
+            flags &= ~(InputFlagInvertToggle | InputFlagAutofire);
+        } else if (flags & InputFlagAutofire) {
+            flags |= InputFlagInvertToggle;
+            flags &= ~InputFlagToggle;
+        } else if (!(flags & (InputFlagInvertToggle | InputFlagAutofire))) {
+            flags |= InputFlagAutofire;
+        } else {
+            flags &= ~(InputFlagInvertToggle | InputFlagAutofire);
+        }
+        return flags;
     }
 
     int removeMappings(const QString &prefix, const QString &event)
@@ -4039,9 +4098,8 @@ private:
         int removed = 0;
         QStringList kept;
         for (const QString &mapping : customMappings) {
-            const int equals = mapping.indexOf(QLatin1Char('='));
-            const QString left = equals >= 0 ? mapping.left(equals) : mapping;
-            const QString right = equals >= 0 ? mapping.mid(equals + 1) : QString();
+            const QString left = mappingLeft(mapping);
+            const QString right = mappingRight(mapping);
             if (left.startsWith(prefix + QLatin1Char('.')) && (event.isEmpty() || right == event)) {
                 removed++;
             } else {
@@ -4050,6 +4108,56 @@ private:
         }
         customMappings = kept;
         return removed;
+    }
+
+    int selectedMappingFlags() const
+    {
+        if (port < 0 || !list->currentItem()) {
+            return 0;
+        }
+        const QString event = addEvent->currentData().toString();
+        if (event.isEmpty()) {
+            return 0;
+        }
+        const int deviceIndex = selectedDeviceIndex();
+        const int widgetIndex = selectedWidgetIndex(deviceIndex);
+        if (deviceIndex < 0 || widgetIndex < 0) {
+            return 0;
+        }
+        const QString prefix = mappingPrefix(deviceIndex, devices[deviceIndex].widgets[widgetIndex]);
+        for (const QString &mapping : customMappings) {
+            if (mappingRight(mapping) == event) {
+                const QString left = mappingLeft(mapping);
+                if (left.startsWith(prefix + QLatin1Char('.'))) {
+                    return mappingFlags(left, prefix);
+                }
+            }
+        }
+        return 0;
+    }
+
+    void toggleSelectedMappingAutofireSdl()
+    {
+        if (port < 0 || !list->currentItem() || remapping) {
+            return;
+        }
+        const QString event = addEvent->currentData().toString();
+        if (event.isEmpty()) {
+            return;
+        }
+        const int deviceIndex = selectedDeviceIndex();
+        const int widgetIndex = selectedWidgetIndex(deviceIndex);
+        if (deviceIndex < 0 || widgetIndex < 0) {
+            return;
+        }
+        const UnixQtInputTestWidget &widget = devices[deviceIndex].widgets[widgetIndex];
+        const QString prefix = mappingPrefix(deviceIndex, widget);
+        const int flags = toggledAutofireFlags(selectedMappingFlags());
+        removeMappings(prefix, event);
+        customMappings.append(mappingFor(deviceIndex, widget, event, flags));
+        changed = true;
+        updateMappingLine();
+        updateActionState();
     }
 
     int nextRemapEventIndex(int start) const
@@ -4091,15 +4199,21 @@ private:
             return false;
         }
         const UnixQtInputTestWidget &widget = device.widgets[widgetIndex];
-        const QString mapping = mappingFor(deviceIndex, widget, event);
-        customMappings.removeAll(mapping);
-        customMappings.append(mapping);
+        removeMappings(mappingPrefix(deviceIndex, widget), event);
+        customMappings.append(mappingFor(deviceIndex, widget, event));
         changed = true;
         updateMappingLine();
         updateActionState();
         return true;
     }
 #endif
+
+    void toggleSelectedMappingAutofire()
+    {
+#ifdef UAE_UNIX_WITH_SDL3
+        toggleSelectedMappingAutofireSdl();
+#endif
+    }
 
     void addSelectedMapping()
     {
