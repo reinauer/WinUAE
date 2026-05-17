@@ -50,6 +50,7 @@ static constexpr int MaxJoyportCustomSlots = 6;
 static constexpr int CustomInputConfigSlots = 3;
 static constexpr int GamePortsInputConfigLine = 4;
 static constexpr int MaxInputSubEventSlots = 8;
+static constexpr int HardwareBoardIndexRole = Qt::UserRole;
 static constexpr int InputMappingKeyRole = Qt::UserRole;
 static constexpr int InputMappingEditableRole = Qt::UserRole + 1;
 static constexpr int InputFlagAutofire = 1;
@@ -2800,6 +2801,27 @@ static QString expansionOptionValue(const QString &options, const QString &name)
     return QString();
 }
 
+static QString expansionOptionsWithValue(const QString &options, const QString &name, const QString &value)
+{
+    QStringList tokens;
+    const QString prefix = name + QLatin1Char('=');
+    bool inserted = false;
+    for (const QString &token : expansionOptionTokens(options)) {
+        if (token.compare(name, Qt::CaseInsensitive) == 0 || token.startsWith(prefix, Qt::CaseInsensitive)) {
+            if (!value.isEmpty() && !inserted) {
+                tokens.append(prefix + value);
+                inserted = true;
+            }
+        } else {
+            tokens.append(token);
+        }
+    }
+    if (!value.isEmpty() && !inserted) {
+        tokens.append(prefix + value);
+    }
+    return tokens.join(QLatin1Char(','));
+}
+
 static QString expansionBoardOptionsValue(const WinUaeQtExpansionBoardState &state)
 {
     QStringList tokens;
@@ -4450,9 +4472,11 @@ public:
     explicit WinUaeQtDialog(
         StartMode mode = StartMode::DetachedProcess,
         QWidget *parent = nullptr,
-        const QString &initialConfigPath = QString())
+        const QString &initialConfigPath = QString(),
+        const WinUaeQtHardwareInfoProvider &hardwareInfoProvider = WinUaeQtHardwareInfoProvider())
         : QDialog(parent),
-          startMode(mode)
+          startMode(mode),
+          hardwareProvider(hardwareInfoProvider)
     {
         setWindowTitle(QStringLiteral("WinUAE Properties"));
         setWindowIcon(resourceIcon(QStringLiteral("winuae.ico")));
@@ -4584,6 +4608,8 @@ public:
 
 private:
     StartMode startMode = StartMode::DetachedProcess;
+    WinUaeQtHardwareInfoProvider hardwareProvider;
+    mutable QStringList hardwareOrderOwnedKeys;
     QTreeWidget *navigation = nullptr;
     QStackedWidget *pageStack = nullptr;
     QLabel *status = nullptr;
@@ -7494,15 +7520,25 @@ private:
         hardwareCustomBoardOrder = new QCheckBox(QStringLiteral("Custom board order"));
         hardwareMoveUp = new QPushButton(QStringLiteral("Move up"));
         hardwareMoveDown = new QPushButton(QStringLiteral("Move down"));
-        disableUnavailable(hardwareMoveUp, QStringLiteral("Hardware board reordering is not connected to the Unix autoconfig model yet."));
-        disableUnavailable(hardwareMoveDown, QStringLiteral("Hardware board reordering is not connected to the Unix autoconfig model yet."));
+        if (!hasHardwareInfoProvider()) {
+            disableUnavailable(hardwareMoveUp, QStringLiteral("Hardware board reordering needs the integrated Unix preferences model."));
+            disableUnavailable(hardwareMoveDown, QStringLiteral("Hardware board reordering needs the integrated Unix preferences model."));
+        }
         actions->addWidget(hardwareCustomBoardOrder);
         actions->addStretch();
         actions->addWidget(hardwareMoveUp);
         actions->addWidget(hardwareMoveDown);
         root->addLayout(actions);
 
-        connect(hardwareCustomBoardOrder, &QCheckBox::toggled, this, [this]() { refreshHardwareInfoPage(); });
+        connect(hardwareCustomBoardOrder, &QCheckBox::toggled, this, [this](bool enabled) {
+            if (hardwareProvider.setCustomOrder) {
+                hardwareProvider.setCustomOrder(hardwareProvider.context, enabled);
+            }
+            refreshHardwareInfoPage();
+        });
+        connect(hardwareBoardList, &QTreeWidget::itemSelectionChanged, this, [this]() { updateHardwareMoveButtons(); });
+        connect(hardwareMoveUp, &QPushButton::clicked, this, [this]() { moveSelectedHardwareBoard(-1); });
+        connect(hardwareMoveDown, &QPushButton::clicked, this, [this]() { moveSelectedHardwareBoard(1); });
         return page;
     }
 
@@ -7537,7 +7573,9 @@ private:
         const QString &start,
         const QString &end,
         const QString &size,
-        const QString &id)
+        const QString &id,
+        int boardIndex = -1,
+        bool movable = false)
     {
         if (!hardwareBoardList) {
             return;
@@ -7549,6 +7587,88 @@ private:
         item->setText(3, end);
         item->setText(4, size);
         item->setText(5, id);
+        item->setData(0, HardwareBoardIndexRole, boardIndex);
+        item->setData(0, Qt::UserRole + 1, movable);
+    }
+
+    bool hasHardwareInfoProvider() const
+    {
+        return hardwareProvider.context && hardwareProvider.boards;
+    }
+
+    bool hardwareCustomOrderEnabled() const
+    {
+        if (hardwareProvider.customOrder && hardwareProvider.context) {
+            return hardwareProvider.customOrder(hardwareProvider.context);
+        }
+        return hardwareCustomBoardOrder && hardwareCustomBoardOrder->isChecked();
+    }
+
+    void updateHardwareMoveButtons()
+    {
+        bool moveUp = false;
+        bool moveDown = false;
+        if (hasHardwareInfoProvider() && hardwareCustomOrderEnabled() && hardwareBoardList && hardwareBoardList->currentItem()) {
+            const int index = hardwareBoardList->currentItem()->data(0, HardwareBoardIndexRole).toInt();
+            if (hardwareProvider.canMove) {
+                moveUp = hardwareProvider.canMove(hardwareProvider.context, index, -1);
+                moveDown = hardwareProvider.canMove(hardwareProvider.context, index, 1);
+            }
+        }
+        if (hardwareMoveUp) {
+            hardwareMoveUp->setEnabled(moveUp);
+        }
+        if (hardwareMoveDown) {
+            hardwareMoveDown->setEnabled(moveDown);
+        }
+    }
+
+    void moveSelectedHardwareBoard(int direction)
+    {
+        if (!hasHardwareInfoProvider() || !hardwareProvider.move || !hardwareBoardList || !hardwareBoardList->currentItem()) {
+            return;
+        }
+        const int index = hardwareBoardList->currentItem()->data(0, HardwareBoardIndexRole).toInt();
+        const int newIndex = hardwareProvider.move(hardwareProvider.context, index, direction);
+        refreshHardwareInfoPage();
+        if (newIndex >= 0) {
+            for (int row = 0; row < hardwareBoardList->topLevelItemCount(); row++) {
+                QTreeWidgetItem *item = hardwareBoardList->topLevelItem(row);
+                if (item && item->data(0, HardwareBoardIndexRole).toInt() == newIndex) {
+                    hardwareBoardList->setCurrentItem(item);
+                    break;
+                }
+            }
+        }
+        updateHardwareMoveButtons();
+    }
+
+    void mergeHardwareOrderSettings(WinUaeQtConfig::Settings &settings) const
+    {
+        if (!hardwareProvider.orderSettings || !hardwareProvider.context) {
+            return;
+        }
+        const WinUaeQtConfig::Settings orders = hardwareProvider.orderSettings(hardwareProvider.context);
+        for (auto it = orders.constBegin(); it != orders.constEnd(); ++it) {
+            if (!hardwareOrderOwnedKeys.contains(it.key())) {
+                hardwareOrderOwnedKeys.append(it.key());
+            }
+            if (it.key() == QStringLiteral("board_custom_order")) {
+                continue;
+            }
+            const QString order = expansionOptionValue(it.value(), QStringLiteral("order"));
+            if (order.isEmpty()) {
+                continue;
+            }
+            settings.insert(it.key(), expansionOptionsWithValue(settings.value(it.key()), QStringLiteral("order"), order));
+        }
+    }
+
+    void trackHardwareOrderSetting(const QString &key, const QString &value)
+    {
+        if (!hardwareOrderOwnedKeys.contains(key) && !expansionOptionValue(value, QStringLiteral("order")).isEmpty()) {
+            hardwareOrderOwnedKeys.append(key);
+        }
     }
 
     void refreshHardwareInfoPage()
@@ -7557,6 +7677,23 @@ private:
             return;
         }
         hardwareBoardList->clear();
+
+        if (hasHardwareInfoProvider()) {
+            if (hardwareCustomBoardOrder) {
+                QSignalBlocker blocker(hardwareCustomBoardOrder);
+                hardwareCustomBoardOrder->setChecked(hardwareCustomOrderEnabled());
+                hardwareCustomBoardOrder->setEnabled(true);
+            }
+            const QVector<WinUaeQtHardwareBoard> boards = hardwareProvider.boards(hardwareProvider.context);
+            for (const WinUaeQtHardwareBoard &board : boards) {
+                addHardwareBoardRow(board.type, board.name, board.start, board.end, board.size, board.id, board.index, board.movable);
+            }
+            for (int i = 0; i < hardwareBoardList->columnCount(); i++) {
+                hardwareBoardList->resizeColumnToContents(i);
+            }
+            updateHardwareMoveButtons();
+            return;
+        }
 
         const quint64 chipBytes = bytesFromMemoryText(chipMem ? chipMem->currentText() : QString());
         if (chipBytes) {
@@ -11298,6 +11435,7 @@ private:
     void resetDefaults()
     {
         loadedConfig = WinUaeQtConfig();
+        hardwareOrderOwnedKeys.clear();
 
         const QString appDirExe = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("winuae_unix"));
         const QString buildDirExe = QDir(QString::fromUtf8(WINUAE_UNIX_BUILD_DIR)).filePath(QStringLiteral("winuae_unix"));
@@ -13148,6 +13286,7 @@ private:
                 settings.insert(key, value);
             }
         }
+        mergeHardwareOrderSettings(settings);
         return settings;
     }
 
@@ -13560,6 +13699,7 @@ private:
             QStringLiteral("tablet_library")
         };
         keys.append(expansionBoardOwnedKeys());
+        keys.append(hardwareOrderOwnedKeys);
         keys.append(inputOwnedMappingKeys);
         return keys;
     }
@@ -13783,6 +13923,7 @@ private:
         clearExpansionBoardStates();
         inputMappingSettings.clear();
         inputOwnedMappingKeys.clear();
+        hardwareOrderOwnedKeys.clear();
         for (const WinUaeQtConfig::Setting &setting : config.orderedSettings()) {
             applySetting(setting.key, setting.value);
         }
@@ -13799,6 +13940,7 @@ private:
 
     void applySetting(const QString &key, const QString &value)
     {
+        trackHardwareOrderSetting(key, value);
         if (winUaeQtIsInputDeviceConfigKey(key)) {
             inputMappingSettings.insert(key, value);
         } else if (key == QStringLiteral("config_description")) {
@@ -14739,11 +14881,17 @@ WinUaeQtLauncherResult runWinUaeQtLauncherForConfig(QApplication &app)
 
 WinUaeQtLauncherResult runWinUaeQtLauncherForConfig(QApplication &app, const QString &initialConfigPath)
 {
+    return runWinUaeQtLauncherForConfig(app, initialConfigPath, WinUaeQtHardwareInfoProvider());
+}
+
+WinUaeQtLauncherResult runWinUaeQtLauncherForConfig(QApplication &app, const QString &initialConfigPath, const WinUaeQtHardwareInfoProvider &hardwareProvider)
+{
     setupApplicationStyle(app);
     WinUaeQtDialog dialog(
         WinUaeQtDialog::StartMode::ReturnConfig,
         nullptr,
-        initialConfigPath.isEmpty() ? initialConfigPathFromArguments(app.arguments()) : initialConfigPath);
+        initialConfigPath.isEmpty() ? initialConfigPathFromArguments(app.arguments()) : initialConfigPath,
+        hardwareProvider);
     if (WinUaeQtApplication *qtApp = dynamic_cast<WinUaeQtApplication *>(&app)) {
         qtApp->setConfigOpenHandler([&dialog](const QString &path) {
             dialog.openConfigFile(path);
@@ -14766,8 +14914,13 @@ WinUaeQtLauncherResult runWinUaeQtLauncherForConfig(int argc, char **argv)
 
 WinUaeQtLauncherResult runWinUaeQtLauncherForConfig(int argc, char **argv, const QString &initialConfigPath)
 {
+    return runWinUaeQtLauncherForConfig(argc, argv, initialConfigPath, WinUaeQtHardwareInfoProvider());
+}
+
+WinUaeQtLauncherResult runWinUaeQtLauncherForConfig(int argc, char **argv, const QString &initialConfigPath, const WinUaeQtHardwareInfoProvider &hardwareProvider)
+{
     WinUaeQtApplication app(argc, argv);
-    return runWinUaeQtLauncherForConfig(app, initialConfigPath);
+    return runWinUaeQtLauncherForConfig(app, initialConfigPath, hardwareProvider);
 }
 
 static QString runtimeDialogDirectory(const QString &initialPath)
