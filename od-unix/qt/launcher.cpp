@@ -39,6 +39,9 @@
 #define WINUAE_UNIX_VERSION_REVISION 0
 #endif
 
+static bool systemPrefersDarkMode();
+static void applyApplicationColors(QApplication &app, bool dark);
+
 static constexpr int FpuInternal = -1;
 static constexpr int MaxMountEntries = 8;
 static constexpr int MaxControllerUnits = 8;
@@ -10133,9 +10136,10 @@ private:
         miscGuiResize = new QCheckBox(QStringLiteral("Resizeable GUI"));
         miscGuiFullscreen = new QCheckBox(QStringLiteral("Fullscreen GUI"));
         miscGuiDarkMode = new QCheckBox(QStringLiteral("Dark mode"));
+        miscGuiDarkMode->setTristate(true);
         disableUnavailable(osdFont, QStringLiteral("OSD font selection is not implemented yet."));
         disableUnavailable(resetLists, QStringLiteral("List customization storage is not implemented in the Unix Qt frontend yet."));
-        disableUnavailable(miscGuiDarkMode, QStringLiteral("The Qt frontend currently uses a Windows-compatible light palette; native dark mode still needs a separate pass."));
+        miscGuiDarkMode->setToolTip(QStringLiteral("Matches Windows: unchecked is light, checked is dark, mixed follows the system appearance."));
 
         QHBoxLayout *fontRow = new QHBoxLayout;
         fontRow->setContentsMargins(0, 0, 0, 0);
@@ -10207,6 +10211,11 @@ private:
         });
         connect(miscGuiResize, &QCheckBox::toggled, this, [this](bool) { applyGuiResizeMode(); });
         connect(miscGuiFullscreen, &QCheckBox::toggled, this, [this](bool checked) { applyGuiFullscreenMode(checked); });
+#if QT_VERSION >= QT_VERSION_CHECK(6, 9, 0)
+        connect(miscGuiDarkMode, &QCheckBox::checkStateChanged, this, [this](Qt::CheckState) { applyGuiDarkModeSelection(); });
+#else
+        connect(miscGuiDarkMode, QOverload<int>::of(&QCheckBox::stateChanged), this, [this](int) { applyGuiDarkModeSelection(); });
+#endif
         return page;
     }
 
@@ -10267,6 +10276,53 @@ private:
             showNormal();
             applyGuiResizeMode();
         }
+    }
+
+    QString guiDarkModeConfigValue() const
+    {
+        if (!miscGuiDarkMode) {
+            return QStringLiteral("system");
+        }
+        switch (miscGuiDarkMode->checkState()) {
+        case Qt::Checked:
+            return QStringLiteral("dark");
+        case Qt::Unchecked:
+            return QStringLiteral("light");
+        case Qt::PartiallyChecked:
+            return QStringLiteral("system");
+        }
+        return QStringLiteral("system");
+    }
+
+    void setGuiDarkModeFromConfig(const QString &value)
+    {
+        if (!miscGuiDarkMode) {
+            return;
+        }
+        const QString normalized = value.trimmed().toLower();
+        QSignalBlocker blocker(miscGuiDarkMode);
+        if (normalized == QStringLiteral("dark") || normalized == QStringLiteral("true") || normalized == QStringLiteral("1")) {
+            miscGuiDarkMode->setCheckState(Qt::Checked);
+        } else if (normalized == QStringLiteral("light") || normalized == QStringLiteral("false") || normalized == QStringLiteral("0")) {
+            miscGuiDarkMode->setCheckState(Qt::Unchecked);
+        } else {
+            miscGuiDarkMode->setCheckState(Qt::PartiallyChecked);
+        }
+        applyGuiDarkModeSelection();
+    }
+
+    void applyGuiDarkModeSelection()
+    {
+        if (!miscGuiDarkMode || !qApp) {
+            return;
+        }
+        bool dark = false;
+        if (miscGuiDarkMode->checkState() == Qt::Checked) {
+            dark = true;
+        } else if (miscGuiDarkMode->checkState() == Qt::PartiallyChecked) {
+            dark = systemPrefersDarkMode();
+        }
+        applyApplicationColors(*qApp, dark);
     }
 
     void applyGuiFont(const QFont &font, const QString &config)
@@ -11874,6 +11930,8 @@ private:
         miscGuiSize->setCurrentText(QStringLiteral("Select..."));
         miscGuiResize->setChecked(true);
         miscGuiFullscreen->setChecked(false);
+        miscGuiDarkMode->setCheckState(Qt::PartiallyChecked);
+        applyGuiDarkModeSelection();
         miscGuiFontConfig.clear();
         applyGuiResizeMode();
         updateLogPathText();
@@ -12935,6 +12993,7 @@ private:
         }
         insertCheckBoxSetting(settings, QStringLiteral("unix.ui.gui_resize"), miscGuiResize);
         insertCheckBoxSetting(settings, QStringLiteral("unix.ui.gui_fullscreen"), miscGuiFullscreen);
+        settings.insert(QStringLiteral("unix.ui.gui_dark_mode"), guiDarkModeConfigValue());
         if (!miscGuiFontConfig.isEmpty()) {
             settings.insert(QStringLiteral("unix.ui.gui_font"), miscGuiFontConfig);
         }
@@ -13430,6 +13489,7 @@ private:
             QStringLiteral("unix.ui.gui_scale"),
             QStringLiteral("unix.ui.gui_resize"),
             QStringLiteral("unix.ui.gui_fullscreen"),
+            QStringLiteral("unix.ui.gui_dark_mode"),
             QStringLiteral("unix.ui.gui_font"),
             QStringLiteral("unix.ui.output_file"),
             QStringLiteral("unix.ui.output_frame_limiter_disabled"),
@@ -14119,6 +14179,8 @@ private:
         } else if (key == QStringLiteral("unix.ui.gui_fullscreen")) {
             miscGuiFullscreen->setChecked(configBoolValue(value));
             applyGuiFullscreenMode(miscGuiFullscreen->isChecked());
+        } else if (key == QStringLiteral("unix.ui.gui_dark_mode")) {
+            setGuiDarkModeFromConfig(value);
         } else if (key == QStringLiteral("unix.ui.gui_font")) {
             applyGuiFontConfig(value);
         } else if (key == QStringLiteral("unix.ui.output_file")) {
@@ -14890,36 +14952,50 @@ private:
     }
 };
 
-static void setupApplicationStyle(QApplication &app)
+static bool systemPrefersDarkMode()
 {
-    if (QStyle *style = QStyleFactory::create(QStringLiteral("Windows"))) {
-        app.setStyle(style);
-    } else if (QStyle *style = QStyleFactory::create(QStringLiteral("Fusion"))) {
-        app.setStyle(style);
-    }
-    QString family = QStringLiteral("MS Sans Serif");
-    const QStringList families = QFontDatabase::families();
-    if (!families.contains(family)) {
-        const QStringList fallbacks = {
-            QStringLiteral("Microsoft Sans Serif"),
-            QStringLiteral("Tahoma"),
-            QStringLiteral("Arial")
-        };
-        for (const QString &candidate : fallbacks) {
-            if (families.contains(candidate)) {
-                family = candidate;
-                break;
-            }
-        }
-        if (!families.contains(family)) {
-            family = app.font().family();
-        }
-    }
-    QFont font(family);
-    font.setPixelSize(12);
-    app.setFont(font);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
+    return QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark;
+#else
+    return false;
+#endif
+}
 
+static void applyApplicationColors(QApplication &app, bool dark)
+{
     QPalette palette;
+    if (dark) {
+        palette.setColor(QPalette::Window, QColor(0x20, 0x20, 0x20));
+        palette.setColor(QPalette::WindowText, QColor(0xf0, 0xf0, 0xf0));
+        palette.setColor(QPalette::Base, QColor(0x12, 0x12, 0x12));
+        palette.setColor(QPalette::AlternateBase, QColor(0x1a, 0x1a, 0x1a));
+        palette.setColor(QPalette::ToolTipBase, QColor(0x2b, 0x2b, 0x2b));
+        palette.setColor(QPalette::ToolTipText, QColor(0xf0, 0xf0, 0xf0));
+        palette.setColor(QPalette::Text, QColor(0xf0, 0xf0, 0xf0));
+        palette.setColor(QPalette::Button, QColor(0x2b, 0x2b, 0x2b));
+        palette.setColor(QPalette::ButtonText, QColor(0xf0, 0xf0, 0xf0));
+        palette.setColor(QPalette::BrightText, Qt::white);
+        palette.setColor(QPalette::Highlight, QColor(0x33, 0x78, 0xd4));
+        palette.setColor(QPalette::HighlightedText, Qt::white);
+        palette.setColor(QPalette::Disabled, QPalette::WindowText, QColor(0x88, 0x88, 0x88));
+        palette.setColor(QPalette::Disabled, QPalette::Text, QColor(0x88, 0x88, 0x88));
+        palette.setColor(QPalette::Disabled, QPalette::ButtonText, QColor(0x88, 0x88, 0x88));
+        app.setPalette(palette);
+        app.setStyleSheet(QStringLiteral(
+            "QDialog, QWidget#page, QStackedWidget#pageStack { background: #202020; color: #f0f0f0; }"
+            "QFrame#outerFrame { border: 1px solid #5a5a5a; background: #202020; }"
+            "QTreeWidget, QListWidget, QTableWidget, QPlainTextEdit { background: #121212; color: #f0f0f0; border: 1px solid #5a5a5a; alternate-background-color: #1a1a1a; }"
+            "QGroupBox { margin-top: 14px; padding: 9px 6px 6px 6px; color: #f0f0f0; }"
+            "QGroupBox::title { subcontrol-origin: margin; left: 8px; padding: 0 3px; font-size: 13px; }"
+            "QPushButton { min-height: 20px; padding: 1px 10px; background: #2b2b2b; color: #f0f0f0; border: 1px solid #6a6a6a; }"
+            "QPushButton:disabled { color: #888888; background: #242424; border-color: #4a4a4a; }"
+            "QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox { min-height: 22px; background: #121212; color: #f0f0f0; border: 1px solid #5a5a5a; }"
+            "QLabel#statusLine { padding-left: 6px; background: #202020; color: #f0f0f0; }"
+            "QWidget:disabled { color: #888888; }"
+        ));
+        return;
+    }
+
     palette.setColor(QPalette::Window, QColor(0xf0, 0xf0, 0xf0));
     palette.setColor(QPalette::WindowText, Qt::black);
     palette.setColor(QPalette::Base, Qt::white);
@@ -14948,6 +15024,37 @@ static void setupApplicationStyle(QApplication &app)
         "QLabel#statusLine { padding-left: 6px; background: #f0f0f0; color: #000000; }"
         "QWidget:disabled { color: #808080; }"
     ));
+}
+
+static void setupApplicationStyle(QApplication &app)
+{
+    if (QStyle *style = QStyleFactory::create(QStringLiteral("Windows"))) {
+        app.setStyle(style);
+    } else if (QStyle *style = QStyleFactory::create(QStringLiteral("Fusion"))) {
+        app.setStyle(style);
+    }
+    QString family = QStringLiteral("MS Sans Serif");
+    const QStringList families = QFontDatabase::families();
+    if (!families.contains(family)) {
+        const QStringList fallbacks = {
+            QStringLiteral("Microsoft Sans Serif"),
+            QStringLiteral("Tahoma"),
+            QStringLiteral("Arial")
+        };
+        for (const QString &candidate : fallbacks) {
+            if (families.contains(candidate)) {
+                family = candidate;
+                break;
+            }
+        }
+        if (!families.contains(family)) {
+            family = app.font().family();
+        }
+    }
+    QFont font(family);
+    font.setPixelSize(12);
+    app.setFont(font);
+    applyApplicationColors(app, systemPrefersDarkMode());
 }
 
 static void armQtSmokeExit(QDialog &dialog, QApplication *app = nullptr)
