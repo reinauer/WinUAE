@@ -274,6 +274,19 @@ To include Zorro III RTG RAM autoconfig in the same smoke path:
 tools/unix-smoke-rtg-z3.sh
 ```
 
+For manual A4091 autoconfig smoke tests, use an A4000/A4000T-style config, disable 24-bit CPU addressing, and provide a real A4091 ROM:
+
+```sh
+/tmp/winuae_cmake_build/winuae_unix \
+  -s use_gui=no \
+  -s kickstart_rom_file=/path/to/A4000.rom \
+  -s a4091_rom_file=/path/to/a4091.rom \
+  -s chipset=aga \
+  -s chipset_compatible=A4000 \
+  -s cpu_model=68030 \
+  -s cpu_24bit_addressing=false
+```
+
 To let the boot continue long enough to verify `uaegfx.card` installation:
 
 ```sh
