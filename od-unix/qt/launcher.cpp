@@ -172,6 +172,119 @@ struct WinUaeQtInputRow {
     bool editable = false;
 };
 
+struct WinUaeQtKeyboardChoice {
+    const char *display;
+    int scancode;
+    const char *defaultEvent;
+};
+
+static const WinUaeQtKeyboardChoice keyboardChoices[] = {
+    { "Escape", 41, "KEY_ESC" },
+    { "F1", 58, "KEY_F1" },
+    { "F2", 59, "KEY_F2" },
+    { "F3", 60, "KEY_F3" },
+    { "F4", 61, "KEY_F4" },
+    { "F5", 62, "KEY_F5" },
+    { "F6", 63, "KEY_F6" },
+    { "F7", 64, "KEY_F7" },
+    { "F8", 65, "KEY_F8" },
+    { "F9", 66, "KEY_F9" },
+    { "F10", 67, "KEY_F10" },
+    { "F11", 68, "" },
+    { "F12", 69, "" },
+    { "1", 30, "KEY_1" },
+    { "2", 31, "KEY_2" },
+    { "3", 32, "KEY_3" },
+    { "4", 33, "KEY_4" },
+    { "5", 34, "KEY_5" },
+    { "6", 35, "KEY_6" },
+    { "7", 36, "KEY_7" },
+    { "8", 37, "KEY_8" },
+    { "9", 38, "KEY_9" },
+    { "0", 39, "KEY_0" },
+    { "Tab", 43, "KEY_TAB" },
+    { "A", 4, "KEY_A" },
+    { "B", 5, "KEY_B" },
+    { "C", 6, "KEY_C" },
+    { "D", 7, "KEY_D" },
+    { "E", 8, "KEY_E" },
+    { "F", 9, "KEY_F" },
+    { "G", 10, "KEY_G" },
+    { "H", 11, "KEY_H" },
+    { "I", 12, "KEY_I" },
+    { "J", 13, "KEY_J" },
+    { "K", 14, "KEY_K" },
+    { "L", 15, "KEY_L" },
+    { "M", 16, "KEY_M" },
+    { "N", 17, "KEY_N" },
+    { "O", 18, "KEY_O" },
+    { "P", 19, "KEY_P" },
+    { "Q", 20, "KEY_Q" },
+    { "R", 21, "KEY_R" },
+    { "S", 22, "KEY_S" },
+    { "T", 23, "KEY_T" },
+    { "U", 24, "KEY_U" },
+    { "V", 25, "KEY_V" },
+    { "W", 26, "KEY_W" },
+    { "X", 27, "KEY_X" },
+    { "Y", 28, "KEY_Y" },
+    { "Z", 29, "KEY_Z" },
+    { "Caps Lock", 57, "KEY_CAPS_LOCK" },
+    { "Numpad 1", 89, "KEY_NP_1" },
+    { "Numpad 2", 90, "KEY_NP_2" },
+    { "Numpad 3", 91, "KEY_NP_3" },
+    { "Numpad 4", 92, "KEY_NP_4" },
+    { "Numpad 5", 93, "KEY_NP_5" },
+    { "Numpad 6", 94, "KEY_NP_6" },
+    { "Numpad 7", 95, "KEY_NP_7" },
+    { "Numpad 8", 96, "KEY_NP_8" },
+    { "Numpad 9", 97, "KEY_NP_9" },
+    { "Numpad 0", 98, "KEY_NP_0" },
+    { "Numpad Period", 99, "KEY_NP_PERIOD" },
+    { "Numpad Plus", 87, "KEY_NP_ADD" },
+    { "Numpad Minus", 86, "KEY_NP_SUB" },
+    { "Numpad Multiply", 85, "KEY_NP_MUL" },
+    { "Numpad Divide", 84, "KEY_NP_DIV" },
+    { "Numpad Enter", 88, "KEY_ENTER" },
+    { "Minus", 45, "KEY_SUB" },
+    { "Equals", 46, "KEY_EQUALS" },
+    { "Backspace", 42, "KEY_BACKSPACE" },
+    { "Return", 40, "KEY_RETURN" },
+    { "Space", 44, "KEY_SPACE" },
+    { "Left Shift", 225, "KEY_SHIFT_LEFT" },
+    { "Left Ctrl", 224, "KEY_CTRL" },
+    { "Left Amiga", 227, "KEY_AMIGA_LEFT" },
+    { "Left Alt", 226, "KEY_ALT_LEFT" },
+    { "Right Alt", 230, "KEY_ALT_RIGHT" },
+    { "Right Amiga", 231, "KEY_AMIGA_RIGHT" },
+    { "Right Ctrl", 228, "KEY_CTRL" },
+    { "Right Shift", 229, "KEY_SHIFT_RIGHT" },
+    { "Cursor Up", 82, "KEY_CURSOR_UP" },
+    { "Cursor Down", 81, "KEY_CURSOR_DOWN" },
+    { "Cursor Left", 80, "KEY_CURSOR_LEFT" },
+    { "Cursor Right", 79, "KEY_CURSOR_RIGHT" },
+    { "Insert", 73, "" },
+    { "Delete", 76, "KEY_DEL" },
+    { "Home", 74, "" },
+    { "End", 77, "" },
+    { "Page Up", 75, "" },
+    { "Page Down", 78, "" },
+    { "Back Quote", 53, "KEY_BACKQUOTE" },
+    { "Left Bracket", 47, "KEY_LEFTBRACKET" },
+    { "Right Bracket", 48, "KEY_RIGHTBRACKET" },
+    { "Semicolon", 51, "KEY_SEMICOLON" },
+    { "Single Quote", 52, "KEY_SINGLEQUOTE" },
+    { "Backslash", 49, "KEY_BACKSLASH" },
+    { "Numbersign", 50, "KEY_NUMBERSIGN" },
+    { "Non-US Backslash", 100, "KEY_BACKSLASH" },
+    { "Comma", 54, "KEY_COMMA" },
+    { "Period", 55, "KEY_PERIOD" },
+    { "Slash", 56, "KEY_DIV" },
+    { "F13", 104, "" },
+    { "F14", 105, "" },
+    { "F15", 106, "" }
+};
+
 struct QuickstartModelChoice {
     const char *display;
     const char *configValue;
@@ -3060,6 +3173,11 @@ static QString winUaeQtInputEventDisplayName(const QString &configName)
     }
     for (const WinUaeQtInputEventChoice &choice : inputEventChoices) {
         if (configName.compare(QString::fromLatin1(choice.config), Qt::CaseInsensitive) == 0) {
+            return QString::fromLatin1(choice.display);
+        }
+    }
+    for (const WinUaeQtKeyboardChoice &choice : keyboardChoices) {
+        if (choice.defaultEvent[0] && configName.compare(QString::fromLatin1(choice.defaultEvent), Qt::CaseInsensitive) == 0) {
             return QString::fromLatin1(choice.display);
         }
     }
@@ -8718,28 +8836,28 @@ private:
                 }
             }
             std::sort(keyboardKeys.begin(), keyboardKeys.end());
+            QStringList generatedKeys;
+            for (const WinUaeQtKeyboardChoice &choice : keyboardChoices) {
+                const QString key = QStringLiteral("input.%1.keyboard.0.button.%2.KEY_%2")
+                    .arg(configLine)
+                    .arg(choice.scancode);
+                generatedKeys.append(key);
+                rows.append({
+                    QString::fromLatin1(choice.display),
+                    key,
+                    true
+                });
+            }
             for (const QString &key : keyboardKeys) {
+                if (generatedKeys.contains(key)) {
+                    continue;
+                }
                 const QStringList parts = key.split(QLatin1Char('.'));
                 rows.append({
                     QStringLiteral("Keyboard %1 %2").arg(parts.value(3), parts.mid(4).join(QLatin1Char(' '))),
                     key,
-                    false
+                    true
                 });
-            }
-            if (rows.isEmpty()) {
-                const QStringList placeholders = {
-                    QStringLiteral("Cursor Up"),
-                    QStringLiteral("Cursor Down"),
-                    QStringLiteral("Cursor Left"),
-                    QStringLiteral("Cursor Right"),
-                    QStringLiteral("Space"),
-                    QStringLiteral("Left Ctrl"),
-                    QStringLiteral("Left Alt"),
-                    QStringLiteral("F11")
-                };
-                for (const QString &placeholder : placeholders) {
-                    rows.append({ placeholder, QString(), false });
-                }
             }
         }
         return rows;
@@ -8763,6 +8881,33 @@ private:
         const QVector<WinUaeQtInputSlot> slotList = inputSlotsForKey(key);
         const int sub = inputSubEvent ? inputSubEvent->currentIndex() : 0;
         return sub >= 0 && sub < slotList.size() ? slotList[sub] : WinUaeQtInputSlot();
+    }
+
+    void insertInputMetadataIfMissing(const QString &key, const QString &value)
+    {
+        if (!inputMappingSettings.contains(key)) {
+            inputMappingSettings.insert(key, value);
+            markInputOwnedKey(key);
+        }
+    }
+
+    void ensureInputDeviceMetadataForMappingKey(const QString &key)
+    {
+        const QStringList parts = key.split(QLatin1Char('.'));
+        if (parts.size() < 5) {
+            return;
+        }
+        const QString prefix = QStringLiteral("input.%1.%2.%3.")
+            .arg(parts.value(1), parts.value(2), parts.value(3));
+        if (parts.value(2) == QStringLiteral("keyboard")) {
+            insertInputMetadataIfMissing(prefix + QStringLiteral("friendlyname"), QStringLiteral("Unix Keyboard"));
+            insertInputMetadataIfMissing(prefix + QStringLiteral("name"), QStringLiteral("unix.keyboard"));
+        } else if (parts.value(2) == QStringLiteral("mouse")) {
+            insertInputMetadataIfMissing(prefix + QStringLiteral("friendlyname"), QStringLiteral("Unix Mouse"));
+            insertInputMetadataIfMissing(prefix + QStringLiteral("name"), QStringLiteral("unix.mouse"));
+        }
+        insertInputMetadataIfMissing(prefix + QStringLiteral("empty"), QStringLiteral("false"));
+        insertInputMetadataIfMissing(prefix + QStringLiteral("disabled"), QStringLiteral("false"));
     }
 
     void setInputSlotForKey(const QString &key, int sub, WinUaeQtInputSlot slot)
@@ -8792,6 +8937,7 @@ private:
         for (const WinUaeQtInputSlot &entry : slotList) {
             formatted.append(winUaeQtFormatInputSlot(entry));
         }
+        ensureInputDeviceMetadataForMappingKey(key);
         inputMappingSettings.insert(key, formatted.join(QLatin1Char(',')));
     }
 
@@ -8838,6 +8984,11 @@ private:
         for (const WinUaeQtInputEventChoice &choice : inputEventChoices) {
             inputAmigaEvent->addItem(QString::fromLatin1(choice.display), QString::fromLatin1(choice.config));
         }
+        for (const WinUaeQtKeyboardChoice &choice : keyboardChoices) {
+            if (choice.defaultEvent[0]) {
+                inputAmigaEvent->addItem(QString::fromLatin1(choice.display), QString::fromLatin1(choice.defaultEvent));
+            }
+        }
         if (!slot.event.isEmpty()) {
             const QString data = slot.custom ? QStringLiteral("__current_custom__") : slot.event;
             const QString text = slot.custom
@@ -8872,7 +9023,7 @@ private:
         const WinUaeQtInputSlot slot = editable ? selectedInputSlotForKey(key) : WinUaeQtInputSlot();
         populateInputEventChoices(slot, editable);
         if (inputDeviceEnabled) {
-            inputDeviceEnabled->setEnabled(!inputGamePortsMode() && selectedInputDeviceType() != QStringLiteral("keyboard"));
+            inputDeviceEnabled->setEnabled(!inputGamePortsMode());
             updateInputDeviceEnabledCheck();
         }
         if (inputRemapButton) {
@@ -8883,13 +9034,13 @@ private:
                 : QStringLiteral("Capture is currently available for joystick/gamepad mappings."));
         }
         if (inputCopyButton) {
-            inputCopyButton->setEnabled(!inputGamePortsMode() && selectedInputDeviceType() != QStringLiteral("keyboard"));
+            inputCopyButton->setEnabled(!inputGamePortsMode());
         }
         if (inputCopyFrom) {
-            inputCopyFrom->setEnabled(!inputGamePortsMode() && selectedInputDeviceType() != QStringLiteral("keyboard"));
+            inputCopyFrom->setEnabled(!inputGamePortsMode());
         }
         if (inputSwapButton) {
-            inputSwapButton->setEnabled(!inputGamePortsMode() && selectedInputDeviceType() != QStringLiteral("keyboard"));
+            inputSwapButton->setEnabled(!inputGamePortsMode());
         }
     }
 
@@ -9008,7 +9159,7 @@ private:
 
     void copyInputMappings()
     {
-        if (inputGamePortsMode() || selectedInputDeviceType() == QStringLiteral("keyboard")) {
+        if (inputGamePortsMode()) {
             return;
         }
         const int dest = selectedInputConfigLine();
@@ -9044,7 +9195,7 @@ private:
 
     void swapInputMappings()
     {
-        if (inputGamePortsMode() || selectedInputDeviceType() == QStringLiteral("keyboard")) {
+        if (inputGamePortsMode()) {
             return;
         }
         const QStringList keys = inputMappingSettings.keys();
@@ -9077,7 +9228,7 @@ private:
 
     void setInputDeviceEnabled(bool enabled)
     {
-        if (inputMappingUpdating || inputGamePortsMode() || selectedInputDeviceType() == QStringLiteral("keyboard")) {
+        if (inputMappingUpdating || inputGamePortsMode()) {
             return;
         }
         const QString key = inputDeviceMetadataKey(QStringLiteral("disabled"));
