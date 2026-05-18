@@ -449,6 +449,7 @@ if(WINUAE_UNIX_WITH_QT_UI OR WINUAE_UNIX_WITH_INTEGRATED_QT_UI)
             od-unix/qt/launcher_bridge.cpp
             od-unix/qt/launcher_backend.cpp
             od-unix/qt/mount_config.cpp
+            od-unix/qt/path_utils.cpp
             od-unix/qt/prefs_adapter.cpp
         )
         target_include_directories(winuae_unix_qt_frontend PRIVATE
@@ -510,6 +511,12 @@ if(WINUAE_UNIX_WITH_QT_UI OR WINUAE_UNIX_WITH_INTEGRATED_QT_UI)
             "${CMAKE_CURRENT_SOURCE_DIR}/include"
         )
         target_link_libraries(winuae_unix_qt_prefs_adapter_test PRIVATE ${WINUAE_UNIX_QT_WIDGETS_TARGET})
+
+        add_executable(winuae_unix_qt_path_utils_test EXCLUDE_FROM_ALL
+            od-unix/qt/path_utils.cpp
+            od-unix/qt/path_utils_test.cpp
+        )
+        target_link_libraries(winuae_unix_qt_path_utils_test PRIVATE ${WINUAE_UNIX_QT_WIDGETS_TARGET})
 
         if(WINUAE_UNIX_WITH_INTEGRATED_QT_UI)
             target_compile_definitions(winuae_core PRIVATE WINUAE_UNIX_WITH_INTEGRATED_QT_UI=1)
