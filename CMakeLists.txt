@@ -264,6 +264,7 @@ set(WINUAE_CORE_SOURCES
     od-unix/path_expand.cpp
     od-unix/parallel.cpp
     od-unix/rtg.cpp
+    od-unix/screenshot.cpp
     od-unix/serial.cpp
     od-unix/sound.cpp
     od-unix/stubs.cpp
