@@ -8511,9 +8511,89 @@ private:
         stateReplayRate->setEditable(true);
         stateReplayBuffers = combo({ QStringLiteral("50"), QStringLiteral("100"), QStringLiteral("500"), QStringLiteral("1000"), QStringLiteral("10000") }, QStringLiteral("100"));
         stateReplayBuffers->setEditable(true);
-        disableUnavailable(statePlay, QStringLiteral("State recording playback is not implemented in the Unix runtime UI yet."));
-        disableUnavailable(stateRecord, QStringLiteral("State recording is not implemented in the Unix runtime UI yet."));
-        disableUnavailable(stateSave, QStringLiteral("State recording export is not implemented in the Unix runtime UI yet."));
+        const bool hasStateRecorder = hardwareProvider.statePlaybackEnabled
+            && hardwareProvider.stateRecordingEnabled
+            && hardwareProvider.canSaveStateRecording
+            && hardwareProvider.setStatePlayback
+            && hardwareProvider.toggleStateRecording
+            && hardwareProvider.saveStateRecording;
+        auto updateStateRecorderControls = [this, statePlay, stateRecord, stateSave, hasStateRecorder]() {
+            if (!hasStateRecorder) {
+                return;
+            }
+            const QSignalBlocker playBlocker(statePlay);
+            const QSignalBlocker recordBlocker(stateRecord);
+            statePlay->setChecked(hardwareProvider.statePlaybackEnabled(hardwareProvider.context));
+            stateRecord->setChecked(hardwareProvider.stateRecordingEnabled(hardwareProvider.context));
+            stateSave->setEnabled(hardwareProvider.canSaveStateRecording(hardwareProvider.context));
+        };
+        if (hasStateRecorder) {
+            connect(statePlay, &QCheckBox::clicked, this, [this, statePlay, updateStateRecorderControls](bool checked) {
+                if (checked) {
+                    const QString selected = QFileDialog::getOpenFileName(
+                        this,
+                        QStringLiteral("Select input recording"),
+                        expandedPathText(unixDefaultDataSubPath(QStringLiteral("Save States"))),
+                        QStringLiteral("Input recordings (*.inp);;All files (*)"));
+                    if (!selected.isEmpty()) {
+                        const QByteArray path = selected.toLocal8Bit();
+                        if (hardwareProvider.setStatePlayback(hardwareProvider.context, true, path.constData())) {
+                            if (status) {
+                                status->setText(QStringLiteral("State recording playback requested."));
+                            }
+                        } else if (status) {
+                            status->setText(QStringLiteral("State recording playback failed."));
+                        }
+                    }
+                } else {
+                    hardwareProvider.setStatePlayback(hardwareProvider.context, false, nullptr);
+                    if (status) {
+                        status->setText(QStringLiteral("State recording playback stopped."));
+                    }
+                }
+                updateStateRecorderControls();
+            });
+            connect(stateRecord, &QCheckBox::clicked, this, [this, updateStateRecorderControls]() {
+                hardwareProvider.toggleStateRecording(hardwareProvider.context);
+                updateStateRecorderControls();
+                if (status) {
+                    status->setText(hardwareProvider.stateRecordingEnabled(hardwareProvider.context)
+                        ? QStringLiteral("State recording enabled.")
+                        : QStringLiteral("State recording disabled."));
+                }
+            });
+            connect(stateSave, &QPushButton::clicked, this, [this, updateStateRecorderControls]() {
+                if (!hardwareProvider.canSaveStateRecording(hardwareProvider.context)) {
+                    if (status) {
+                        status->setText(QStringLiteral("No re-recording is available to save."));
+                    }
+                    updateStateRecorderControls();
+                    return;
+                }
+                const QString selected = QFileDialog::getSaveFileName(
+                    this,
+                    QStringLiteral("Save input recording"),
+                    QDir(expandedPathText(unixDefaultDataSubPath(QStringLiteral("Save States")))).filePath(QStringLiteral("recording.inp")),
+                    QStringLiteral("Input recordings (*.inp);;All files (*)"));
+                if (!selected.isEmpty()) {
+                    QDir().mkpath(QFileInfo(selected).absolutePath());
+                    const QByteArray path = selected.toLocal8Bit();
+                    if (hardwareProvider.saveStateRecording(hardwareProvider.context, path.constData())) {
+                        if (status) {
+                            status->setText(QStringLiteral("State recording saved."));
+                        }
+                    } else if (status) {
+                        status->setText(QStringLiteral("State recording save failed."));
+                    }
+                }
+                updateStateRecorderControls();
+            });
+            updateStateRecorderControls();
+        } else {
+            disableUnavailable(statePlay, QStringLiteral("State recording playback is only available from the integrated runtime UI."));
+            disableUnavailable(stateRecord, QStringLiteral("State recording is only available from the integrated runtime UI."));
+            disableUnavailable(stateSave, QStringLiteral("State recording export is only available from the integrated runtime UI."));
+        }
         QGridLayout *recorder = new QGridLayout;
         recorder->setColumnStretch(4, 1);
         recorder->addWidget(statePlay, 0, 0);
