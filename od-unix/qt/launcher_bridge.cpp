@@ -17,6 +17,7 @@
 #include "options.h"
 #include "memory.h"
 #include "autoconf.h"
+#include "xwin.h"
 #include "zfile.h"
 
 static QString bridgeText(const TCHAR *text)
@@ -153,7 +154,12 @@ static WinUaeQtConfig::Settings bridgeHardwareOrderSettings(void *context)
     return settings;
 }
 
-static WinUaeQtHardwareInfoProvider bridgeHardwareProvider(struct uae_prefs *prefs)
+static void bridgeSaveScreenshot(void *)
+{
+    screenshot(-1, 1, 0);
+}
+
+static WinUaeQtHardwareInfoProvider bridgeHardwareProvider(struct uae_prefs *prefs, bool runtimeActions)
 {
     WinUaeQtHardwareInfoProvider provider;
     provider.context = prefs;
@@ -163,6 +169,9 @@ static WinUaeQtHardwareInfoProvider bridgeHardwareProvider(struct uae_prefs *pre
     provider.canMove = bridgeHardwareCanMove;
     provider.move = bridgeMoveHardwareBoard;
     provider.orderSettings = bridgeHardwareOrderSettings;
+    if (runtimeActions) {
+        provider.saveScreenshot = bridgeSaveScreenshot;
+    }
     return provider;
 }
 
@@ -176,7 +185,7 @@ int runWinUaeQtLauncherForPrefsWithConfig(int argc, char **argv, struct uae_pref
     const QString initialPath = initialConfigPath && initialConfigPath[0]
         ? QString::fromLocal8Bit(initialConfigPath)
         : QString();
-    WinUaeQtLauncherResult result = runWinUaeQtLauncherForConfig(argc, argv, initialPath, bridgeHardwareProvider(prefs));
+    WinUaeQtLauncherResult result = runWinUaeQtLauncherForConfig(argc, argv, initialPath, bridgeHardwareProvider(prefs, !initialPath.isEmpty()));
     if (result.status == WinUaeQtLauncherStatus::StartRequested) {
         if (!applyWinUaeQtConfigToPrefs(result.config, prefs)) {
             fprintf(stderr, "Unix Qt UI failed: no preferences target available\n");
