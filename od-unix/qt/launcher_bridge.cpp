@@ -19,6 +19,9 @@
 #include "autoconf.h"
 #include "xwin.h"
 #include "audio.h"
+#include "inputrecord.h"
+#include "savestate.h"
+#include "newcpu.h"
 #include "zfile.h"
 
 static QString bridgeText(const TCHAR *text)
@@ -174,6 +177,83 @@ static void bridgeSetSampleRipperEnabled(void *, bool enabled)
     audio_sampleripper(-1);
 }
 
+static void bridgeCopyPath(TCHAR *dst, size_t dstSize, const char *path)
+{
+    if (!dst || !dstSize) {
+        return;
+    }
+    if (!path) {
+        path = "";
+    }
+    _tcsncpy(dst, path, dstSize - 1);
+    dst[dstSize - 1] = 0;
+}
+
+static bool bridgeStatePlaybackEnabled(void *)
+{
+    return input_play != 0;
+}
+
+static bool bridgeStateRecordingEnabled(void *)
+{
+    return input_record != 0;
+}
+
+static bool bridgeCanSaveStateRecording(void *)
+{
+    return input_record > INPREC_RECORD_NORMAL;
+}
+
+static bool bridgeSetStatePlayback(void *, bool enabled, const char *path)
+{
+    if (input_record) {
+        inprec_close(true);
+    }
+    if (!enabled) {
+        if (input_play) {
+            inprec_close(true);
+        }
+        return true;
+    }
+    if (!path || !path[0]) {
+        return false;
+    }
+    inprec_close(true);
+    input_play = INPREC_PLAY_NORMAL;
+    bridgeCopyPath(currprefs.inprecfile, sizeof currprefs.inprecfile / sizeof(TCHAR), path);
+    set_special(SPCFLAG_MODE_CHANGE);
+    return true;
+}
+
+static void bridgeToggleStateRecording(void *)
+{
+    if (input_play) {
+        inprec_playtorecord();
+    } else if (input_record) {
+        inprec_close(true);
+    } else {
+        input_record = INPREC_RECORD_START;
+        set_special(SPCFLAG_MODE_CHANGE);
+    }
+}
+
+static bool bridgeSaveStateRecording(void *, const char *path)
+{
+    if (input_record <= INPREC_RECORD_NORMAL || !path || !path[0]) {
+        return false;
+    }
+
+    TCHAR inputPath[MAX_DPATH];
+    TCHAR statePath[MAX_DPATH];
+    bridgeCopyPath(inputPath, sizeof inputPath / sizeof(TCHAR), path);
+    _sntprintf(statePath, sizeof statePath / sizeof(TCHAR), _T("%s.uss"), inputPath);
+    statePath[(sizeof statePath / sizeof(TCHAR)) - 1] = 0;
+
+    inprec_save(inputPath, statePath);
+    statefile_save_recording(statePath);
+    return true;
+}
+
 static WinUaeQtHardwareInfoProvider bridgeHardwareProvider(struct uae_prefs *prefs, bool runtimeActions)
 {
     WinUaeQtHardwareInfoProvider provider;
@@ -188,6 +268,12 @@ static WinUaeQtHardwareInfoProvider bridgeHardwareProvider(struct uae_prefs *pre
     provider.setSampleRipperEnabled = bridgeSetSampleRipperEnabled;
     if (runtimeActions) {
         provider.saveScreenshot = bridgeSaveScreenshot;
+        provider.statePlaybackEnabled = bridgeStatePlaybackEnabled;
+        provider.stateRecordingEnabled = bridgeStateRecordingEnabled;
+        provider.canSaveStateRecording = bridgeCanSaveStateRecording;
+        provider.setStatePlayback = bridgeSetStatePlayback;
+        provider.toggleStateRecording = bridgeToggleStateRecording;
+        provider.saveStateRecording = bridgeSaveStateRecording;
     }
     return provider;
 }

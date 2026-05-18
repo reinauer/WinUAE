@@ -46,6 +46,12 @@ struct WinUaeQtHardwareInfoProvider {
     void (*saveScreenshot)(void *context) = nullptr;
     bool (*sampleRipperEnabled)(void *context) = nullptr;
     void (*setSampleRipperEnabled)(void *context, bool enabled) = nullptr;
+    bool (*statePlaybackEnabled)(void *context) = nullptr;
+    bool (*stateRecordingEnabled)(void *context) = nullptr;
+    bool (*canSaveStateRecording)(void *context) = nullptr;
+    bool (*setStatePlayback)(void *context, bool enabled, const char *path) = nullptr;
+    void (*toggleStateRecording)(void *context) = nullptr;
+    bool (*saveStateRecording)(void *context, const char *path) = nullptr;
 };
 
 int runWinUaeQtLauncher(QApplication &app);
