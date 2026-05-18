@@ -10036,6 +10036,7 @@ private:
         actions->addWidget(pathDefaultType);
         actions->addStretch();
         relativePaths = new QCheckBox(QStringLiteral("Use relative paths"));
+        disableUnavailable(relativePaths, QStringLiteral("Windows-style relative path saving is not implemented in the Unix configuration backend yet."));
         portableMode = new QCheckBox(QStringLiteral("Portable mode"));
         actions->addWidget(relativePaths);
         actions->addWidget(portableMode);
