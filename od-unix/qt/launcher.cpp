@@ -8466,7 +8466,16 @@ private:
         QPushButton *saveScreenshot = new QPushButton(QStringLiteral("Save screenshot"));
         QPushButton *proWizard = new QPushButton(QStringLiteral("Pro Wizard 1.62"));
         QCheckBox *sampleRipper = new QCheckBox(QStringLiteral("Sample ripper"));
-        disableUnavailable(saveScreenshot, QStringLiteral("Runtime screenshot capture is not connected to the Unix Qt frontend yet."));
+        if (hardwareProvider.saveScreenshot) {
+            connect(saveScreenshot, &QPushButton::clicked, this, [this]() {
+                hardwareProvider.saveScreenshot(hardwareProvider.context);
+                if (status) {
+                    status->setText(QStringLiteral("Screenshot requested."));
+                }
+            });
+        } else {
+            disableUnavailable(saveScreenshot, QStringLiteral("Screenshot capture is only available from the integrated runtime UI."));
+        }
         disableUnavailable(proWizard, QStringLiteral("Pro Wizard integration is not connected to the Unix Qt frontend yet."));
         disableUnavailable(sampleRipper, QStringLiteral("Sample ripper integration is not connected to the Unix Qt frontend yet."));
         screenshotOriginalSize = new QCheckBox(QStringLiteral("Take screenshot before filtering"));
