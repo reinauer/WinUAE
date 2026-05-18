@@ -328,12 +328,28 @@ void gui_message(const TCHAR *format, ...)
     va_end(ap);
 }
 
-int gui_message_multibutton(int, const TCHAR *format, ...)
+int gui_message_multibutton(int flags, const TCHAR *format, ...)
 {
+    TCHAR msg[2048];
     va_list ap;
     va_start(ap, format);
-    vfprintf(stderr, format, ap);
-    fputc('\n', stderr);
+    _vsntprintf(msg, sizeof msg / sizeof(TCHAR), format, ap);
+    msg[(sizeof msg / sizeof(TCHAR)) - 1] = 0;
     va_end(ap);
-    return 1;
+
+    const size_t msg_len = _tcslen(msg);
+    write_log("%s", msg);
+    if (msg_len == 0 || msg[msg_len - 1] != '\n') {
+        write_log("\n");
+    }
+
+#ifdef WINUAE_UNIX_WITH_INTEGRATED_QT_UI
+    int exit_code = 0;
+    const int ret = runWinUaeQtMessageBox(unix_gui_argc, unix_gui_argv, flags, msg, &exit_code);
+    if (exit_code == 0) {
+        return ret;
+    }
+#endif
+
+    return flags == 0 ? 0 : 1;
 }

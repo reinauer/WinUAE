@@ -15602,3 +15602,65 @@ WinUaeQtRuntimeFileDialogResult runWinUaeQtRuntimeFileDialog(int argc, char **ar
     WinUaeQtApplication app(argc, argv);
     return runWinUaeQtRuntimeFileDialog(app, shortcut, initialPath);
 }
+
+static int showMessageBox(int flags, const QString &message)
+{
+    QWidget *parent = QApplication::activeModalWidget();
+    if (!parent) {
+        parent = QApplication::activeWindow();
+    }
+
+    QMessageBox box(QMessageBox::Warning, QStringLiteral("WinUAE"), message, QMessageBox::NoButton, parent);
+    box.setWindowModality(Qt::ApplicationModal);
+
+    QPushButton *okButton = nullptr;
+    QPushButton *yesButton = nullptr;
+    QPushButton *noButton = nullptr;
+    QPushButton *cancelButton = nullptr;
+    if (flags == 0) {
+        okButton = box.addButton(QMessageBox::Ok);
+        box.setDefaultButton(okButton);
+    } else {
+        yesButton = box.addButton(QMessageBox::Yes);
+        noButton = box.addButton(QMessageBox::No);
+        box.setDefaultButton(yesButton);
+        if (flags == 2) {
+            cancelButton = box.addButton(QMessageBox::Cancel);
+            box.setEscapeButton(cancelButton);
+        } else {
+            box.setEscapeButton(noButton);
+        }
+    }
+
+    box.exec();
+    QAbstractButton *clicked = box.clickedButton();
+    if (clicked == okButton) {
+        return 0;
+    }
+    if (clicked == yesButton) {
+        return 1;
+    }
+    if (clicked == noButton) {
+        return 2;
+    }
+    if (clicked == cancelButton) {
+        return -1;
+    }
+    return 0;
+}
+
+int runWinUaeQtMessageBox(QApplication &app, int flags, const QString &message)
+{
+    setupApplicationStyle(app);
+    return showMessageBox(flags, message);
+}
+
+int runWinUaeQtMessageBox(int argc, char **argv, int flags, const QString &message)
+{
+    if (QApplication *app = qobject_cast<QApplication *>(QApplication::instance())) {
+        return runWinUaeQtMessageBox(*app, flags, message);
+    }
+
+    WinUaeQtApplication app(argc, argv);
+    return runWinUaeQtMessageBox(app, flags, message);
+}
