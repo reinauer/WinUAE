@@ -8476,7 +8476,16 @@ private:
         } else {
             disableUnavailable(saveScreenshot, QStringLiteral("Screenshot capture is only available from the integrated runtime UI."));
         }
-        disableUnavailable(proWizard, QStringLiteral("Pro Wizard integration is not connected to the Unix Qt frontend yet."));
+        if (hardwareProvider.runProWizard) {
+            connect(proWizard, &QPushButton::clicked, this, [this]() {
+                hardwareProvider.runProWizard(hardwareProvider.context);
+                if (status) {
+                    status->setText(QStringLiteral("Pro Wizard scan finished."));
+                }
+            });
+        } else {
+            disableUnavailable(proWizard, QStringLiteral("Pro Wizard is only available from the integrated runtime UI when Unix is built with Pro-Wizard support."));
+        }
         if (hardwareProvider.sampleRipperEnabled && hardwareProvider.setSampleRipperEnabled) {
             sampleRipper->setChecked(hardwareProvider.sampleRipperEnabled(hardwareProvider.context));
             connect(sampleRipper, &QCheckBox::toggled, this, [this](bool enabled) {

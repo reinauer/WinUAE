@@ -23,6 +23,9 @@
 #include "savestate.h"
 #include "newcpu.h"
 #include "zfile.h"
+#ifdef PROWIZARD
+#include "moduleripper.h"
+#endif
 
 static QString bridgeText(const TCHAR *text)
 {
@@ -254,6 +257,13 @@ static bool bridgeSaveStateRecording(void *, const char *path)
     return true;
 }
 
+#ifdef PROWIZARD
+static void bridgeRunProWizard(void *)
+{
+    moduleripper();
+}
+#endif
+
 static WinUaeQtHardwareInfoProvider bridgeHardwareProvider(struct uae_prefs *prefs, bool runtimeActions)
 {
     WinUaeQtHardwareInfoProvider provider;
@@ -274,6 +284,9 @@ static WinUaeQtHardwareInfoProvider bridgeHardwareProvider(struct uae_prefs *pre
         provider.setStatePlayback = bridgeSetStatePlayback;
         provider.toggleStateRecording = bridgeToggleStateRecording;
         provider.saveStateRecording = bridgeSaveStateRecording;
+#ifdef PROWIZARD
+        provider.runProWizard = bridgeRunProWizard;
+#endif
     }
     return provider;
 }
