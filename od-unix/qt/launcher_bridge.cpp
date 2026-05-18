@@ -18,6 +18,7 @@
 #include "memory.h"
 #include "autoconf.h"
 #include "xwin.h"
+#include "audio.h"
 #include "zfile.h"
 
 static QString bridgeText(const TCHAR *text)
@@ -159,6 +160,20 @@ static void bridgeSaveScreenshot(void *)
     screenshot(-1, 1, 0);
 }
 
+static bool bridgeSampleRipperEnabled(void *)
+{
+    return sampleripper_enabled != 0;
+}
+
+static void bridgeSetSampleRipperEnabled(void *, bool enabled)
+{
+    if ((sampleripper_enabled != 0) == enabled) {
+        return;
+    }
+    sampleripper_enabled = enabled ? 1 : 0;
+    audio_sampleripper(-1);
+}
+
 static WinUaeQtHardwareInfoProvider bridgeHardwareProvider(struct uae_prefs *prefs, bool runtimeActions)
 {
     WinUaeQtHardwareInfoProvider provider;
@@ -169,6 +184,8 @@ static WinUaeQtHardwareInfoProvider bridgeHardwareProvider(struct uae_prefs *pre
     provider.canMove = bridgeHardwareCanMove;
     provider.move = bridgeMoveHardwareBoard;
     provider.orderSettings = bridgeHardwareOrderSettings;
+    provider.sampleRipperEnabled = bridgeSampleRipperEnabled;
+    provider.setSampleRipperEnabled = bridgeSetSampleRipperEnabled;
     if (runtimeActions) {
         provider.saveScreenshot = bridgeSaveScreenshot;
     }

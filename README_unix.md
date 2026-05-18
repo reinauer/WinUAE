@@ -11,6 +11,7 @@ This is an early macOS/Linux port of the WinUAE source tree. The current Unix bu
 - Qt Widgets provides an initial Windows-style configuration UI. When Qt is available, it is integrated into `winuae_unix` and the standalone `winuae_unix_qt` launcher is also built.
 - Host clipboard text paste is available through the same paste input event as Windows. The `clipboard_sharing` option has a first native text clipboard-device backend; image clipboard sharing is still incomplete.
 - Floppy drive click sound config and sample loading are present, but audible click output still needs follow-up.
+- The integrated Qt Output page can toggle the core Sample ripper; ripped WAV files use the configured Rips path. The standalone launcher keeps this runtime action disabled.
 - Native Unix serial support is available for POSIX serial devices and TCP listener endpoints.
 - A2065 Ethernet can use the built-in SLIRP user-mode NAT backend.
 - UAE Zorro II/Zorro III RTG RAM can be configured and autoconfigured, with an initial Unix `uaegfx.card` install path; guest Picasso96 monitor-driver testing and accelerated RTG operations are still incomplete.
