@@ -290,9 +290,35 @@ void gui_display(int shortcut)
 }
 void gui_gameport_button_change(int, int, int) {}
 void gui_gameport_axis_change(int, int, int, int) {}
-void notify_user(int msg) { write_log("notify_user: %d\n", msg); }
+void notify_user(int msg)
+{
+    switch (msg) {
+        case NUMSG_MODRIP_NOTFOUND:
+            write_log("No music modules or packed data found.\n");
+            break;
+        case NUMSG_MODRIP_FINISHED:
+            write_log("Module ripper scan finished.\n");
+            break;
+        default:
+            write_log("notify_user: %d\n", msg);
+            break;
+    }
+}
 void notify_user_parms(int msg, const TCHAR*, ...) { write_log("notify_user: %d\n", msg); }
-int translate_message(int, TCHAR *out) { if (out) out[0] = 0; return 0; }
+int translate_message(int msg, TCHAR *out)
+{
+    if (!out) {
+        return 0;
+    }
+    switch (msg) {
+        case NUMSG_MODRIP_SAVE:
+            _tcscpy(out, _T("Module/packed data found\n%s\nStart address %08.8X, Size %d bytes\n'%s'\nWould you like to save it?"));
+            return 1;
+        default:
+            out[0] = 0;
+            return 0;
+    }
+}
 void gui_message(const TCHAR *format, ...)
 {
     va_list ap;
@@ -300,4 +326,14 @@ void gui_message(const TCHAR *format, ...)
     vfprintf(stderr, format, ap);
     fputc('\n', stderr);
     va_end(ap);
+}
+
+int gui_message_multibutton(int, const TCHAR *format, ...)
+{
+    va_list ap;
+    va_start(ap, format);
+    vfprintf(stderr, format, ap);
+    fputc('\n', stderr);
+    va_end(ap);
+    return 1;
 }
