@@ -52,6 +52,7 @@ struct WinUaeQtHardwareInfoProvider {
     bool (*setStatePlayback)(void *context, bool enabled, const char *path) = nullptr;
     void (*toggleStateRecording)(void *context) = nullptr;
     bool (*saveStateRecording)(void *context, const char *path) = nullptr;
+    void (*runProWizard)(void *context) = nullptr;
 };
 
 int runWinUaeQtLauncher(QApplication &app);

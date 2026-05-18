@@ -16,6 +16,7 @@ option(WINUAE_UNIX_BUILD_EXECUTABLE "Link the initial Unix command-line executab
 option(WINUAE_UNIX_WITH_SDL3 "Build the Unix SDL3 video/audio backend" ON)
 option(WINUAE_UNIX_WITH_SLIRP "Build built-in SLIRP user-mode networking and A2065 Ethernet support" ON)
 option(WINUAE_UNIX_WITH_NCR_SCSI "Build NCR/NCR9x SCSI controller emulation" ON)
+option(WINUAE_UNIX_WITH_PROWIZARD "Build Pro-Wizard module ripper support" ON)
 option(WINUAE_UNIX_WITH_QT_UI "Build the optional Unix Qt launcher/config UI" ON)
 option(WINUAE_UNIX_WITH_INTEGRATED_QT_UI "Allow winuae_unix to host the Unix Qt frontend" ON)
 
@@ -103,6 +104,129 @@ if(WINUAE_UNIX_WITH_NCR_SCSI)
         qemuvga/lsi53c710.cpp
         qemuvga/lsi53c895a.cpp
         qemuvga/qemuuaeglue.cpp
+    )
+endif()
+
+if(WINUAE_UNIX_WITH_PROWIZARD)
+    target_compile_definitions(winuae_core PRIVATE PROWIZARD=1)
+    target_include_directories(winuae_core PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/prowizard/include"
+    )
+    list(APPEND WINUAE_UNIX_EXTRA_SOURCES
+        moduleripper.cpp
+        prowizard/misc/misc.c
+        prowizard/prowiz.c
+        prowizard/misc/testbag.c
+        prowizard/rippers/AC1D_packer.c
+        prowizard/rippers/AMOS-MusicBank.c
+        prowizard/rippers/AMOS-PowerPackerBank.c
+        prowizard/rippers/BP-Soundmonitor.c
+        prowizard/rippers/BSI-FutureComposer.c
+        prowizard/rippers/Bytekiller.c
+        prowizard/rippers/ChipTracker.c
+        prowizard/rippers/Crunchmania-Address.c
+        prowizard/rippers/Crunchmania-Simple.c
+        prowizard/rippers/datacrunchers.c
+        prowizard/rippers/DefjamCruncher32-pro.c
+        prowizard/rippers/DigiBooster17.c
+        prowizard/rippers/DigitalIllusion.c
+        prowizard/rippers/DoubleAction.c
+        prowizard/rippers/Dragpack100.c
+        prowizard/rippers/Dragpack252.c
+        prowizard/rippers/EurekaPacker.c
+        prowizard/rippers/FastTracker2.c
+        prowizard/rippers/FC-M-Packer.c
+        prowizard/rippers/FuchsTracker.c
+        prowizard/rippers/FutureComposer13.c
+        prowizard/rippers/FutureComposer14.c
+        prowizard/rippers/FuzzacPacker.c
+        prowizard/rippers/GMC.c
+        prowizard/rippers/GNUPacker12.c
+        prowizard/rippers/GnuPlayer.c
+        prowizard/rippers/GPMO.c
+        prowizard/rippers/HeatseekerMC10.c
+        prowizard/rippers/HornetPacker.c
+        prowizard/rippers/HQC2.c
+        prowizard/rippers/JamCracker.c
+        prowizard/rippers/KefrensSoundMachine.c
+        prowizard/rippers/MasterCruncher30-Address.c
+        prowizard/rippers/MaxPacker12.c
+        prowizard/rippers/MED-Octamed.c
+        prowizard/rippers/MegaCruncher-Object.c
+        prowizard/rippers/MegaCruncher.c
+        prowizard/rippers/MOD-compatible.c
+        prowizard/rippers/ModuleProtector.c
+        prowizard/rippers/Mugician.c
+        prowizard/rippers/Newtron.c
+        prowizard/rippers/NewtronOld.c
+        prowizard/rippers/NoiseFromHeaven.c
+        prowizard/rippers/NoisePacker1.c
+        prowizard/rippers/NoisePacker2.c
+        prowizard/rippers/NoiseRunner.c
+        prowizard/rippers/NovoTrade.c
+        prowizard/rippers/NP3.c
+        prowizard/rippers/PhaPacker.c
+        prowizard/rippers/PolkaPacker.c
+        prowizard/rippers/PowerMusic.c
+        prowizard/rippers/PowerPacker23.c
+        prowizard/rippers/PowerPacker30.c
+        prowizard/rippers/PowerPacker40-library.c
+        prowizard/rippers/PowerPacker40.c
+        prowizard/rippers/Promizer01.c
+        prowizard/rippers/Promizer10c.c
+        prowizard/rippers/Promizer18a.c
+        prowizard/rippers/Promizer20.c
+        prowizard/rippers/Promizer40.c
+        prowizard/rippers/ProPacker10.c
+        prowizard/rippers/ProPacker21.c
+        prowizard/rippers/ProPacker30.c
+        prowizard/rippers/Prorunner10.c
+        prowizard/rippers/Prorunner20.c
+        prowizard/rippers/QuadraComposer.c
+        prowizard/rippers/RelokIt10.c
+        prowizard/rippers/SGT-Packer.c
+        prowizard/rippers/skizzo.c
+        prowizard/rippers/SkytPacker.c
+        prowizard/rippers/SoundFX.c
+        prowizard/rippers/SoundTracker.c
+        prowizard/rippers/SoundTracker26.c
+        prowizard/rippers/SpikeCruncher.c
+        prowizard/rippers/StartrekkerPack.c
+        prowizard/rippers/StimPacker.c
+        prowizard/rippers/StoneArtsPlayer.c
+        prowizard/rippers/StoneCracker270.c
+        prowizard/rippers/StoneCracker299.c
+        prowizard/rippers/StoneCracker299b.c
+        prowizard/rippers/StoneCracker299d.c
+        prowizard/rippers/StoneCracker300.c
+        prowizard/rippers/StoneCracker310.c
+        prowizard/rippers/SuperCruncher27.c
+        prowizard/rippers/SyncroPacker46.c
+        prowizard/rippers/TetraPack102.c
+        prowizard/rippers/TetraPack21.c
+        prowizard/rippers/TetraPack22.c
+        prowizard/rippers/TheDarkDemon.c
+        prowizard/rippers/ThePlayer22a.c
+        prowizard/rippers/ThePlayer30a.c
+        prowizard/rippers/ThePlayer40.c
+        prowizard/rippers/ThePlayer41a.c
+        prowizard/rippers/ThePlayer50a.c
+        prowizard/rippers/ThePlayer60a.c
+        prowizard/rippers/ThePlayer61a.c
+        prowizard/rippers/TimeCruncher17.c
+        prowizard/rippers/TitanicsPlayer.c
+        prowizard/rippers/TMK.c
+        prowizard/rippers/TNMCruncher.c
+        prowizard/rippers/TrackerPacker1.c
+        prowizard/rippers/TrackerPacker2.c
+        prowizard/rippers/TrackerPacker3.c
+        prowizard/rippers/TryItCruncher101.c
+        prowizard/rippers/TurboSqueezer61.c
+        prowizard/rippers/UnicTracker.c
+        prowizard/rippers/UnicTracker2.c
+        prowizard/rippers/WantonPacker.c
+        prowizard/rippers/XannPlayer.c
+        prowizard/rippers/ZenPacker.c
     )
 endif()
 
