@@ -14,6 +14,7 @@ This is an early macOS/Linux port of the WinUAE source tree. The current Unix bu
 - The integrated Qt Output page can toggle the core Sample ripper; ripped WAV files use the configured Rips path. The standalone launcher keeps this runtime action disabled.
 - The integrated Qt Output page can run Pro Wizard when the default `WINUAE_UNIX_WITH_PROWIZARD` build option is enabled. The current Unix prompt fallback logs ripper prompts and auto-accepts saves.
 - When opened during emulation, the integrated Qt Output page can play, start/stop, and save core input re-recordings. The standalone launcher keeps these runtime actions disabled.
+- The Qt Paths page now writes real Unix target path settings for configuration files, NVRAM, screenshots, videos, save images, rips, data, and ROMs, so runtime helpers use the configured directories. Older `unix.ui.*` path keys are still read for compatibility.
 - Native Unix serial support is available for POSIX serial devices and TCP listener endpoints.
 - A2065 Ethernet can use the built-in SLIRP user-mode NAT backend.
 - UAE Zorro II/Zorro III RTG RAM can be configured and autoconfigured, with an initial Unix `uaegfx.card` install path; guest Picasso96 monitor-driver testing and accelerated RTG operations are still incomplete.
@@ -206,7 +207,7 @@ When the integrated Qt UI is built, `winuae_unix` opens the configuration UI by 
 
 The executable also tries to load `~/default.uae` by default. A missing default config is ignored silently; explicit `-config` / `-f` load failures are still reported.
 
-Unix path expansion is supported for `~/`, `$VAR`, and `${VAR}` in core config paths and Qt file/config boundaries. `~user` expansion is not implemented; use an absolute path for another user's home directory.
+Unix path expansion is supported for `~/`, `$VAR`, and `${VAR}` in core config paths and Qt file/config boundaries. The Qt Paths page saves runtime-visible target path settings such as `unix.screenshot_path`, `unix.rip_path`, `unix.video_path`, and `statefile_path`; legacy `unix.ui.*` path settings are still accepted when loading older configs. `~user` expansion is not implemented; use an absolute path for another user's home directory.
 
 There is also a minimal example config at:
 
