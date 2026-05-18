@@ -289,7 +289,6 @@ void getgfxoffset(int, float *dxp, float *dyp, float *mxp, float *myp)
 
 float target_getcurrentvblankrate(int) { return 60.0f; }
 int debuggable(void) { return 0; }
-void screenshot(int, int, int) {}
 
 void refreshtitle(void)
 {
