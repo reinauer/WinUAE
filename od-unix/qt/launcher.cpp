@@ -13345,14 +13345,14 @@ private:
         if (romsPath && !romsPath->text().trimmed().isEmpty()) {
             settings.insert(QStringLiteral("unix.rom_path"), romsPath->text().trimmed());
         }
-        insertLineEditSetting(settings, QStringLiteral("unix.ui.config_path"), configsPath);
-        insertLineEditSetting(settings, QStringLiteral("unix.ui.nvram_path"), nvramPath);
-        insertLineEditSetting(settings, QStringLiteral("unix.ui.screenshot_path"), screenshotsPath);
+        insertLineEditSetting(settings, QStringLiteral("unix.config_path"), configsPath);
+        insertLineEditSetting(settings, QStringLiteral("unix.nvram_path"), nvramPath);
+        insertLineEditSetting(settings, QStringLiteral("unix.screenshot_path"), screenshotsPath);
         insertLineEditSetting(settings, QStringLiteral("statefile_path"), stateFilesPath);
-        insertLineEditSetting(settings, QStringLiteral("unix.ui.video_path"), videosPath);
-        insertLineEditSetting(settings, QStringLiteral("unix.ui.saveimage_path"), saveImagesPath);
-        insertLineEditSetting(settings, QStringLiteral("unix.ui.rip_path"), ripsPath);
-        insertLineEditSetting(settings, QStringLiteral("unix.ui.data_path"), dataPath);
+        insertLineEditSetting(settings, QStringLiteral("unix.video_path"), videosPath);
+        insertLineEditSetting(settings, QStringLiteral("unix.saveimage_path"), saveImagesPath);
+        insertLineEditSetting(settings, QStringLiteral("unix.rip_path"), ripsPath);
+        insertLineEditSetting(settings, QStringLiteral("unix.data_path"), dataPath);
         if (pathDefaultType) {
             settings.insert(QStringLiteral("unix.ui.path_mode"), pathDefaultType->currentText());
         }
@@ -13844,13 +13844,21 @@ private:
             QStringLiteral("config_description"),
             QStringLiteral("quickstart"),
             QStringLiteral("unix.rom_path"),
+            QStringLiteral("unix.config_path"),
             QStringLiteral("unix.ui.config_path"),
+            QStringLiteral("unix.nvram_path"),
             QStringLiteral("unix.ui.nvram_path"),
+            QStringLiteral("unix.screenshot_path"),
             QStringLiteral("unix.ui.screenshot_path"),
             QStringLiteral("statefile_path"),
+            QStringLiteral("unix.video_path"),
             QStringLiteral("unix.ui.video_path"),
+            QStringLiteral("unix.saveimage_path"),
             QStringLiteral("unix.ui.saveimage_path"),
+            QStringLiteral("unix.rip_path"),
+            QStringLiteral("unix.ripper_path"),
             QStringLiteral("unix.ui.rip_path"),
+            QStringLiteral("unix.data_path"),
             QStringLiteral("unix.ui.data_path"),
             QStringLiteral("unix.ui.path_mode"),
             QStringLiteral("unix.ui.recursive_roms"),
@@ -14518,21 +14526,21 @@ private:
             }
         } else if (key == QStringLiteral("unix.rom_path") || key == QStringLiteral("rom_path")) {
             romsPath->setText(value);
-        } else if (key == QStringLiteral("unix.ui.config_path")) {
+        } else if (key == QStringLiteral("unix.config_path") || key == QStringLiteral("unix.ui.config_path")) {
             configsPath->setText(value);
-        } else if (key == QStringLiteral("unix.ui.nvram_path")) {
+        } else if (key == QStringLiteral("unix.nvram_path") || key == QStringLiteral("unix.ui.nvram_path")) {
             nvramPath->setText(value);
-        } else if (key == QStringLiteral("unix.ui.screenshot_path")) {
+        } else if (key == QStringLiteral("unix.screenshot_path") || key == QStringLiteral("unix.ui.screenshot_path")) {
             screenshotsPath->setText(value);
         } else if (key == QStringLiteral("statefile_path")) {
             stateFilesPath->setText(value);
-        } else if (key == QStringLiteral("unix.ui.video_path")) {
+        } else if (key == QStringLiteral("unix.video_path") || key == QStringLiteral("unix.ui.video_path")) {
             videosPath->setText(value);
-        } else if (key == QStringLiteral("unix.ui.saveimage_path")) {
+        } else if (key == QStringLiteral("unix.saveimage_path") || key == QStringLiteral("unix.ui.saveimage_path")) {
             saveImagesPath->setText(value);
-        } else if (key == QStringLiteral("unix.ui.rip_path")) {
+        } else if (key == QStringLiteral("unix.rip_path") || key == QStringLiteral("unix.ripper_path") || key == QStringLiteral("unix.ui.rip_path")) {
             ripsPath->setText(value);
-        } else if (key == QStringLiteral("unix.ui.data_path")) {
+        } else if (key == QStringLiteral("unix.data_path") || key == QStringLiteral("unix.ui.data_path")) {
             dataPath->setText(value);
         } else if (key == QStringLiteral("unix.ui.path_mode")) {
             pathDefaultType->setCurrentText(value);

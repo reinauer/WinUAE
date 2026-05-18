@@ -128,6 +128,7 @@ int main()
     edited.insert(QStringLiteral("cpu_model"), QStringLiteral("68020"));
     edited.insert(QStringLiteral("unix.serial_port"), QStringLiteral("TCP://0.0.0.0:1234"));
     edited.insert(QStringLiteral("unix.ui.config_path"), QStringLiteral("/configs"));
+    edited.insert(QStringLiteral("unix.screenshot_path"), QStringLiteral("/screenshots"));
     config.applySettings(edited, {
         QStringLiteral("kickstart_rom_file"),
         QStringLiteral("kickstart_ext_rom_file"),
@@ -135,7 +136,8 @@ int main()
         QStringLiteral("cpu_model"),
         QStringLiteral("serial_port"),
         QStringLiteral("unix.serial_port"),
-        QStringLiteral("unix.ui.config_path")
+        QStringLiteral("unix.ui.config_path"),
+        QStringLiteral("unix.screenshot_path")
     });
     config.applyRepeatedSettings({
         { QStringLiteral("filesystem2"), QStringLiteral("rw,DH0:System:/new/System,0") },
@@ -163,6 +165,7 @@ int main()
     ok = requireContains(output, QStringLiteral("cpu_model=68020\n")) && ok;
     ok = requireContains(output, QStringLiteral("unix.serial_port=TCP://0.0.0.0:1234\n")) && ok;
     ok = requireContains(output, QStringLiteral("unix.ui.config_path=/configs\n")) && ok;
+    ok = requireContains(output, QStringLiteral("unix.screenshot_path=/screenshots\n")) && ok;
     ok = requireContains(output, QStringLiteral("filesystem2=rw,DH0:System:/new/System,0\n")) && ok;
     ok = requireContains(output, QStringLiteral("filesystem2=ro,DH1:Work:\"/new/Work,Disk\",5\n")) && ok;
     ok = requireCount(output, QStringLiteral("filesystem2="), 2) && ok;
@@ -178,6 +181,7 @@ int main()
     ok = args.contains(QStringLiteral("kickstart_rom_file=/new.rom")) && ok;
     ok = args.contains(QStringLiteral("unix.serial_port=TCP://0.0.0.0:1234")) && ok;
     ok = !args.contains(QStringLiteral("unix.ui.config_path=/configs")) && ok;
+    ok = args.contains(QStringLiteral("unix.screenshot_path=/screenshots")) && ok;
     ok = args.contains(QStringLiteral("filesystem2=rw,DH0:System:/new/System,0")) && ok;
     ok = args.contains(QStringLiteral("filesystem2=ro,DH1:Work:\"/new/Work,Disk\",5")) && ok;
     ok = requireArgBefore(args, QStringLiteral("filesystem2=rw,DH0:System:/new/System,0"), QStringLiteral("filesystem2=ro,DH1:Work:\"/new/Work,Disk\",5")) && ok;

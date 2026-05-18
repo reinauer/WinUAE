@@ -11,6 +11,7 @@
 
 #include "options.h"
 #include "path_expand.h"
+#include "savestate.h"
 #include "sound_unix.h"
 #include "uae/string.h"
 #include "uae.h"
@@ -20,6 +21,15 @@ TCHAR start_path_data[MAX_DPATH];
 TCHAR start_path_data_exe[MAX_DPATH];
 TCHAR start_path_plugins[MAX_DPATH];
 int saveimageoriginalpath;
+
+static TCHAR path_configuration[MAX_DPATH];
+static TCHAR path_nvram[MAX_DPATH];
+static TCHAR path_screenshot[MAX_DPATH];
+static TCHAR path_video[MAX_DPATH];
+static TCHAR path_saveimage[MAX_DPATH];
+static TCHAR path_ripper[MAX_DPATH];
+static TCHAR path_data[MAX_DPATH];
+static TCHAR path_rom[MAX_DPATH];
 
 static std::string trim_copy(const std::string &s)
 {
@@ -32,6 +42,20 @@ static std::string trim_copy(const std::string &s)
         last--;
     }
     return s.substr(first, last - first);
+}
+
+static bool parse_path_option(const TCHAR *option, const TCHAR *value, const TCHAR *name, TCHAR *out, int out_size)
+{
+    if (_tcsicmp(option, name)) {
+        return false;
+    }
+    if (!value || !value[0]) {
+        out[0] = 0;
+        return true;
+    }
+    target_expand_environment(value, out, out_size);
+    fixtrailing(out);
+    return true;
 }
 
 static std::string lowercase_copy(std::string s)
@@ -471,6 +495,24 @@ int target_parse_option(struct uae_prefs *p, const TCHAR *option, const TCHAR *v
         }
         return 1;
     }
+    if (parse_path_option(option, value, _T("config_path"), path_configuration, sizeof path_configuration / sizeof(TCHAR))
+        || parse_path_option(option, value, _T("ui.config_path"), path_configuration, sizeof path_configuration / sizeof(TCHAR))
+        || parse_path_option(option, value, _T("nvram_path"), path_nvram, sizeof path_nvram / sizeof(TCHAR))
+        || parse_path_option(option, value, _T("ui.nvram_path"), path_nvram, sizeof path_nvram / sizeof(TCHAR))
+        || parse_path_option(option, value, _T("screenshot_path"), path_screenshot, sizeof path_screenshot / sizeof(TCHAR))
+        || parse_path_option(option, value, _T("ui.screenshot_path"), path_screenshot, sizeof path_screenshot / sizeof(TCHAR))
+        || parse_path_option(option, value, _T("video_path"), path_video, sizeof path_video / sizeof(TCHAR))
+        || parse_path_option(option, value, _T("ui.video_path"), path_video, sizeof path_video / sizeof(TCHAR))
+        || parse_path_option(option, value, _T("saveimage_path"), path_saveimage, sizeof path_saveimage / sizeof(TCHAR))
+        || parse_path_option(option, value, _T("ui.saveimage_path"), path_saveimage, sizeof path_saveimage / sizeof(TCHAR))
+        || parse_path_option(option, value, _T("rip_path"), path_ripper, sizeof path_ripper / sizeof(TCHAR))
+        || parse_path_option(option, value, _T("ripper_path"), path_ripper, sizeof path_ripper / sizeof(TCHAR))
+        || parse_path_option(option, value, _T("ui.rip_path"), path_ripper, sizeof path_ripper / sizeof(TCHAR))
+        || parse_path_option(option, value, _T("data_path"), path_data, sizeof path_data / sizeof(TCHAR))
+        || parse_path_option(option, value, _T("ui.data_path"), path_data, sizeof path_data / sizeof(TCHAR))
+        || parse_path_option(option, value, _T("rom_path"), path_rom, sizeof path_rom / sizeof(TCHAR))) {
+        return 1;
+    }
     return 0;
 }
 
@@ -487,10 +529,42 @@ void target_save_options(struct zfile *f, struct uae_prefs *p)
     if (name && name[0]) {
         cfgfile_target_write_str(f, _T("soundcardname"), name);
     }
+    if (path_configuration[0]) {
+        cfgfile_target_write_str(f, _T("config_path"), path_configuration);
+    }
+    if (path_nvram[0]) {
+        cfgfile_target_write_str(f, _T("nvram_path"), path_nvram);
+    }
+    if (path_screenshot[0]) {
+        cfgfile_target_write_str(f, _T("screenshot_path"), path_screenshot);
+    }
+    if (path_video[0]) {
+        cfgfile_target_write_str(f, _T("video_path"), path_video);
+    }
+    if (path_saveimage[0]) {
+        cfgfile_target_write_str(f, _T("saveimage_path"), path_saveimage);
+    }
+    if (path_ripper[0]) {
+        cfgfile_target_write_str(f, _T("rip_path"), path_ripper);
+    }
+    if (path_data[0]) {
+        cfgfile_target_write_str(f, _T("data_path"), path_data);
+    }
+    if (path_rom[0]) {
+        cfgfile_target_write_str(f, _T("rom_path"), path_rom);
+    }
 }
 
 void target_default_options(struct uae_prefs*, int)
 {
+    path_configuration[0] = 0;
+    path_nvram[0] = 0;
+    path_screenshot[0] = 0;
+    path_video[0] = 0;
+    path_saveimage[0] = 0;
+    path_ripper[0] = 0;
+    path_data[0] = 0;
+    path_rom[0] = 0;
 }
 
 void target_fixup_options(struct uae_prefs*)
@@ -601,17 +675,27 @@ static void fetch_user_data_path(TCHAR *out, int size, const char *subdir)
     fixtrailing(out);
 }
 
-void fetch_saveimagepath(TCHAR *out, int size, int) { fetch_user_data_path(out, size, "SaveImages"); }
-void fetch_configurationpath(TCHAR *out, int size) { fetch_user_data_path(out, size, "Configuration"); }
-void fetch_nvrampath(TCHAR *out, int size) { fetch_user_data_path(out, size, "NVRAMs"); }
+static void fetch_user_data_path_override(TCHAR *out, int size, const TCHAR *override_path, const char *subdir)
+{
+    if (override_path && override_path[0]) {
+        uae_tcslcpy(out, override_path, size);
+        fixtrailing(out);
+    } else {
+        fetch_user_data_path(out, size, subdir);
+    }
+}
+
+void fetch_saveimagepath(TCHAR *out, int size, int) { fetch_user_data_path_override(out, size, path_saveimage, "SaveImages"); }
+void fetch_configurationpath(TCHAR *out, int size) { fetch_user_data_path_override(out, size, path_configuration, "Configuration"); }
+void fetch_nvrampath(TCHAR *out, int size) { fetch_user_data_path_override(out, size, path_nvram, "NVRAMs"); }
 void fetch_luapath(TCHAR *out, int size) { fetch_home_path(out, size); }
-void fetch_screenshotpath(TCHAR *out, int size) { fetch_user_data_path(out, size, "Screenshots"); }
-void fetch_ripperpath(TCHAR *out, int size) { fetch_user_data_path(out, size, "Rips"); }
-void fetch_statefilepath(TCHAR *out, int size) { fetch_user_data_path(out, size, "Save States"); }
+void fetch_screenshotpath(TCHAR *out, int size) { fetch_user_data_path_override(out, size, path_screenshot, "Screenshots"); }
+void fetch_ripperpath(TCHAR *out, int size) { fetch_user_data_path_override(out, size, path_ripper, "Rips"); }
+void fetch_statefilepath(TCHAR *out, int size) { fetch_user_data_path_override(out, size, path_statefile, "Save States"); }
 void fetch_inputfilepath(TCHAR *out, int size) { fetch_home_path(out, size); }
-void fetch_datapath(TCHAR *out, int size) { fetch_user_data_path(out, size, NULL); }
-void fetch_rompath(TCHAR *out, int size) { fetch_user_data_path(out, size, "Kickstarts"); }
-void fetch_videopath(TCHAR *out, int size) { fetch_user_data_path(out, size, "Videos"); }
+void fetch_datapath(TCHAR *out, int size) { fetch_user_data_path_override(out, size, path_data, NULL); }
+void fetch_rompath(TCHAR *out, int size) { fetch_user_data_path_override(out, size, path_rom, "Kickstarts"); }
+void fetch_videopath(TCHAR *out, int size) { fetch_user_data_path_override(out, size, path_video, "Videos"); }
 
 void target_getdate(int *y, int *m, int *d)
 {
