@@ -8477,7 +8477,17 @@ private:
             disableUnavailable(saveScreenshot, QStringLiteral("Screenshot capture is only available from the integrated runtime UI."));
         }
         disableUnavailable(proWizard, QStringLiteral("Pro Wizard integration is not connected to the Unix Qt frontend yet."));
-        disableUnavailable(sampleRipper, QStringLiteral("Sample ripper integration is not connected to the Unix Qt frontend yet."));
+        if (hardwareProvider.sampleRipperEnabled && hardwareProvider.setSampleRipperEnabled) {
+            sampleRipper->setChecked(hardwareProvider.sampleRipperEnabled(hardwareProvider.context));
+            connect(sampleRipper, &QCheckBox::toggled, this, [this](bool enabled) {
+                hardwareProvider.setSampleRipperEnabled(hardwareProvider.context, enabled);
+                if (status) {
+                    status->setText(enabled ? QStringLiteral("Sample ripper enabled.") : QStringLiteral("Sample ripper disabled."));
+                }
+            });
+        } else {
+            disableUnavailable(sampleRipper, QStringLiteral("Sample ripper integration is only available from the integrated emulator UI."));
+        }
         screenshotOriginalSize = new QCheckBox(QStringLiteral("Take screenshot before filtering"));
         screenshotPaletted = new QCheckBox(QStringLiteral("Create 256 color palette indexed screenshot if possible"));
         screenshotClip = new QCheckBox(QStringLiteral("Autoclip screenshot"));
