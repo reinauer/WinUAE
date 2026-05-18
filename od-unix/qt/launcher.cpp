@@ -18,6 +18,7 @@
 #include "launcher.h"
 #include "launcher_backend.h"
 #include "mount_config.h"
+#include "path_utils.h"
 
 #ifndef WINUAE_UNIX_SOURCE_DIR
 #define WINUAE_UNIX_SOURCE_DIR "."
@@ -4638,74 +4639,27 @@ static void setPathComboText(QComboBox *field, const QString &path)
 
 static QString envString(const char *name)
 {
-    return QString::fromLocal8Bit(qgetenv(name));
+    return winUaeQtEnvString(name);
 }
 
 static QString unixDefaultDataPath()
 {
-    return QStringLiteral("$HOME/Documents/WinUAE");
+    return winUaeQtDefaultDataPath();
 }
 
 static QString unixDefaultDataSubPath(const QString &name)
 {
-    return QDir(unixDefaultDataPath()).filePath(name);
+    return winUaeQtDefaultDataSubPath(name);
 }
 
 static QString expandUnixPath(QString path)
 {
-    if (path.isEmpty()) {
-        return path;
-    }
-
-    if (path.startsWith(QLatin1Char('~')) && (path.size() == 1 || path[1] == QLatin1Char('/'))) {
-        path = QDir::homePath() + path.mid(1);
-    }
-
-    for (int i = 0; i < path.size(); i++) {
-        if (path[i] != QLatin1Char('$')) {
-            continue;
-        }
-
-        int start = i + 1;
-        int end = start;
-        QString name;
-        if (start < path.size() && path[start] == QLatin1Char('{')) {
-            start++;
-            end = path.indexOf(QLatin1Char('}'), start);
-            if (end < 0) {
-                continue;
-            }
-            name = path.mid(start, end - start);
-            end++;
-        } else {
-            while (end < path.size()) {
-                const QChar c = path[end];
-                if (!c.isLetterOrNumber() && c != QLatin1Char('_')) {
-                    break;
-                }
-                end++;
-            }
-            name = path.mid(start, end - start);
-        }
-        if (name.isEmpty()) {
-            continue;
-        }
-
-        const QByteArray value = qgetenv(name.toLocal8Bit().constData());
-        if (value.isEmpty()) {
-            continue;
-        }
-        const QString replacement = QString::fromLocal8Bit(value);
-        path.replace(i, end - i, replacement);
-        i += replacement.size() - 1;
-    }
-
-    return path;
+    return winUaeQtExpandUnixPath(path);
 }
 
 static QString expandedPathText(const QString &path)
 {
-    return expandUnixPath(path.trimmed());
+    return winUaeQtExpandedPathText(path);
 }
 
 static void addBrowse(QComboBox *field, QWidget *parent, const QString &caption, const QString &filter)
