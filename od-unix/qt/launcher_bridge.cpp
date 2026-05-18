@@ -361,3 +361,16 @@ int runWinUaeQtRuntimeFileDialog(int argc, char **argv, int shortcut, const char
     }
     return WINUAE_QT_LAUNCHER_START;
 }
+
+int runWinUaeQtMessageBox(int argc, char **argv, int flags, const char *message, int *exitCode)
+{
+    const int result = runWinUaeQtMessageBox(
+        argc,
+        argv,
+        flags,
+        message && message[0] ? QString::fromLocal8Bit(message) : QString());
+    if (exitCode) {
+        *exitCode = 0;
+    }
+    return result;
+}

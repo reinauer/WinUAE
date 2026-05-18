@@ -65,3 +65,5 @@ WinUaeQtLauncherResult runWinUaeQtLauncherForConfig(int argc, char **argv, const
 WinUaeQtLauncherResult runWinUaeQtLauncherForConfig(int argc, char **argv, const QString &initialConfigPath, const WinUaeQtHardwareInfoProvider &hardwareProvider);
 WinUaeQtRuntimeFileDialogResult runWinUaeQtRuntimeFileDialog(QApplication &app, int shortcut, const QString &initialPath);
 WinUaeQtRuntimeFileDialogResult runWinUaeQtRuntimeFileDialog(int argc, char **argv, int shortcut, const QString &initialPath);
+int runWinUaeQtMessageBox(QApplication &app, int flags, const QString &message);
+int runWinUaeQtMessageBox(int argc, char **argv, int flags, const QString &message);
