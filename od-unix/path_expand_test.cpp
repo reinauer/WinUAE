@@ -35,6 +35,11 @@ int main()
     ok = require_equal("literal dollar", unix_expand_path("disk$"), "disk$") && ok;
     ok = require_equal("legacy linux home", unix_expand_path("/home/winuae-home/roms"), "/tmp/winuae-home/roms") && ok;
     ok = require_equal("named home unsupported", unix_expand_path("~other/roms"), "~other/roms") && ok;
+    ok = require_equal("relative absolute path", unix_absolute_path("roms/kick.rom", "/tmp/winuae-base"), "/tmp/winuae-base/roms/kick.rom") && ok;
+    ok = require_equal("relative parent normalization", unix_absolute_path("../disk.adf", "/tmp/winuae-base/configs"), "/tmp/winuae-base/disk.adf") && ok;
+    ok = require_equal("absolute normalization", unix_absolute_path("/tmp/winuae-base/../disk.adf"), "/tmp/disk.adf") && ok;
+    ok = require_equal("unresolved environment absolute path", unix_absolute_path("$WINUAE_TEST_MISSING/kick.rom", "/tmp/winuae-base"), "$WINUAE_TEST_MISSING/kick.rom") && ok;
+    ok = require_equal("unresolved named home absolute path", unix_absolute_path("~other/roms", "/tmp/winuae-base"), "~other/roms") && ok;
 
     return ok ? 0 : 1;
 }

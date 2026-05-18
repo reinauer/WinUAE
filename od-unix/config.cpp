@@ -3,7 +3,6 @@
 
 #include <ctype.h>
 #include <cstdlib>
-#include <limits.h>
 #include <map>
 #include <string>
 #include <unistd.h>
@@ -625,10 +624,11 @@ void fullpath(TCHAR *path, int size)
 
 void fullpath(TCHAR *path, int size, bool)
 {
-    char tmp[PATH_MAX];
-    if (realpath(path, tmp)) {
-        uae_tcslcpy(path, tmp, size);
+    if (!path || !path[0]) {
+        return;
     }
+    const std::string absolute = unix_absolute_path(path);
+    uae_tcslcpy(path, absolute.c_str(), size);
 }
 
 void getpathpart(TCHAR *outpath, int size, const TCHAR *inpath)
