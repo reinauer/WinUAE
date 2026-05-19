@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
 if(CMAKE_HOST_APPLE)
-    set(WINUAE_UNIX_DEFAULT_MACOS_DEPLOYMENT_TARGET "14.0")
+    set(WINUAE_UNIX_DEFAULT_MACOS_DEPLOYMENT_TARGET "13.0")
     set(WINUAE_UNIX_MACOS_DEPS_PREFIX "${CMAKE_CURRENT_SOURCE_DIR}/../winuae-macos-deps" CACHE PATH "Private macOS dependency prefix built by tools/macos-build-deps.sh")
     if(NOT DEFINED CMAKE_OSX_DEPLOYMENT_TARGET)
         set(CMAKE_OSX_DEPLOYMENT_TARGET "${WINUAE_UNIX_DEFAULT_MACOS_DEPLOYMENT_TARGET}" CACHE STRING "Minimum macOS version for WinUAE Unix builds")
