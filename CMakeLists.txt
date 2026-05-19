@@ -13,6 +13,17 @@ endif()
 project(winuae_unix_port LANGUAGES C CXX)
 
 include(GNUInstallDirs)
+include(CTest)
+
+set(WINUAE_UNIX_TEST_TARGETS)
+function(winuae_unix_register_test target)
+    list(APPEND WINUAE_UNIX_TEST_TARGETS "${target}")
+    set(WINUAE_UNIX_TEST_TARGETS "${WINUAE_UNIX_TEST_TARGETS}" PARENT_SCOPE)
+    if(BUILD_TESTING)
+        add_test(NAME ${target} COMMAND $<TARGET_FILE:${target}>)
+        set_tests_properties(${target} PROPERTIES LABELS "unix")
+    endif()
+endfunction()
 
 option(WINUAE_UNIX_BUILD_EXECUTABLE "Link the initial Unix command-line executable" ON)
 option(WINUAE_UNIX_WITH_SDL3 "Build the Unix SDL3 video/audio backend" ON)
@@ -443,6 +454,7 @@ target_include_directories(winuae_unix_path_expand_test PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/od-unix"
     "${CMAKE_CURRENT_SOURCE_DIR}/include"
 )
+winuae_unix_register_test(winuae_unix_path_expand_test)
 
 add_executable(winuae_unix_threading_test EXCLUDE_FROM_ALL
     od-unix/threading.cpp
@@ -454,6 +466,7 @@ target_include_directories(winuae_unix_threading_test PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/include"
 )
 target_link_libraries(winuae_unix_threading_test PRIVATE pthread)
+winuae_unix_register_test(winuae_unix_threading_test)
 
 if(WINUAE_UNIX_WITH_QT_UI OR WINUAE_UNIX_WITH_INTEGRATED_QT_UI)
     set(WINUAE_UNIX_VERSION_MAJOR 0)
@@ -533,12 +546,14 @@ if(WINUAE_UNIX_WITH_QT_UI OR WINUAE_UNIX_WITH_INTEGRATED_QT_UI)
             od-unix/qt/config_roundtrip_test.cpp
         )
         target_link_libraries(winuae_unix_qt_config_test PRIVATE ${WINUAE_UNIX_QT_WIDGETS_TARGET})
+        winuae_unix_register_test(winuae_unix_qt_config_test)
 
         add_executable(winuae_unix_qt_mount_config_test EXCLUDE_FROM_ALL
             od-unix/qt/mount_config.cpp
             od-unix/qt/mount_config_test.cpp
         )
         target_link_libraries(winuae_unix_qt_mount_config_test PRIVATE ${WINUAE_UNIX_QT_WIDGETS_TARGET})
+        winuae_unix_register_test(winuae_unix_qt_mount_config_test)
 
         add_executable(winuae_unix_qt_prefs_adapter_test EXCLUDE_FROM_ALL
             od-unix/qt/config.cpp
@@ -551,12 +566,14 @@ if(WINUAE_UNIX_WITH_QT_UI OR WINUAE_UNIX_WITH_INTEGRATED_QT_UI)
             "${CMAKE_CURRENT_SOURCE_DIR}/include"
         )
         target_link_libraries(winuae_unix_qt_prefs_adapter_test PRIVATE ${WINUAE_UNIX_QT_WIDGETS_TARGET})
+        winuae_unix_register_test(winuae_unix_qt_prefs_adapter_test)
 
         add_executable(winuae_unix_qt_path_utils_test EXCLUDE_FROM_ALL
             od-unix/qt/path_utils.cpp
             od-unix/qt/path_utils_test.cpp
         )
         target_link_libraries(winuae_unix_qt_path_utils_test PRIVATE ${WINUAE_UNIX_QT_WIDGETS_TARGET})
+        winuae_unix_register_test(winuae_unix_qt_path_utils_test)
 
         if(WINUAE_UNIX_WITH_INTEGRATED_QT_UI)
             target_compile_definitions(winuae_core PRIVATE WINUAE_UNIX_WITH_INTEGRATED_QT_UI=1)
@@ -566,6 +583,21 @@ if(WINUAE_UNIX_WITH_QT_UI OR WINUAE_UNIX_WITH_INTEGRATED_QT_UI)
         endif()
     else()
         message(STATUS "Qt Widgets not found; skipping Unix Qt targets")
+    endif()
+endif()
+
+if(WINUAE_UNIX_TEST_TARGETS)
+    add_custom_target(winuae_unix_tests
+        DEPENDS ${WINUAE_UNIX_TEST_TARGETS}
+    )
+    if(BUILD_TESTING)
+        add_custom_target(winuae_unix_check
+            COMMAND "${CMAKE_CTEST_COMMAND}" --output-on-failure
+            DEPENDS winuae_unix_tests
+            WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
+            COMMENT "Running Unix host tests"
+            VERBATIM
+        )
     endif()
 endif()
 
