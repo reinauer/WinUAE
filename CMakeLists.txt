@@ -32,6 +32,7 @@ option(WINUAE_UNIX_WITH_NCR_SCSI "Build NCR/NCR9x SCSI controller emulation" ON)
 option(WINUAE_UNIX_WITH_PROWIZARD "Build Pro-Wizard module ripper support" ON)
 option(WINUAE_UNIX_WITH_QT_UI "Build the optional Unix Qt launcher/config UI" ON)
 option(WINUAE_UNIX_WITH_INTEGRATED_QT_UI "Allow winuae_unix to host the Unix Qt frontend" ON)
+option(WINUAE_UNIX_WITH_LIBPNG "Build optional PNG screenshot support when libpng is available" ON)
 
 set(WINUAE_UNIX_VERSION_MAJOR 0)
 set(WINUAE_UNIX_VERSION_MINOR 0)
@@ -49,6 +50,9 @@ endforeach()
 set(WINUAE_UNIX_VERSION "${WINUAE_UNIX_VERSION_MAJOR}.${WINUAE_UNIX_VERSION_MINOR}.${WINUAE_UNIX_VERSION_REVISION}")
 
 find_package(ZLIB REQUIRED)
+if(WINUAE_UNIX_WITH_LIBPNG)
+    find_package(PNG QUIET)
+endif()
 find_package(PkgConfig QUIET)
 
 set(CMAKE_C_STANDARD 11)
@@ -93,6 +97,46 @@ target_compile_options(winuae_core PRIVATE
 set(WINUAE_UNIX_EXTRA_SOURCES)
 set(WINUAE_UNIX_EXTRA_LIBRARIES)
 set(WINUAE_UNIX_EXTRA_LIBRARY_DIRS)
+
+set(WINUAE_UNIX_USE_LIBPNG OFF)
+if(WINUAE_UNIX_WITH_LIBPNG AND PNG_FOUND)
+    set(WINUAE_UNIX_USE_LIBPNG ON)
+    if(APPLE)
+        set(WINUAE_UNIX_PNG_LIBRARY "")
+        get_target_property(WINUAE_UNIX_PNG_LIBRARY_RELEASE PNG::PNG IMPORTED_LOCATION_RELEASE)
+        get_target_property(WINUAE_UNIX_PNG_LIBRARY_DEFAULT PNG::PNG IMPORTED_LOCATION)
+        if(WINUAE_UNIX_PNG_LIBRARY_RELEASE AND EXISTS "${WINUAE_UNIX_PNG_LIBRARY_RELEASE}")
+            set(WINUAE_UNIX_PNG_LIBRARY "${WINUAE_UNIX_PNG_LIBRARY_RELEASE}")
+        elseif(WINUAE_UNIX_PNG_LIBRARY_DEFAULT AND EXISTS "${WINUAE_UNIX_PNG_LIBRARY_DEFAULT}")
+            set(WINUAE_UNIX_PNG_LIBRARY "${WINUAE_UNIX_PNG_LIBRARY_DEFAULT}")
+        elseif(PNG_LIBRARY_RELEASE AND EXISTS "${PNG_LIBRARY_RELEASE}")
+            set(WINUAE_UNIX_PNG_LIBRARY "${PNG_LIBRARY_RELEASE}")
+        endif()
+        if(WINUAE_UNIX_PNG_LIBRARY)
+            execute_process(
+                COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tools/macos-check-deployment-target.sh" "${WINUAE_UNIX_PNG_LIBRARY}" "${CMAKE_OSX_DEPLOYMENT_TARGET}"
+                RESULT_VARIABLE WINUAE_UNIX_PNG_DEPLOYMENT_RESULT
+                OUTPUT_VARIABLE WINUAE_UNIX_PNG_DEPLOYMENT_OUTPUT
+                ERROR_VARIABLE WINUAE_UNIX_PNG_DEPLOYMENT_ERROR
+                OUTPUT_STRIP_TRAILING_WHITESPACE
+                ERROR_STRIP_TRAILING_WHITESPACE
+            )
+            if(NOT WINUAE_UNIX_PNG_DEPLOYMENT_RESULT EQUAL 0)
+                message(STATUS "libpng is newer than CMAKE_OSX_DEPLOYMENT_TARGET=${CMAKE_OSX_DEPLOYMENT_TARGET}; PNG screenshots disabled. ${WINUAE_UNIX_PNG_DEPLOYMENT_ERROR}")
+                set(WINUAE_UNIX_USE_LIBPNG OFF)
+            endif()
+        else()
+            message(WARNING "libpng was found but its imported library path was not available; PNG screenshots disabled")
+            set(WINUAE_UNIX_USE_LIBPNG OFF)
+        endif()
+    endif()
+endif()
+
+if(WINUAE_UNIX_USE_LIBPNG)
+    target_compile_definitions(winuae_core PRIVATE WINUAE_UNIX_WITH_LIBPNG=1)
+    target_link_libraries(winuae_core PRIVATE PNG::PNG)
+    list(APPEND WINUAE_UNIX_EXTRA_LIBRARIES PNG::PNG)
+endif()
 
 if(WINUAE_UNIX_WITH_SLIRP)
     target_compile_definitions(winuae_core PRIVATE

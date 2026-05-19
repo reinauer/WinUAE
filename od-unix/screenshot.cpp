@@ -9,6 +9,10 @@
 #include <errno.h>
 #include <vector>
 
+#ifdef WINUAE_UNIX_WITH_LIBPNG
+#include <png.h>
+#endif
+
 static void unix_tcslcpy(TCHAR *dst, const TCHAR *src, size_t size)
 {
     if (!dst || !size) {
@@ -169,6 +173,79 @@ static bool unix_write_bmp(const TCHAR *filename, const struct vidbuffer *vb)
     return true;
 }
 
+#ifdef WINUAE_UNIX_WITH_LIBPNG
+static bool unix_write_png(const TCHAR *filename, const struct vidbuffer *vb)
+{
+    if (!filename || !vb || !vb->bufmem || vb->outwidth <= 0 || vb->outheight <= 0 || vb->rowbytes <= 0) {
+        return false;
+    }
+    if (vb->pixbytes != 4 && vb->pixbytes != 2) {
+        write_log(_T("Unix screenshot: unsupported pixel size %d\n"), vb->pixbytes);
+        return false;
+    }
+
+    FILE *fp = _tfopen(filename, _T("wb"));
+    if (!fp) {
+        write_log(_T("Unix screenshot: can't open '%s'\n"), filename);
+        return false;
+    }
+
+    png_structp png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
+    if (!png_ptr) {
+        fclose(fp);
+        return false;
+    }
+    png_infop info_ptr = png_create_info_struct(png_ptr);
+    if (!info_ptr) {
+        png_destroy_write_struct(&png_ptr, NULL);
+        fclose(fp);
+        return false;
+    }
+    if (setjmp(png_jmpbuf(png_ptr))) {
+        png_destroy_write_struct(&png_ptr, &info_ptr);
+        fclose(fp);
+        _tunlink(filename);
+        write_log(_T("Unix screenshot: failed writing '%s'\n"), filename);
+        return false;
+    }
+
+    const int width = vb->outwidth;
+    const int height = vb->outheight;
+    png_init_io(png_ptr, fp);
+    png_set_IHDR(png_ptr, info_ptr, width, height, 8, PNG_COLOR_TYPE_RGB,
+        PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
+    png_write_info(png_ptr, info_ptr);
+
+    std::vector<uae_u8> row((size_t)width * 3);
+    for (int y = 0; y < height; y++) {
+        const uae_u8 *src = vb->bufmem + (size_t)y * (size_t)vb->rowbytes;
+        for (int x = 0; x < width; x++) {
+            uae_u8 r, g, b;
+            if (vb->pixbytes == 4) {
+                const uae_u32 pixel = ((const uae_u32 *)src)[x];
+                b = pixel & 0xff;
+                g = (pixel >> 8) & 0xff;
+                r = (pixel >> 16) & 0xff;
+            } else {
+                const uae_u16 pixel = (uae_u16)src[x * 2] | ((uae_u16)src[x * 2 + 1] << 8);
+                r = (uae_u8)((((pixel >> 11) & 0x1f) * 255) / 31);
+                g = (uae_u8)((((pixel >> 5) & 0x3f) * 255) / 63);
+                b = (uae_u8)(((pixel & 0x1f) * 255) / 31);
+            }
+            row[(size_t)x * 3 + 0] = r;
+            row[(size_t)x * 3 + 1] = g;
+            row[(size_t)x * 3 + 2] = b;
+        }
+        png_write_row(png_ptr, row.data());
+    }
+
+    png_write_end(png_ptr, info_ptr);
+    png_destroy_write_struct(&png_ptr, &info_ptr);
+    fclose(fp);
+    return true;
+}
+#endif
+
 static bool unix_save_screenshot_file(int monid)
 {
     TCHAR path[MAX_DPATH];
@@ -193,15 +270,25 @@ static bool unix_save_screenshot_file(int monid)
     unix_screenshot_base_name(base, sizeof base / sizeof(TCHAR));
 
     for (int i = 1; i < 100000; i++) {
+#ifdef WINUAE_UNIX_WITH_LIBPNG
+        _sntprintf(filename, sizeof filename / sizeof(TCHAR), _T("%s%s_%05d.png"), path, base, i);
+#else
         _sntprintf(filename, sizeof filename / sizeof(TCHAR), _T("%s%s_%05d.bmp"), path, base, i);
+#endif
         FILE *existing = _tfopen(filename, _T("rb"));
         if (existing) {
             fclose(existing);
             continue;
         }
+#ifdef WINUAE_UNIX_WITH_LIBPNG
+        if (!unix_write_png(filename, vb)) {
+            return false;
+        }
+#else
         if (!unix_write_bmp(filename, vb)) {
             return false;
         }
+#endif
         write_log(_T("Screenshot saved as \"%s\"\n"), filename);
         return true;
     }
