@@ -738,10 +738,16 @@ static uae_u32 REGPARAM2 unix_picasso_set_dac(TrapContext *ctx)
     int monid = currprefs.rtgboards[0].monitor_id;
     struct picasso96_state_struct *state = &picasso96_state[monid];
     struct picasso_vidbuf_description *vidinfo = &picasso_vidinfo[monid];
+    uae_u16 index = trap_get_dreg(ctx, 0);
+    RGBFTYPE rgbfmt = (RGBFTYPE)trap_get_dreg(ctx, 7);
 
-    state->RGBFormat = (RGBFTYPE)trap_get_dreg(ctx, 7);
-    vidinfo->dacrgbformat[0] = state->RGBFormat;
-    vidinfo->dacrgbformat[1] = state->RGBFormat;
+    state->RGBFormat = rgbfmt;
+    if (state->advDragging) {
+        vidinfo->dacrgbformat[index ? 1 : 0] = rgbfmt;
+    } else {
+        vidinfo->dacrgbformat[0] = rgbfmt;
+        vidinfo->dacrgbformat[1] = rgbfmt;
+    }
     atomic_or(&vidinfo->picasso_state_change, UNIX_PICASSO_STATE_SETDAC);
     return 1;
 }
@@ -757,15 +763,23 @@ static uae_u32 REGPARAM2 unix_picasso_set_gc(TrapContext *ctx)
     trap_put_long(ctx, board_info + PSSO_BoardInfo_ModeInfo, mode_info);
     trap_put_word(ctx, board_info + PSSO_BoardInfo_Border, trap_get_dreg(ctx, 0));
 
-    state->Width = trap_get_word(ctx, mode_info + PSSO_ModeInfo_Width);
+    uae_u16 width = trap_get_word(ctx, mode_info + PSSO_ModeInfo_Width);
+    if (width != state->Width) {
+        state->ModeChanged = true;
+    }
+    state->Width = width;
     state->VirtualWidth = state->Width;
-    state->Height = trap_get_word(ctx, mode_info + PSSO_ModeInfo_Height);
+    uae_u16 height = trap_get_word(ctx, mode_info + PSSO_ModeInfo_Height);
+    if (height != state->Height) {
+        state->ModeChanged = true;
+    }
+    state->Height = height;
     state->VirtualHeight = state->Height;
     state->GC_Depth = trap_get_byte(ctx, mode_info + PSSO_ModeInfo_Depth);
     state->GC_Flags = trap_get_byte(ctx, mode_info + PSSO_ModeInfo_Flags);
     state->HLineDBL = 1;
     state->VLineDBL = 1;
-    state->ModeChanged = true;
+    state->HostAddress = NULL;
     atomic_or(&vidinfo->picasso_state_change, UNIX_PICASSO_STATE_SETGC);
     write_log(_T("Unix RTG SetGC: %dx%dx%d\n"), state->Width, state->Height, state->GC_Depth);
     return 1;
@@ -803,6 +817,7 @@ static uae_u32 REGPARAM2 unix_picasso_set_panning(TrapContext *ctx)
     state->BytesPerPixel = unix_picasso_bytes_per_pixel(state->RGBFormat);
     state->BytesPerRow = state->VirtualWidth * state->BytesPerPixel;
     unix_picasso_set_panning_init(state);
+    state->Extent = state->Address + state->BytesPerRow * state->VirtualHeight;
 
     atomic_or(&vidinfo->picasso_state_change, UNIX_PICASSO_STATE_SETPANNING);
     write_log(_T("Unix RTG SetPanning: addr=%08X xy=%d,%d virt=%dx%d bpr=%d fmt=%d\n"),
