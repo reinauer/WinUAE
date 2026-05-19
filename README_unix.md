@@ -131,6 +131,14 @@ cmake --install /tmp/winuae_cmake_build --prefix /opt/winuae
 
 This installs the desktop entry, `.uae` MIME type, and hicolor icons. On macOS, use the `.app` and DMG targets below instead of installing the raw executable.
 
+On Linux, CPack can create packages from the same install rules:
+
+```sh
+cmake --build /tmp/winuae_cmake_build --target package
+```
+
+This currently produces a `.tar.gz` package and, when Debian packaging tools are available, a `.deb` package with shared-library dependencies inferred by `dpkg-shlibdeps`.
+
 If Qt Widgets is available, CMake links the Windows-style configuration UI into `winuae_unix` by default and also builds the standalone launcher:
 
 ```sh
