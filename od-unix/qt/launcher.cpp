@@ -28,6 +28,14 @@
 #define WINUAE_UNIX_BUILD_DIR "."
 #endif
 
+#ifndef WINUAE_UNIX_INSTALL_DATA_DIR
+#define WINUAE_UNIX_INSTALL_DATA_DIR WINUAE_UNIX_SOURCE_DIR
+#endif
+
+#ifndef WINUAE_UNIX_INSTALL_DATADIR_RELATIVE
+#define WINUAE_UNIX_INSTALL_DATADIR_RELATIVE "share/winuae"
+#endif
+
 #ifndef WINUAE_UNIX_VERSION_MAJOR
 #define WINUAE_UNIX_VERSION_MAJOR 0
 #endif
@@ -1823,6 +1831,14 @@ static QString resourceFile(const QString &relative)
     const QString localPath = appDir.filePath(relative);
     if (QFileInfo::exists(localPath)) {
         return localPath;
+    }
+    const QString relativeInstallPath = appDir.filePath(QStringLiteral("../") + QString::fromUtf8(WINUAE_UNIX_INSTALL_DATADIR_RELATIVE) + QStringLiteral("/") + relative);
+    if (QFileInfo::exists(relativeInstallPath)) {
+        return relativeInstallPath;
+    }
+    const QString installPath = QDir(QString::fromUtf8(WINUAE_UNIX_INSTALL_DATA_DIR)).filePath(relative);
+    if (QFileInfo::exists(installPath)) {
+        return installPath;
     }
     return sourceFile(relative);
 }

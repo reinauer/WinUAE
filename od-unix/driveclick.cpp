@@ -7,6 +7,21 @@
 #include "uae.h"
 #include "zfile.h"
 
+#include <string>
+#include <vector>
+
+#ifdef __APPLE__
+#include <mach-o/dyld.h>
+#endif
+
+#ifndef WINUAE_UNIX_INSTALL_DATA_DIR
+#define WINUAE_UNIX_INSTALL_DATA_DIR WINUAE_UNIX_SOURCE_DIR
+#endif
+
+#ifndef WINUAE_UNIX_INSTALL_DATADIR_RELATIVE
+#define WINUAE_UNIX_INSTALL_DATADIR_RELATIVE "share/winuae"
+#endif
+
 int driveclick_pcdrivemask;
 int driveclick_pcdrivenum;
 
@@ -51,22 +66,75 @@ static bool load_sample_file(const TCHAR *path, struct drvsample *sample)
 	return sample->p != NULL && sample->len > 0;
 }
 
+static std::string dirname_copy(const std::string &path)
+{
+	size_t slash = path.find_last_of('/');
+	if (slash == std::string::npos) {
+		return ".";
+	}
+	if (slash == 0) {
+		return "/";
+	}
+	return path.substr(0, slash);
+}
+
+static std::string join_path(const std::string &dir, const std::string &name)
+{
+	if (dir.empty() || dir == ".") {
+		return name;
+	}
+	if (dir[dir.size() - 1] == '/') {
+		return dir + name;
+	}
+	return dir + "/" + name;
+}
+
+static std::string executable_dir()
+{
+#ifdef __APPLE__
+	char path[MAX_DPATH];
+	uint32_t size = sizeof path;
+	if (_NSGetExecutablePath(path, &size) == 0) {
+		return dirname_copy(path);
+	}
+#elif defined(__linux__)
+	char path[MAX_DPATH];
+	ssize_t len = readlink("/proc/self/exe", path, sizeof path - 1);
+	if (len > 0) {
+		path[len] = 0;
+		return dirname_copy(path);
+	}
+#endif
+	return std::string();
+}
+
 static bool load_builtin_sample(const TCHAR *name, struct drvsample *sample)
 {
 	TCHAR path[MAX_DPATH];
-	const TCHAR *dirs[] = {
-		_T(WINUAE_UNIX_SOURCE_DIR "/od-win32/resources/"),
-		_T(WINUAE_UNIX_SOURCE_DIR "/resources/"),
-		start_path_data,
-		start_path_data_exe,
-		NULL
-	};
+	std::vector<std::string> dirs;
+	dirs.push_back(WINUAE_UNIX_SOURCE_DIR "/od-win32/resources/");
+	dirs.push_back(WINUAE_UNIX_SOURCE_DIR "/resources/");
+	dirs.push_back(WINUAE_UNIX_INSTALL_DATA_DIR "/od-win32/resources/");
+	if (start_path_data[0]) {
+		dirs.push_back(start_path_data);
+	}
+	if (start_path_data_exe[0]) {
+		dirs.push_back(start_path_data_exe);
+	}
 
-	for (int i = 0; dirs[i]; i++) {
-		if (!dirs[i][0]) {
+	const std::string exedir = executable_dir();
+	if (!exedir.empty()) {
+		dirs.push_back(join_path(exedir, "../Resources/od-win32/resources"));
+		dirs.push_back(join_path(exedir, "../" WINUAE_UNIX_INSTALL_DATADIR_RELATIVE "/od-win32/resources"));
+		dirs.push_back(join_path(exedir, "od-win32/resources"));
+	}
+
+	for (size_t i = 0; i < dirs.size(); i++) {
+		if (dirs[i].empty()) {
 			continue;
 		}
-		_stprintf(path, _T("%s%s%s"), dirs[i], dirs[i][_tcslen(dirs[i]) - 1] == '/' ? _T("") : _T("/"), name);
+		const char *dir = dirs[i].c_str();
+		snprintf(path, sizeof path, "%s%s%s", dir, dir[strlen(dir) - 1] == '/' ? "" : "/", name);
 		if (load_sample_file(path, sample)) {
 			return true;
 		}
