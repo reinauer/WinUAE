@@ -12,7 +12,8 @@ typedef pthread_t uae_thread_id;
 struct uae_unix_sem {
     pthread_mutex_t mutex;
     pthread_cond_t cond;
-    int count;
+    int signaled;
+    int manual_reset;
 };
 
 typedef struct uae_unix_sem* uae_sem_t;

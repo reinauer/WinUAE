@@ -19,12 +19,29 @@ static void unix_sem_timeout_from_now(struct timespec *ts, int ms)
     }
 }
 
-void uae_sem_init(uae_sem_t *sem, int, int initial_state)
+void uae_sem_init(uae_sem_t *sem, int manual_reset, int initial_state)
 {
+    if (!sem) {
+        return;
+    }
+    if (*sem) {
+        pthread_mutex_lock(&(*sem)->mutex);
+        (*sem)->manual_reset = manual_reset ? 1 : 0;
+        (*sem)->signaled = initial_state ? 1 : 0;
+        if ((*sem)->signaled) {
+            pthread_cond_broadcast(&(*sem)->cond);
+        }
+        pthread_mutex_unlock(&(*sem)->mutex);
+        return;
+    }
     *sem = (uae_sem_t)calloc(1, sizeof(**sem));
+    if (!*sem) {
+        abort();
+    }
     pthread_mutex_init(&(*sem)->mutex, NULL);
     pthread_cond_init(&(*sem)->cond, NULL);
-    (*sem)->count = initial_state ? 1 : 0;
+    (*sem)->manual_reset = manual_reset ? 1 : 0;
+    (*sem)->signaled = initial_state ? 1 : 0;
 }
 
 void uae_sem_destroy(uae_sem_t *sem)
@@ -44,8 +61,12 @@ void uae_sem_post(uae_sem_t *sem)
         return;
     }
     pthread_mutex_lock(&(*sem)->mutex);
-    (*sem)->count++;
-    pthread_cond_signal(&(*sem)->cond);
+    (*sem)->signaled = 1;
+    if ((*sem)->manual_reset) {
+        pthread_cond_broadcast(&(*sem)->cond);
+    } else {
+        pthread_cond_signal(&(*sem)->cond);
+    }
     pthread_mutex_unlock(&(*sem)->mutex);
 }
 
@@ -55,54 +76,61 @@ void uae_sem_unpost(uae_sem_t *sem)
         return;
     }
     pthread_mutex_lock(&(*sem)->mutex);
-    if ((*sem)->count > 0) {
-        (*sem)->count--;
-    }
+    (*sem)->signaled = 0;
     pthread_mutex_unlock(&(*sem)->mutex);
 }
 
 void uae_sem_wait(uae_sem_t *sem)
 {
+    if (!sem || !*sem) {
+        return;
+    }
     pthread_mutex_lock(&(*sem)->mutex);
-    while ((*sem)->count <= 0) {
+    while (!(*sem)->signaled) {
         pthread_cond_wait(&(*sem)->cond, &(*sem)->mutex);
     }
-    (*sem)->count--;
+    if (!(*sem)->manual_reset) {
+        (*sem)->signaled = 0;
+    }
     pthread_mutex_unlock(&(*sem)->mutex);
 }
 
 int uae_sem_trywait(uae_sem_t *sem)
 {
-    int ok = 0;
-    pthread_mutex_lock(&(*sem)->mutex);
-    if ((*sem)->count > 0) {
-        (*sem)->count--;
-        ok = 1;
-    }
-    pthread_mutex_unlock(&(*sem)->mutex);
-    return ok;
+    return uae_sem_trywait_delay(sem, 0);
 }
 
 int uae_sem_trywait_delay(uae_sem_t *sem, int ms)
 {
-    int ok = 0;
+    int result = -1;
+    if (!sem || !*sem) {
+        return result;
+    }
     pthread_mutex_lock(&(*sem)->mutex);
-    if ((*sem)->count <= 0 && ms > 0) {
-        struct timespec ts;
-        unix_sem_timeout_from_now(&ts, ms);
-        while ((*sem)->count <= 0) {
-            int err = pthread_cond_timedwait(&(*sem)->cond, &(*sem)->mutex, &ts);
-            if (err == ETIMEDOUT) {
-                break;
+    if (!(*sem)->signaled && ms != 0) {
+        if (ms < 0) {
+            while (!(*sem)->signaled) {
+                pthread_cond_wait(&(*sem)->cond, &(*sem)->mutex);
+            }
+        } else {
+            struct timespec ts;
+            unix_sem_timeout_from_now(&ts, ms);
+            while (!(*sem)->signaled) {
+                int err = pthread_cond_timedwait(&(*sem)->cond, &(*sem)->mutex, &ts);
+                if (err == ETIMEDOUT) {
+                    break;
+                }
             }
         }
     }
-    if ((*sem)->count > 0) {
-        (*sem)->count--;
-        ok = 1;
+    if ((*sem)->signaled) {
+        if (!(*sem)->manual_reset) {
+            (*sem)->signaled = 0;
+        }
+        result = 0;
     }
     pthread_mutex_unlock(&(*sem)->mutex);
-    return ok;
+    return result;
 }
 
 struct thread_start_data {
