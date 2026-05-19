@@ -274,6 +274,15 @@ export WINUAE_FLOPPY0=/path/to/Install3.2.adf
 tools/unix-smoke-a1200.sh
 ```
 
+The same scripts are also available as CMake targets. The targets set `WINUAE_BUILD_DIR` to the active build directory and still read the same ROM/disk environment variables:
+
+```sh
+cmake --build "$WINUAE_BUILD_DIR" --target winuae_unix_smoke_a1200
+cmake --build "$WINUAE_BUILD_DIR" --target winuae_unix_smoke_path_config
+```
+
+`winuae_unix_smoke_basic` runs the A1200 boot smoke and the path/config smoke.
+
 To include A2065 SLIRP autoconfig in the same smoke path:
 
 ```sh

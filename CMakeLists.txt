@@ -406,6 +406,29 @@ if(WINUAE_UNIX_BUILD_EXECUTABLE)
         target_link_directories(winuae_unix PRIVATE ${WINUAE_UNIX_EXTRA_LIBRARY_DIRS})
     endif()
     target_link_libraries(winuae_unix PRIVATE pthread ${CMAKE_DL_LIBS} ZLIB::ZLIB ${WINUAE_UNIX_EXTRA_LIBRARIES})
+
+    function(add_winuae_unix_smoke_target target script)
+        add_custom_target(${target}
+            COMMAND "${CMAKE_COMMAND}" -E env
+                "WINUAE_BUILD_DIR=${CMAKE_BINARY_DIR}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tools/${script}"
+            DEPENDS winuae_unix
+            WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+            COMMENT "Running ${script}"
+            VERBATIM
+        )
+    endfunction()
+
+    add_winuae_unix_smoke_target(winuae_unix_smoke_a1200 unix-smoke-a1200.sh)
+    add_winuae_unix_smoke_target(winuae_unix_smoke_a2065 unix-smoke-a2065.sh)
+    add_winuae_unix_smoke_target(winuae_unix_smoke_rtg_z3 unix-smoke-rtg-z3.sh)
+    add_winuae_unix_smoke_target(winuae_unix_smoke_uaegfx unix-smoke-uaegfx.sh)
+    add_winuae_unix_smoke_target(winuae_unix_smoke_a4091_hdf unix-smoke-a4091-hdf.sh)
+    add_winuae_unix_smoke_target(winuae_unix_smoke_serial_tcp unix-smoke-serial-tcp.sh)
+    add_winuae_unix_smoke_target(winuae_unix_smoke_path_config unix-smoke-path-config.sh)
+    add_custom_target(winuae_unix_smoke_basic
+        DEPENDS winuae_unix_smoke_a1200 winuae_unix_smoke_path_config
+    )
 endif()
 
 add_executable(winuae_unix_path_expand_test EXCLUDE_FROM_ALL
