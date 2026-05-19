@@ -55,8 +55,7 @@ int fsdb_fill_file_attrs (a_inode *, a_inode *aino)
     if (stat (aino->nname, &statbuf) == -1)
 	return 0;
     aino->dir = S_ISDIR (statbuf.st_mode) ? 1 : 0;
-    aino->amigaos_mode = ((S_IXUSR & statbuf.st_mode ? 0 : A_FIBF_EXECUTE)
-			  | (S_IWUSR & statbuf.st_mode ? 0 : A_FIBF_WRITE)
+    aino->amigaos_mode = ((S_IWUSR & statbuf.st_mode ? 0 : (A_FIBF_WRITE | A_FIBF_DELETE))
 			  | (S_IRUSR & statbuf.st_mode ? 0 : A_FIBF_READ));
     return 1;
 }
@@ -82,11 +81,6 @@ int fsdb_set_file_attrs (a_inode *aino)
 	else
 	    mode |= S_IWUSR;
 
-	if (aino->amigaos_mode & A_FIBF_EXECUTE)
-	    mode &= ~S_IXUSR;
-	else
-	    mode |= S_IXUSR;
-
 	chmod (aino->nname, mode);
     }
 
@@ -100,7 +94,7 @@ int fsdb_mode_representable_p (const a_inode *aino, int amigaos_mode)
 {
     if (aino->dir)
 	return amigaos_mode == 0;
-    return (amigaos_mode & (A_FIBF_DELETE | A_FIBF_SCRIPT | A_FIBF_PURE)) == 0;
+    return (amigaos_mode & (A_FIBF_DELETE | A_FIBF_EXECUTE | A_FIBF_SCRIPT | A_FIBF_PURE)) == 0;
 }
 
 int fsdb_mode_supported (const a_inode *aino)
