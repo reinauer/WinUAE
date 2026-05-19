@@ -741,7 +741,6 @@ static uae_u32 REGPARAM2 unix_picasso_set_dac(TrapContext *ctx)
     uae_u16 index = trap_get_dreg(ctx, 0);
     RGBFTYPE rgbfmt = (RGBFTYPE)trap_get_dreg(ctx, 7);
 
-    state->RGBFormat = rgbfmt;
     if (state->advDragging) {
         vidinfo->dacrgbformat[index ? 1 : 0] = rgbfmt;
     } else {
