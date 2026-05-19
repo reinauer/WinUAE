@@ -7,7 +7,7 @@ This is an early macOS/Linux port of the WinUAE source tree. The current Unix bu
 - Builds with CMake as `winuae_unix`.
 - Uses `od-unix/` host abstractions.
 - SDL3 provides the current window, framebuffer presentation, mouse input, keyboard input, audio output, and playback-device selection.
-- SDL3 gamepads and non-gamepad joysticks are exposed through the WinUAE input-device layer for game-port use; the remap/test dialogs are still disabled.
+- SDL3 gamepads and non-gamepad joysticks are exposed through the WinUAE input-device layer for game-port use; the Qt Game Ports/Input pages have first remap/test dialogs backed by SDL3 device enumeration and WinUAE config keys.
 - Qt Widgets provides an initial Windows-style configuration UI. When Qt is available, it is integrated into `winuae_unix` and the standalone `winuae_unix_qt` launcher is also built.
 - Host clipboard text paste is available through the same paste input event as Windows. The `clipboard_sharing` option has a first native text clipboard-device backend; image clipboard sharing is still incomplete.
 - Floppy drive click sound config and sample loading are present, but audible click output still needs follow-up.
@@ -309,6 +309,16 @@ export WINUAE_A4091_ROM=/path/to/a4091.rom
 export WINUAE_A4091_HDF=/path/to/disk.hdf
 tools/unix-smoke-a4091-hdf.sh
 ```
+
+To automate the TCP serial listener path, including the Windows-style `/wait` startup behavior:
+
+```sh
+export WINUAE_KICKSTART_ROM=/path/to/A1200.47.115.rom
+export WINUAE_FLOPPY0=/path/to/Install3.2.adf
+tools/unix-smoke-serial-tcp.sh
+```
+
+The default port is `51234`. Override it with `WINUAE_SERIAL_TCP_PORT` if that port is already in use.
 
 To let the boot continue long enough to verify Zorro III RTG RAM autoconfig and `uaegfx.card` installation:
 
