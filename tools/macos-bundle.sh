@@ -56,7 +56,7 @@ if [[ -z "${deployment_target}" && -f "${build_dir}/CMakeCache.txt" ]]; then
     deployment_target="$(awk -F= '/^CMAKE_OSX_DEPLOYMENT_TARGET:/ { print $2; exit }' "${build_dir}/CMakeCache.txt")"
 fi
 if [[ -z "${deployment_target}" ]]; then
-    deployment_target="14.0"
+    deployment_target="13.0"
 fi
 
 cmake_cache_value() {

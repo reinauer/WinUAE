@@ -13,7 +13,7 @@ Arguments:
           WINUAE_DEPS_PREFIX or <repo>/../winuae-macos-deps.
 
 Environment:
-  WINUAE_MACOS_DEPLOYMENT_TARGET  Minimum macOS version. Defaults to 14.0.
+  WINUAE_MACOS_DEPLOYMENT_TARGET  Minimum macOS version. Defaults to 13.0.
   WINUAE_DEPS_BUILD_DIR           Build directory. Defaults to <prefix>/build.
   WINUAE_DEPS_JOBS                Parallel build jobs. Defaults to hw.ncpu.
   WINUAE_SDL3_SOURCE              SDL3 source tree. Required unless
@@ -36,7 +36,7 @@ fi
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source_dir="$(cd "${script_dir}/.." && pwd)"
-target="${WINUAE_MACOS_DEPLOYMENT_TARGET:-14.0}"
+target="${WINUAE_MACOS_DEPLOYMENT_TARGET:-13.0}"
 prefix="${1:-${WINUAE_DEPS_PREFIX:-${source_dir}/../winuae-macos-deps}}"
 build_dir="${WINUAE_DEPS_BUILD_DIR:-${prefix}/build}"
 sdl_source="${WINUAE_SDL3_SOURCE:-}"
