@@ -208,6 +208,8 @@ enum {
 
 #define UNIX_BIB_GRANTDIRECTACCESS 26
 #define UNIX_BIF_GRANTDIRECTACCESS (1 << UNIX_BIB_GRANTDIRECTACCESS)
+#define UNIX_BIB_DACSWITCH 28
+#define UNIX_BIF_DACSWITCH (1 << UNIX_BIB_DACSWITCH)
 
 #define UNIX_PSSO_BoardInfo_FreeCardMem (PSSO_BoardInfo_AllocCardMem + 4)
 #define UNIX_PSSO_BoardInfo_SetSwitch (UNIX_PSSO_BoardInfo_FreeCardMem + 4)
@@ -251,6 +253,13 @@ enum {
 #define UNIX_PSSO_BoardInfo_BlitRectNoMaskCompleteDefault (UNIX_PSSO_BoardInfo_BlitRectNoMaskComplete + 4)
 #define UNIX_PSSO_BoardInfo_BlitPlanar2Direct (UNIX_PSSO_BoardInfo_BlitRectNoMaskCompleteDefault + 4)
 #define UNIX_PSSO_BoardInfo_BlitPlanar2DirectDefault (UNIX_PSSO_BoardInfo_BlitPlanar2Direct + 4)
+#define UNIX_PSSO_BoardInfo_Reserved0 (UNIX_PSSO_BoardInfo_BlitPlanar2DirectDefault + 4)
+#define UNIX_PSSO_BoardInfo_Reserved0Default (UNIX_PSSO_BoardInfo_Reserved0 + 4)
+#define UNIX_PSSO_BoardInfo_Reserved1 (UNIX_PSSO_BoardInfo_Reserved0Default + 4)
+#define UNIX_PSSO_SetSplitPosition (UNIX_PSSO_BoardInfo_Reserved1 + 4)
+#define UNIX_PSSO_ReInitMemory (UNIX_PSSO_SetSplitPosition + 4)
+#define UNIX_PSSO_BoardInfo_GetCompatibleDACFormats (UNIX_PSSO_ReInitMemory + 4)
+#define UNIX_PSSO_BoardInfo_CoerceMode (UNIX_PSSO_BoardInfo_GetCompatibleDACFormats + 4)
 
 static const int unix_rtg_mode_sizes[][2] = {
     { 320, 240 },
@@ -305,6 +314,155 @@ static int unix_picasso_bytes_per_pixel(uae_u32 rgbfmt)
         return 4;
     }
     return 0;
+}
+
+static uae_u32 unix_picasso_rgbmask_for_format(uae_u32 rgbfmt)
+{
+    switch (rgbfmt) {
+    case RGBFB_CLUT:
+        return RGBMASK_8BIT;
+    case RGBFB_R5G5B5PC:
+    case RGBFB_R5G5B5:
+    case RGBFB_B5G5R5PC:
+        return RGBMASK_15BIT;
+    case RGBFB_R5G6B5PC:
+    case RGBFB_R5G6B5:
+    case RGBFB_B5G6R5PC:
+        return RGBMASK_16BIT;
+    case RGBFB_R8G8B8:
+    case RGBFB_B8G8R8:
+        return RGBMASK_24BIT;
+    case RGBFB_A8R8G8B8:
+    case RGBFB_A8B8G8R8:
+    case RGBFB_R8G8B8A8:
+    case RGBFB_B8G8R8A8:
+        return RGBMASK_32BIT;
+    }
+    return 0;
+}
+
+static bool unix_picasso_renderinfo(TrapContext *ctx, uaecptr renderinfo, RenderInfo *ri)
+{
+    if (!ri || !trap_valid_address(ctx, renderinfo, PSSO_RenderInfo_sizeof)) {
+        write_log(_T("Unix RTG invalid RenderInfo: %08X\n"), renderinfo);
+        return false;
+    }
+
+    uaecptr mem = trap_get_long(ctx, renderinfo + PSSO_RenderInfo_Memory);
+    int bytes_per_row = (uae_s16)trap_get_word(ctx, renderinfo + PSSO_RenderInfo_BytesPerRow);
+    RGBFTYPE rgbfmt = (RGBFTYPE)trap_get_long(ctx, renderinfo + PSSO_RenderInfo_RGBFormat);
+
+    if (bytes_per_row < 0 || !trap_valid_address(ctx, mem, bytes_per_row > 0 ? bytes_per_row : 1)) {
+        write_log(_T("Unix RTG invalid RenderInfo memory: %08X bpr=%d fmt=%d\n"),
+            mem, bytes_per_row, rgbfmt);
+        return false;
+    }
+
+    ri->AMemory = mem;
+    ri->Memory = get_real_address(mem);
+    ri->BytesPerRow = bytes_per_row;
+    ri->RGBFormat = rgbfmt;
+    return ri->Memory != NULL;
+}
+
+static bool unix_picasso_validate_rect(RenderInfo *ri, uae_u32 rgbfmt,
+    uae_u32 *x, uae_u32 *y, uae_u32 *width, uae_u32 *height)
+{
+    if (!ri || !x || !y || !width || !height ||
+        *x > 32767 || *y > 32767 || *width > 32767 || *height > 32767) {
+        return false;
+    }
+    if (!*width || !*height) {
+        return true;
+    }
+
+    int bytes_per_pixel = unix_picasso_bytes_per_pixel(rgbfmt);
+    int bytes_per_row = ri->BytesPerRow;
+    if (!bytes_per_pixel || bytes_per_row < 0) {
+        return false;
+    }
+    if (!bytes_per_row) {
+        if (*x) {
+            return false;
+        }
+        bytes_per_row = *width * bytes_per_pixel;
+    }
+    if (*x * bytes_per_pixel >= (uae_u32)bytes_per_row) {
+        return false;
+    }
+
+    uae_u32 x2 = *x + *width;
+    if (x2 * bytes_per_pixel > (uae_u32)bytes_per_row) {
+        x2 = bytes_per_row / bytes_per_pixel;
+        *width = x2 - *x;
+    }
+
+    addrbank *bank = gfxmem_banks[0];
+    if (!bank || !bank->baseaddr || ri->AMemory < bank->start || ri->AMemory >= bank->start + bank->allocated_size) {
+        return false;
+    }
+    uaecptr end = ri->AMemory + (*y + *height - 1) * ri->BytesPerRow + (*x + *width - 1) * bytes_per_pixel;
+    return end >= bank->start && end < bank->start + bank->allocated_size;
+}
+
+static void unix_picasso_store_pen(uae_u8 *dst, uae_u32 pen, int bytes_per_pixel)
+{
+    switch (bytes_per_pixel) {
+    case 1:
+        dst[0] = (uae_u8)pen;
+        break;
+    case 2:
+        do_put_mem_word((uae_u16 *)dst, (uae_u16)pen);
+        break;
+    case 3:
+        dst[0] = (uae_u8)(pen >> 16);
+        dst[1] = (uae_u8)(pen >> 8);
+        dst[2] = (uae_u8)pen;
+        break;
+    case 4:
+        do_put_mem_long((uae_u32 *)dst, pen);
+        break;
+    }
+}
+
+static uae_u8 unix_picasso_blit_op(uae_u8 src, uae_u8 dst, BLIT_OPCODE op)
+{
+    switch (op) {
+    case BLIT_FALSE:
+        return 0;
+    case BLIT_NOR:
+        return (uae_u8)~(src | dst);
+    case BLIT_ONLYDST:
+        return (uae_u8)(dst & ~src);
+    case BLIT_NOTSRC:
+        return (uae_u8)~src;
+    case BLIT_ONLYSRC:
+        return (uae_u8)(src & ~dst);
+    case BLIT_NOTDST:
+        return (uae_u8)~dst;
+    case BLIT_EOR:
+        return src ^ dst;
+    case BLIT_NAND:
+        return (uae_u8)~(src & dst);
+    case BLIT_AND:
+        return src & dst;
+    case BLIT_NEOR:
+        return (uae_u8)~(src ^ dst);
+    case BLIT_DST:
+        return dst;
+    case BLIT_NOTONLYSRC:
+        return (uae_u8)(~src | dst);
+    case BLIT_SRC:
+        return src;
+    case BLIT_NOTONLYDST:
+        return (uae_u8)(~dst | src);
+    case BLIT_OR:
+        return src | dst;
+    case BLIT_TRUE:
+        return 0xff;
+    default:
+        return dst;
+    }
 }
 
 static int unix_picasso_depth_supported(int depth)
@@ -658,6 +816,199 @@ static uae_u32 REGPARAM2 unix_picasso_calculate_bytes_per_row(TrapContext *ctx)
     return (trap_get_dreg(ctx, 0) & 0xffff) * unix_picasso_bytes_per_pixel(trap_get_dreg(ctx, 7));
 }
 
+static uae_u32 REGPARAM2 unix_picasso_coerce_mode(TrapContext *ctx)
+{
+    uae_u16 board_width = trap_get_dreg(ctx, 2);
+    uae_u16 friend_width = trap_get_dreg(ctx, 3);
+    return board_width > friend_width ? board_width : friend_width;
+}
+
+static uae_u32 REGPARAM2 unix_picasso_get_compatible_dac_formats(TrapContext *ctx)
+{
+    int monid = currprefs.rtgboards[0].monitor_id;
+    struct picasso96_state_struct *state = &picasso96_state[monid];
+    uae_u32 rgbfmt = trap_get_dreg(ctx, 7);
+
+    if (unix_picasso_rgbmask_for_format(rgbfmt)) {
+        state->advDragging = true;
+        return RGBMASK_8BIT | RGBMASK_15BIT | RGBMASK_16BIT | RGBMASK_24BIT | RGBMASK_32BIT;
+    }
+    return 0;
+}
+
+static uae_u32 REGPARAM2 unix_picasso_fill_rect(TrapContext *ctx)
+{
+    RenderInfo ri;
+    uaecptr renderinfo = trap_get_areg(ctx, 1);
+    uae_u32 x = (uae_u16)trap_get_dreg(ctx, 0);
+    uae_u32 y = (uae_u16)trap_get_dreg(ctx, 1);
+    uae_u32 width = (uae_u16)trap_get_dreg(ctx, 2);
+    uae_u32 height = (uae_u16)trap_get_dreg(ctx, 3);
+    uae_u32 pen = trap_get_dreg(ctx, 4);
+    uae_u8 mask = (uae_u8)trap_get_dreg(ctx, 5);
+    uae_u32 rgbfmt = trap_get_dreg(ctx, 7);
+    int bytes_per_pixel = unix_picasso_bytes_per_pixel(rgbfmt);
+
+    if (!bytes_per_pixel || !unix_picasso_renderinfo(ctx, renderinfo, &ri)) {
+        return 0;
+    }
+    if (!unix_picasso_validate_rect(&ri, rgbfmt, &x, &y, &width, &height)) {
+        write_log(_T("Unix RTG FillRect invalid region: %08X:%d:%d (%dx%d)-(%dx%d)\n"),
+            ri.AMemory, ri.BytesPerRow, ri.RGBFormat, x, y, width, height);
+        return 1;
+    }
+    if (!width || !height) {
+        return 1;
+    }
+
+    uae_u8 *dst = ri.Memory + y * ri.BytesPerRow + x * bytes_per_pixel;
+    for (uae_u32 row = 0; row < height; row++, dst += ri.BytesPerRow) {
+        if (bytes_per_pixel == 1 && mask != 0xff) {
+            for (uae_u32 col = 0; col < width; col++) {
+                dst[col] = (uae_u8)((pen & mask) | (dst[col] & ~mask));
+            }
+        } else {
+            for (uae_u32 col = 0; col < width; col++) {
+                unix_picasso_store_pen(dst + col * bytes_per_pixel, pen, bytes_per_pixel);
+            }
+        }
+    }
+    return 1;
+}
+
+static uae_u32 REGPARAM2 unix_picasso_invert_rect(TrapContext *ctx)
+{
+    RenderInfo ri;
+    uaecptr renderinfo = trap_get_areg(ctx, 1);
+    uae_u32 x = (uae_u16)trap_get_dreg(ctx, 0);
+    uae_u32 y = (uae_u16)trap_get_dreg(ctx, 1);
+    uae_u32 width = (uae_u16)trap_get_dreg(ctx, 2);
+    uae_u32 height = (uae_u16)trap_get_dreg(ctx, 3);
+    uae_u8 mask = (uae_u8)trap_get_dreg(ctx, 4);
+    uae_u32 rgbfmt = trap_get_dreg(ctx, 7);
+    int bytes_per_pixel = unix_picasso_bytes_per_pixel(rgbfmt);
+
+    if (!bytes_per_pixel || !unix_picasso_renderinfo(ctx, renderinfo, &ri)) {
+        return 0;
+    }
+    if (!unix_picasso_validate_rect(&ri, rgbfmt, &x, &y, &width, &height)) {
+        write_log(_T("Unix RTG InvertRect invalid region: %08X:%d:%d (%dx%d)-(%dx%d)\n"),
+            ri.AMemory, ri.BytesPerRow, ri.RGBFormat, x, y, width, height);
+        return 1;
+    }
+    if (!width || !height) {
+        return 1;
+    }
+
+    if (bytes_per_pixel > 1) {
+        mask = 0xff;
+    }
+    if (!mask) {
+        return 1;
+    }
+
+    uae_u32 width_in_bytes = width * bytes_per_pixel;
+    uae_u8 *dst = ri.Memory + y * ri.BytesPerRow + x * bytes_per_pixel;
+    for (uae_u32 row = 0; row < height; row++, dst += ri.BytesPerRow) {
+        for (uae_u32 col = 0; col < width_in_bytes; col++) {
+            dst[col] ^= mask;
+        }
+    }
+    return 1;
+}
+
+static uae_u32 unix_picasso_blit_rect_common(TrapContext *ctx, uaecptr srcinfo, uaecptr dstinfo,
+    uae_u32 srcx, uae_u32 srcy, uae_u32 dstx, uae_u32 dsty, uae_u32 width, uae_u32 height,
+    uae_u8 mask, uae_u32 rgbfmt, BLIT_OPCODE opcode)
+{
+    RenderInfo src_ri;
+    RenderInfo dst_ri;
+    RenderInfo *dst = &src_ri;
+    int bytes_per_pixel = unix_picasso_bytes_per_pixel(rgbfmt);
+
+    if (!bytes_per_pixel || !unix_picasso_renderinfo(ctx, srcinfo, &src_ri)) {
+        return 0;
+    }
+    if (dstinfo) {
+        if (!unix_picasso_renderinfo(ctx, dstinfo, &dst_ri)) {
+            return 0;
+        }
+        dst = &dst_ri;
+    }
+    if (bytes_per_pixel > 1 && mask != 0xff) {
+        return 0;
+    }
+    if (!unix_picasso_validate_rect(&src_ri, rgbfmt, &srcx, &srcy, &width, &height) ||
+        !unix_picasso_validate_rect(dst, rgbfmt, &dstx, &dsty, &width, &height)) {
+        write_log(_T("Unix RTG BlitRect invalid region: %08X->%08X fmt=%d (%dx%d)\n"),
+            src_ri.AMemory, dst->AMemory, rgbfmt, width, height);
+        return 1;
+    }
+    if (!width || !height) {
+        return 1;
+    }
+
+    uae_u32 width_in_bytes = width * bytes_per_pixel;
+    uae_u8 *srcbase = src_ri.Memory + srcy * src_ri.BytesPerRow + srcx * bytes_per_pixel;
+    uae_u8 *dstbase = dst->Memory + dsty * dst->BytesPerRow + dstx * bytes_per_pixel;
+
+    if (opcode == BLIT_SRC && mask == 0xff) {
+        if (dstbase > srcbase && dstbase < srcbase + height * src_ri.BytesPerRow) {
+            for (uae_s32 row = height - 1; row >= 0; row--) {
+                memmove(dstbase + row * dst->BytesPerRow, srcbase + row * src_ri.BytesPerRow, width_in_bytes);
+            }
+        } else {
+            for (uae_u32 row = 0; row < height; row++) {
+                memmove(dstbase + row * dst->BytesPerRow, srcbase + row * src_ri.BytesPerRow, width_in_bytes);
+            }
+        }
+        return 1;
+    }
+
+    if (opcode < BLIT_FALSE || opcode >= BLIT_LAST) {
+        return 0;
+    }
+    for (uae_u32 row = 0; row < height; row++) {
+        uae_u8 *srcrow = srcbase + row * src_ri.BytesPerRow;
+        uae_u8 *dstrow = dstbase + row * dst->BytesPerRow;
+        for (uae_u32 col = 0; col < width_in_bytes; col++) {
+            uae_u8 olddst = dstrow[col];
+            uae_u8 value = unix_picasso_blit_op(srcrow[col], olddst, opcode);
+            dstrow[col] = (uae_u8)((value & mask) | (olddst & ~mask));
+        }
+    }
+    return 1;
+}
+
+static uae_u32 REGPARAM2 unix_picasso_blit_rect(TrapContext *ctx)
+{
+    uaecptr renderinfo = trap_get_areg(ctx, 1);
+    return unix_picasso_blit_rect_common(ctx, renderinfo, 0,
+        (uae_u16)trap_get_dreg(ctx, 0),
+        (uae_u16)trap_get_dreg(ctx, 1),
+        (uae_u16)trap_get_dreg(ctx, 2),
+        (uae_u16)trap_get_dreg(ctx, 3),
+        (uae_u16)trap_get_dreg(ctx, 4),
+        (uae_u16)trap_get_dreg(ctx, 5),
+        (uae_u8)trap_get_dreg(ctx, 6),
+        trap_get_dreg(ctx, 7),
+        BLIT_SRC);
+}
+
+static uae_u32 REGPARAM2 unix_picasso_blit_rect_no_mask_complete(TrapContext *ctx)
+{
+    return unix_picasso_blit_rect_common(ctx, trap_get_areg(ctx, 1), trap_get_areg(ctx, 2),
+        (uae_u16)trap_get_dreg(ctx, 0),
+        (uae_u16)trap_get_dreg(ctx, 1),
+        (uae_u16)trap_get_dreg(ctx, 2),
+        (uae_u16)trap_get_dreg(ctx, 3),
+        (uae_u16)trap_get_dreg(ctx, 4),
+        (uae_u16)trap_get_dreg(ctx, 5),
+        0xff,
+        trap_get_dreg(ctx, 7),
+        (BLIT_OPCODE)(trap_get_dreg(ctx, 6) & 0xff));
+}
+
 static uae_u32 REGPARAM2 unix_picasso_set_display(TrapContext *ctx)
 {
     struct picasso_vidbuf_description *vidinfo = &picasso_vidinfo[currprefs.rtgboards[0].monitor_id];
@@ -693,6 +1044,9 @@ static void unix_picasso_init_board(TrapContext *ctx, uaecptr board_info)
 
     flags &= 0xffff0000;
     flags |= BIF_BLITTER | BIF_NOMEMORYMODEMIX | BIF_INDISPLAYCHAIN | UNIX_BIF_GRANTDIRECTACCESS;
+    if (currprefs.rtg_dacswitch) {
+        flags |= UNIX_BIF_DACSWITCH;
+    }
     trap_put_long(ctx, board_info + PSSO_BoardInfo_Flags, flags);
 
     trap_put_word(ctx, board_info + PSSO_BoardInfo_MaxHorResolution + CHUNKY * 2, 1280);
@@ -793,12 +1147,12 @@ static void unix_init_uaegfx_funcs(TrapContext *ctx, uaecptr start, uaecptr ABI)
     UNIX_RTGNONE(UNIX_PSSO_BoardInfo_WaitBlitter);
 
     UNIX_RTGCALL(UNIX_PSSO_BoardInfo_BlitPlanar2Direct, UNIX_PSSO_BoardInfo_BlitPlanar2DirectDefault, unix_picasso_default_unsupported);
-    UNIX_RTGCALL(UNIX_PSSO_BoardInfo_FillRect, UNIX_PSSO_BoardInfo_FillRectDefault, unix_picasso_default_unsupported);
-    UNIX_RTGCALL(UNIX_PSSO_BoardInfo_BlitRect, UNIX_PSSO_BoardInfo_BlitRectDefault, unix_picasso_default_unsupported);
+    UNIX_RTGCALL(UNIX_PSSO_BoardInfo_FillRect, UNIX_PSSO_BoardInfo_FillRectDefault, unix_picasso_fill_rect);
+    UNIX_RTGCALL(UNIX_PSSO_BoardInfo_BlitRect, UNIX_PSSO_BoardInfo_BlitRectDefault, unix_picasso_blit_rect);
     UNIX_RTGCALL(UNIX_PSSO_BoardInfo_BlitPlanar2Chunky, UNIX_PSSO_BoardInfo_BlitPlanar2ChunkyDefault, unix_picasso_default_unsupported);
     UNIX_RTGCALL(UNIX_PSSO_BoardInfo_BlitTemplate, UNIX_PSSO_BoardInfo_BlitTemplateDefault, unix_picasso_default_unsupported);
-    UNIX_RTGCALL(UNIX_PSSO_BoardInfo_InvertRect, UNIX_PSSO_BoardInfo_InvertRectDefault, unix_picasso_default_unsupported);
-    UNIX_RTGCALL(UNIX_PSSO_BoardInfo_BlitRectNoMaskComplete, UNIX_PSSO_BoardInfo_BlitRectNoMaskCompleteDefault, unix_picasso_default_unsupported);
+    UNIX_RTGCALL(UNIX_PSSO_BoardInfo_InvertRect, UNIX_PSSO_BoardInfo_InvertRectDefault, unix_picasso_invert_rect);
+    UNIX_RTGCALL(UNIX_PSSO_BoardInfo_BlitRectNoMaskComplete, UNIX_PSSO_BoardInfo_BlitRectNoMaskCompleteDefault, unix_picasso_blit_rect_no_mask_complete);
     UNIX_RTGCALL(UNIX_PSSO_BoardInfo_BlitPattern, UNIX_PSSO_BoardInfo_BlitPatternDefault, unix_picasso_default_unsupported);
 
     UNIX_RTGCALL2(UNIX_PSSO_BoardInfo_SetSwitch, unix_picasso_set_switch);
@@ -811,6 +1165,11 @@ static void unix_init_uaegfx_funcs(TrapContext *ctx, uaecptr start, uaecptr ABI)
     UNIX_RTGCALLDEFAULT(UNIX_PSSO_BoardInfo_ScrollPlanar, UNIX_PSSO_BoardInfo_ScrollPlanarDefault);
     UNIX_RTGCALLDEFAULT(UNIX_PSSO_BoardInfo_UpdatePlanar, UNIX_PSSO_BoardInfo_UpdatePlanarDefault);
     UNIX_RTGCALLDEFAULT(UNIX_PSSO_BoardInfo_DrawLine, UNIX_PSSO_BoardInfo_DrawLineDefault);
+
+    if (currprefs.rtg_dacswitch) {
+        UNIX_RTGCALL2(UNIX_PSSO_BoardInfo_GetCompatibleDACFormats, unix_picasso_get_compatible_dac_formats);
+        UNIX_RTGCALL2(UNIX_PSSO_BoardInfo_CoerceMode, unix_picasso_coerce_mode);
+    }
 
     write_log(_T("Unix RTG uaegfx.card code: %08X-%08X BI=%08X\n"), start, here(), ABI);
 }
