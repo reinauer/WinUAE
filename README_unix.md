@@ -291,6 +291,14 @@ cmake --build "$WINUAE_BUILD_DIR" --target winuae_unix_smoke_path_config
 
 `winuae_unix_smoke_basic` runs the A1200 boot smoke and the path/config smoke.
 
+The host-side unit tests can be built and run through one CMake target:
+
+```sh
+cmake --build "$WINUAE_BUILD_DIR" --target winuae_unix_check
+```
+
+`winuae_unix_tests` only builds the test executables. `ctest --output-on-failure` can be run directly from the build directory after that.
+
 For the Unix host semaphore/event primitive test:
 
 ```sh
