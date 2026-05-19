@@ -6,8 +6,13 @@ BUILD_DIR=${WINUAE_BUILD_DIR:-/tmp/winuae_cmake_build}
 EXE=${WINUAE_EXE:-"$BUILD_DIR/winuae_unix"}
 LOG=${WINUAE_SMOKE_LOG:-/tmp/winuae_unix_p96_guest_smoke.log}
 RUN_SECONDS=${WINUAE_SMOKE_SECONDS:-45}
+Z3=${WINUAE_P96_Z3:-0}
 
-ROM=${WINUAE_KICKSTART_ROM:-}
+if [ "$Z3" = "1" ]; then
+    ROM=${WINUAE_A4000_KICKSTART_ROM:-${WINUAE_KICKSTART_ROM:-}}
+else
+    ROM=${WINUAE_KICKSTART_ROM:-}
+fi
 WORKBENCH=${WINUAE_P96_WORKBENCH_DIR:-}
 
 if [ -z "$ROM" ] || [ -z "$WORKBENCH" ]; then
@@ -62,20 +67,35 @@ SDL_AUDIODRIVER=${SDL_AUDIODRIVER:-dummy}
 SDL_VIDEODRIVER=${SDL_VIDEODRIVER:-dummy}
 export SDL_AUDIODRIVER SDL_VIDEODRIVER
 
-"$EXE" \
+set -- \
     -s use_gui=no \
     -s kickstart_rom_file="$ROM" \
     -s filesystem2="rw,DH0:System:$WORKDIR/Workbench,10" \
     -s nr_floppies=0 \
     -s chipset=aga \
-    -s chipset_compatible=A1200 \
-    -s cpu_model=68020 \
-    -s chipmem_size=2 \
-    -s fastmem_size=4 \
-    -s gfxcard_size=4 \
-    -s gfxcard_type=ZorroII \
-    -s cachesize=0 \
-    > "$LOG" 2>&1 &
+    -s cachesize=0
+
+if [ "$Z3" = "1" ]; then
+    set -- "$@" \
+        -s chipset_compatible=A4000 \
+        -s cpu_model=68040 \
+        -s fpu_model=68040 \
+        -s cpu_24bit_addressing=false \
+        -s chipmem_size=4 \
+        -s a3000mem_size=8 \
+        -s gfxcard_size=16 \
+        -s gfxcard_type=ZorroIII
+else
+    set -- "$@" \
+        -s chipset_compatible=A1200 \
+        -s cpu_model=68020 \
+        -s chipmem_size=2 \
+        -s fastmem_size=4 \
+        -s gfxcard_size=4 \
+        -s gfxcard_type=ZorroII
+fi
+
+"$EXE" "$@" > "$LOG" 2>&1 &
 
 pid=$!
 
