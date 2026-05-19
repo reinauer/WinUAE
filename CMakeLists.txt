@@ -12,6 +12,8 @@ endif()
 
 project(winuae_unix_port LANGUAGES C CXX)
 
+include(GNUInstallDirs)
+
 option(WINUAE_UNIX_BUILD_EXECUTABLE "Link the initial Unix command-line executable" ON)
 option(WINUAE_UNIX_WITH_SDL3 "Build the Unix SDL3 video/audio backend" ON)
 option(WINUAE_UNIX_WITH_SLIRP "Build built-in SLIRP user-mode networking and A2065 Ethernet support" ON)
@@ -35,6 +37,8 @@ target_compile_definitions(winuae_core PRIVATE
     UAE_TARGET_UNIX=1
     UAE_NOGUI=1
     WINUAE_UNIX_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+    WINUAE_UNIX_INSTALL_DATA_DIR="${CMAKE_INSTALL_FULL_DATADIR}/winuae"
+    WINUAE_UNIX_INSTALL_DATADIR_RELATIVE="${CMAKE_INSTALL_DATADIR}/winuae"
 )
 
 target_include_directories(winuae_core PRIVATE
@@ -483,6 +487,8 @@ if(WINUAE_UNIX_WITH_QT_UI OR WINUAE_UNIX_WITH_INTEGRATED_QT_UI)
         target_compile_definitions(winuae_unix_qt_frontend PRIVATE
             WINUAE_UNIX_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
             WINUAE_UNIX_BUILD_DIR="${CMAKE_BINARY_DIR}"
+            WINUAE_UNIX_INSTALL_DATA_DIR="${CMAKE_INSTALL_FULL_DATADIR}/winuae"
+            WINUAE_UNIX_INSTALL_DATADIR_RELATIVE="${CMAKE_INSTALL_DATADIR}/winuae"
             WINUAE_UNIX_VERSION_MAJOR=${WINUAE_UNIX_VERSION_MAJOR}
             WINUAE_UNIX_VERSION_MINOR=${WINUAE_UNIX_VERSION_MINOR}
             WINUAE_UNIX_VERSION_REVISION=${WINUAE_UNIX_VERSION_REVISION}
@@ -550,6 +556,40 @@ if(WINUAE_UNIX_WITH_QT_UI OR WINUAE_UNIX_WITH_INTEGRATED_QT_UI)
     else()
         message(STATUS "Qt Widgets not found; skipping Unix Qt targets")
     endif()
+endif()
+
+if(TARGET winuae_unix AND NOT APPLE)
+    install(TARGETS winuae_unix
+        RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
+    )
+    install(FILES README_unix.md UNIX_RUNTIME_PARITY.md
+        DESTINATION "${CMAKE_INSTALL_DOCDIR}"
+    )
+    install(DIRECTORY od-win32/resources/
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/winuae/od-win32/resources"
+    )
+    if(NOT APPLE)
+        install(FILES od-unix/share/applications/net.winuae.WinUAE.desktop
+            DESTINATION "${CMAKE_INSTALL_DATADIR}/applications"
+        )
+        install(FILES od-unix/share/mime/packages/net.winuae.WinUAE.xml
+            DESTINATION "${CMAKE_INSTALL_DATADIR}/mime/packages"
+        )
+        install(FILES od-win32/resources/amiga.png
+            DESTINATION "${CMAKE_INSTALL_DATADIR}/icons/hicolor/256x256/apps"
+            RENAME winuae.png
+        )
+        install(FILES od-win32/resources/amiga.png
+            DESTINATION "${CMAKE_INSTALL_DATADIR}/icons/hicolor/256x256/mimetypes"
+            RENAME application-x-winuae-config.png
+        )
+    endif()
+endif()
+
+if(TARGET winuae_unix_qt AND NOT APPLE)
+    install(TARGETS winuae_unix_qt
+        RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
+    )
 endif()
 
 if(APPLE)
