@@ -444,6 +444,17 @@ target_include_directories(winuae_unix_path_expand_test PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/include"
 )
 
+add_executable(winuae_unix_threading_test EXCLUDE_FROM_ALL
+    od-unix/threading.cpp
+    od-unix/threading_test.cpp
+)
+target_include_directories(winuae_unix_threading_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/od-unix"
+    "${CMAKE_CURRENT_SOURCE_DIR}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include"
+)
+target_link_libraries(winuae_unix_threading_test PRIVATE pthread)
+
 if(WINUAE_UNIX_WITH_QT_UI OR WINUAE_UNIX_WITH_INTEGRATED_QT_UI)
     set(WINUAE_UNIX_VERSION_MAJOR 0)
     set(WINUAE_UNIX_VERSION_MINOR 0)

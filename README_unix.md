@@ -291,6 +291,13 @@ cmake --build "$WINUAE_BUILD_DIR" --target winuae_unix_smoke_path_config
 
 `winuae_unix_smoke_basic` runs the A1200 boot smoke and the path/config smoke.
 
+For the Unix host semaphore/event primitive test:
+
+```sh
+cmake --build "$WINUAE_BUILD_DIR" --target winuae_unix_threading_test
+"$WINUAE_BUILD_DIR/winuae_unix_threading_test"
+```
+
 To include A2065 SLIRP autoconfig in the same smoke path:
 
 ```sh
