@@ -320,6 +320,14 @@ tools/unix-smoke-serial-tcp.sh
 
 The default port is `51234`. Override it with `WINUAE_SERIAL_TCP_PORT` if that port is already in use.
 
+To exercise Unix path expansion through a real config file and command-line override:
+
+```sh
+export WINUAE_KICKSTART_ROM=/path/to/A1200.47.115.rom
+export WINUAE_FLOPPY0=/path/to/Install3.2.adf
+tools/unix-smoke-path-config.sh
+```
+
 To let the boot continue long enough to verify Zorro III RTG RAM autoconfig and `uaegfx.card` installation:
 
 ```sh
