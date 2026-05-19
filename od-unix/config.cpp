@@ -554,7 +554,7 @@ void target_save_options(struct zfile *f, struct uae_prefs *p)
     }
 }
 
-void target_default_options(struct uae_prefs*, int)
+void target_default_options(struct uae_prefs *p, int)
 {
     path_configuration[0] = 0;
     path_nvram[0] = 0;
@@ -564,6 +564,7 @@ void target_default_options(struct uae_prefs*, int)
     path_ripper[0] = 0;
     path_data[0] = 0;
     path_rom[0] = 0;
+    p->rtg_dacswitch = true;
 }
 
 void target_fixup_options(struct uae_prefs*)
