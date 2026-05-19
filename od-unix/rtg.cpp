@@ -498,6 +498,47 @@ static int unix_picasso_mode_depth_count(void)
     return depths;
 }
 
+static bool unix_picasso_mode_fits(int width, int height, int bytes_per_pixel)
+{
+    return bytes_per_pixel > 0 &&
+        gfxmem_bank.allocated_size >= (uae_u32)width * (uae_u32)height * (uae_u32)bytes_per_pixel;
+}
+
+static void unix_picasso_max_resolution(int mode, int *max_width, int *max_height)
+{
+    static const int mode_depths[MAXMODES][3] = {
+        { 0, 0, 0 },
+        { 8, 0, 0 },
+        { 15, 16, 0 },
+        { 24, 0, 0 },
+        { 32, 0, 0 }
+    };
+
+    *max_width = 0;
+    *max_height = 0;
+    if (mode < 0 || mode >= MAXMODES) {
+        return;
+    }
+
+    for (int i = 0; unix_rtg_mode_sizes[i][0]; i++) {
+        int width = unix_rtg_mode_sizes[i][0];
+        int height = unix_rtg_mode_sizes[i][1];
+        for (int depth_index = 0; mode_depths[mode][depth_index]; depth_index++) {
+            int depth = mode_depths[mode][depth_index];
+            if (!unix_picasso_depth_supported(depth) ||
+                !unix_picasso_mode_fits(width, height, (depth + 7) / 8)) {
+                continue;
+            }
+            if (width > *max_width) {
+                *max_width = width;
+            }
+            if (height > *max_height) {
+                *max_height = height;
+            }
+        }
+    }
+}
+
 static int unix_picasso_resolution_count(void)
 {
     int count = 0;
@@ -627,7 +668,7 @@ static bool unix_add_mode(TrapContext *ctx, uaecptr board_info, uaecptr *amem, i
         if (!unix_picasso_depth_supported(depth)) {
             continue;
         }
-        if (gfxmem_bank.allocated_size < (uae_u32)width * (uae_u32)height * (uae_u32)bytes_per_pixel) {
+        if (!unix_picasso_mode_fits(width, height, bytes_per_pixel)) {
             continue;
         }
         unix_fill_mode_info(ctx, *amem, &res, width, height, depth);
@@ -1063,14 +1104,13 @@ static void unix_picasso_init_board(TrapContext *ctx, uaecptr board_info)
     }
     trap_put_long(ctx, board_info + PSSO_BoardInfo_Flags, flags);
 
-    trap_put_word(ctx, board_info + PSSO_BoardInfo_MaxHorResolution + CHUNKY * 2, 1280);
-    trap_put_word(ctx, board_info + PSSO_BoardInfo_MaxVerResolution + CHUNKY * 2, 1024);
-    trap_put_word(ctx, board_info + PSSO_BoardInfo_MaxHorResolution + HICOLOR * 2, 1280);
-    trap_put_word(ctx, board_info + PSSO_BoardInfo_MaxVerResolution + HICOLOR * 2, 1024);
-    trap_put_word(ctx, board_info + PSSO_BoardInfo_MaxHorResolution + TRUECOLOR * 2, 1280);
-    trap_put_word(ctx, board_info + PSSO_BoardInfo_MaxVerResolution + TRUECOLOR * 2, 1024);
-    trap_put_word(ctx, board_info + PSSO_BoardInfo_MaxHorResolution + TRUEALPHA * 2, 1280);
-    trap_put_word(ctx, board_info + PSSO_BoardInfo_MaxVerResolution + TRUEALPHA * 2, 1024);
+    for (int mode = 0; mode < MAXMODES; mode++) {
+        int max_width;
+        int max_height;
+        unix_picasso_max_resolution(mode, &max_width, &max_height);
+        trap_put_word(ctx, board_info + PSSO_BoardInfo_MaxHorResolution + mode * 2, max_width);
+        trap_put_word(ctx, board_info + PSSO_BoardInfo_MaxVerResolution + mode * 2, max_height);
+    }
 
     state->CardFound = 1;
 }
