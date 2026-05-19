@@ -14,6 +14,7 @@ else
     ROM=${WINUAE_KICKSTART_ROM:-}
 fi
 WORKBENCH=${WINUAE_P96_WORKBENCH_DIR:-}
+SCREENMODE=${WINUAE_P96_SCREENMODE:-}
 
 if [ -z "$ROM" ] || [ -z "$WORKBENCH" ]; then
     echo "Set WINUAE_KICKSTART_ROM and WINUAE_P96_WORKBENCH_DIR before running this smoke test." >&2
@@ -45,6 +46,57 @@ pid=
 trap 'kill -INT "$pid" 2>/dev/null || true; rm -rf "$WORKDIR"' INT TERM EXIT
 
 cp -R "$WORKBENCH" "$WORKDIR/Workbench"
+
+write_screenmode_prefs() {
+    mode=$1
+    file=$2
+    case "$mode" in
+        640x480x8)
+            display_id='\120\003\020\000'
+            depth='\000\010'
+            ;;
+        800x600x8)
+            display_id='\120\004\020\000'
+            depth='\000\010'
+            ;;
+        1024x768x8)
+            display_id='\120\005\020\000'
+            depth='\000\010'
+            ;;
+        640x480x16)
+            display_id='\120\003\020\000'
+            depth='\000\020'
+            ;;
+        800x600x16)
+            display_id='\120\004\020\000'
+            depth='\000\020'
+            ;;
+        1024x768x16)
+            display_id='\120\005\020\000'
+            depth='\000\020'
+            ;;
+        *)
+            echo "Unsupported WINUAE_P96_SCREENMODE: $mode" >&2
+            exit 2
+            ;;
+    esac
+
+    mkdir -p "$(dirname "$file")"
+    {
+        printf 'FORM\000\000\000\066PREFPRHD\000\000\000\006\000\000\000\000\000\000'
+        printf 'SCRM\000\000\000\034'
+        printf '\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000'
+        printf "$display_id"
+        printf '\377\377\377\377'
+        printf "$depth"
+        printf '\000\001'
+    } > "$file"
+}
+
+if [ -n "$SCREENMODE" ]; then
+    write_screenmode_prefs "$SCREENMODE" "$WORKDIR/Workbench/Prefs/Env-Archive/Sys/ScreenMode.prefs"
+fi
+
 cat > "$WORKDIR/Workbench/S/Startup-Sequence" <<'EOF'
 C:MakeDir RAM:T RAM:ENV RAM:ENV/Sys RAM:Clipboards
 C:Copy >NIL: ENVARC: RAM:ENV ALL NOREQ
@@ -118,6 +170,9 @@ grep -q "Unix RTG InitCard:" "$LOG"
 grep -q "Unix RTG SetGC:" "$LOG"
 grep -q "Unix RTG SetPanning:" "$LOG"
 grep -q "Unix RTG SetSwitch:" "$LOG"
+if [ -n "$SCREENMODE" ]; then
+    grep -q "Unix RTG SetGC: $SCREENMODE" "$LOG"
+fi
 if grep -q "not executable" "$LOG" || grep -q "failed to load config" "$LOG" || grep -q "cfgfile_load_2 failed" "$LOG"; then
     echo "Unexpected failure in P96 guest smoke log: $LOG" >&2
     exit 1
