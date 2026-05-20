@@ -495,6 +495,7 @@ if(WINUAE_UNIX_BUILD_EXECUTABLE)
 
     add_winuae_unix_smoke_target(winuae_unix_smoke_a1200 unix-smoke-a1200.sh)
     add_winuae_unix_smoke_target(winuae_unix_smoke_a2065 unix-smoke-a2065.sh)
+    add_winuae_unix_smoke_target(winuae_unix_smoke_driveclick unix-smoke-driveclick.sh)
     add_winuae_unix_smoke_target(winuae_unix_smoke_rtg_z3 unix-smoke-rtg-z3.sh)
     add_winuae_unix_smoke_target(winuae_unix_smoke_uaegfx unix-smoke-uaegfx.sh)
     add_winuae_unix_smoke_target(winuae_unix_smoke_p96_guest unix-smoke-p96-guest.sh)
