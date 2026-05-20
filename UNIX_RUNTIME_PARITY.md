@@ -17,9 +17,9 @@ Status values:
 | 68000/68010/68020/68030/68040/68060 interpreter cores, MMU/FPU/softfloat | Enabled | `od-unix/sysconfig.h` defines `CPUEMU_0`, `CPUEMU_11`, `CPUEMU_13`, `CPUEMU_20`-`CPUEMU_24`, `CPUEMU_31`-`CPUEMU_35`, `CPUEMU_40`, `CPUEMU_50`, `FPUEMU`, `MMUEMU`, `FULLMMU`; CMake links the generated CPU files. | Keep covered by boot smoke tests. |
 | x86/x64 JIT | Deferred | Windows defines `JIT` and links `jit/*.cpp`; Unix does not define `JIT` and CMake does not link JIT sources. | Treat x86_64 JIT and arm64 JIT as separate tracks after interpreter parity is stable. |
 | Custom chipset, CIA, blitter, events, drawing, Action Replay, Arcadia, A-Max, CDTV/CD32 | Enabled | CMake links the shared core files and Unix defines `ECS_DENISE`, `AGA`, `CD32`, `CDTV`, `ACTION_REPLAY`, `ARCADIA`, `AMAX`. | Add smoke configs beyond A1200 as regressions appear. |
-| Keyboard MCU emulation | Stubbed | Windows links `kbmcu/*`; Unix satisfies the symbols in `od-unix/stubs.cpp` with no-op save/restore/run functions. | Link the MCU sources or keep disabled in UI for models needing exact keyboard MCU behavior. |
+| Keyboard MCU emulation | Partial | Windows links `kbmcu/*`; Unix now links the same keyboard MCU source set (`keyboard_mcu_6500_1.cpp`, `keyboard_mcu_6805.cpp`, `keyboard_mcu_d8039hlc.cpp`, and helper cores) instead of satisfying the symbols with no-op stubs. | Validate ROM-backed keyboard MCU modes with real configs and keep the Qt labels aligned with Windows' ROM availability checks. |
 | Enforcer | Enabled | Unix defines and links `enforcer.cpp`. | No immediate action. |
-| Savestates | Partial | Unix defines `SAVESTATE` and links `savestate.cpp`; P96, SCSI, keyboard MCU, screenshot/log helpers in `od-unix/stubs.cpp` save empty host state. | Add targeted savestate smoke tests once RTG, SCSI, and host devices are enabled. |
+| Savestates | Partial | Unix defines `SAVESTATE` and links `savestate.cpp`; P96, SCSI, screenshot/log helpers in `od-unix/stubs.cpp` save empty host state. Keyboard MCU savestate helpers now come from the shared MCU implementations. | Add targeted savestate smoke tests once RTG, SCSI, and host devices are enabled. |
 
 ## Storage And Media
 

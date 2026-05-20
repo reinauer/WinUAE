@@ -112,25 +112,6 @@ void blizzardppc_irq(int, int) {}
 void cyberstorm_mk3_ppc_irq_setonly(int, int) {}
 void wildfire_ncr815_irq(int, int) {}
 
-void keymcu_reset(void) {}
-void keymcu_init(void) {}
-void keymcu_free(void) {}
-bool keymcu_run(bool) { return false; }
-void keymcu2_reset(void) {}
-void keymcu2_init(void) {}
-void keymcu2_free(void) {}
-bool keymcu2_run(bool) { return false; }
-void keymcu3_reset(void) {}
-void keymcu3_init(void) {}
-void keymcu3_free(void) {}
-bool keymcu3_run(bool) { return false; }
-uae_u8 *save_kbmcu(size_t *len, uae_u8 *dst) { if (len) *len = 0; return dst; }
-uae_u8 *restore_kbmcu(uae_u8 *src) { return src; }
-uae_u8 *save_kbmcu2(size_t *len, uae_u8 *dst) { if (len) *len = 0; return dst; }
-uae_u8 *restore_kbmcu2(uae_u8 *src) { return src; }
-uae_u8 *save_kbmcu3(size_t *len, uae_u8 *dst) { if (len) *len = 0; return dst; }
-uae_u8 *restore_kbmcu3(uae_u8 *src) { return src; }
-
 struct netdriverdata **target_ethernet_enumerate(void)
 {
 #ifdef WITH_SLIRP

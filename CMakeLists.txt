@@ -477,6 +477,12 @@ set(WINUAE_CORE_SOURCES
     inputdevice.cpp
     inputrecord.cpp
     isofs.cpp
+    kbmcu/8048/co8048.cpp
+    kbmcu/keyboard_mcu_6500_1.cpp
+    kbmcu/keyboard_mcu_6805.cpp
+    kbmcu/keyboard_mcu_d8039hlc.cpp
+    kbmcu/m6805/m68emu.cpp
+    kbmcu/m6805/m68_ops.cpp
     keybuf.cpp
     logging.cpp
     main.cpp
