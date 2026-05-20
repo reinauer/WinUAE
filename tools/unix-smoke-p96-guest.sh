@@ -16,8 +16,12 @@ else
 fi
 WORKBENCH=${WINUAE_P96_WORKBENCH_DIR:-}
 SCREENMODE=${WINUAE_P96_SCREENMODE:-}
+OPEN_SCREEN=${WINUAE_P96_OPEN_SCREEN:-}
+OPEN_SCREEN_BINARY=${WINUAE_P96_OPEN_SCREEN_BINARY:-}
+OPEN_SCREEN_CC=${WINUAE_M68K_CC:-m68k-amigaos-gcc}
 EXPECT_MODE_MASK=${WINUAE_P96_EXPECT_MODE_MASK:-}
 EXPECT_RESINFO_BYTES=${WINUAE_P96_EXPECT_RESINFO_BYTES:-}
+KEEP_WORKDIR=${WINUAE_KEEP_SMOKE_WORKDIR:-0}
 
 if [ -z "$ROM" ] || [ -z "$WORKBENCH" ]; then
     echo "Set WINUAE_KICKSTART_ROM and WINUAE_P96_WORKBENCH_DIR before running this smoke test." >&2
@@ -46,7 +50,14 @@ fi
 
 WORKDIR=$(mktemp -d "${TMPDIR:-/tmp}/winuae_p96_guest.XXXXXX")
 pid=
-trap 'kill -INT "$pid" 2>/dev/null || true; rm -rf "$WORKDIR"' INT TERM EXIT
+cleanup() {
+    if [ "$KEEP_WORKDIR" = "1" ]; then
+        echo "Keeping P96 guest smoke workdir: $WORKDIR" >&2
+    else
+        rm -rf "$WORKDIR"
+    fi
+}
+trap 'kill -INT "$pid" 2>/dev/null || true; cleanup' INT TERM EXIT
 
 cp -R "$WORKBENCH" "$WORKDIR/Workbench"
 
@@ -114,7 +125,47 @@ if [ -n "$SCREENMODE" ]; then
     printf 'All' > "$WORKDIR/Workbench/Prefs/Env-Archive/Picasso96/ShowModes"
 fi
 
-cat > "$WORKDIR/Workbench/S/Startup-Sequence" <<'EOF'
+open_screen_args=
+if [ -n "$OPEN_SCREEN" ]; then
+    case "$OPEN_SCREEN" in
+        640x480x16)
+            open_screen_args='0x50031000 640 480 16'
+            ;;
+        800x600x16)
+            open_screen_args='0x50041000 800 600 16'
+            ;;
+        1024x768x16)
+            open_screen_args='0x50051000 1024 768 16'
+            ;;
+        640x480x32)
+            open_screen_args='0x50031000 640 480 32'
+            ;;
+        800x600x32)
+            open_screen_args='0x50041000 800 600 32'
+            ;;
+        1024x768x32)
+            open_screen_args='0x50051000 1024 768 32'
+            ;;
+        *)
+            echo "Unsupported WINUAE_P96_OPEN_SCREEN: $OPEN_SCREEN" >&2
+            exit 2
+            ;;
+    esac
+    if [ -n "$OPEN_SCREEN_BINARY" ]; then
+        cp "$OPEN_SCREEN_BINARY" "$WORKDIR/Workbench/p96-open-screen"
+    else
+        if ! command -v "$OPEN_SCREEN_CC" >/dev/null 2>&1; then
+            echo "P96 open-screen smoke requires $OPEN_SCREEN_CC or WINUAE_P96_OPEN_SCREEN_BINARY." >&2
+            exit 2
+        fi
+        "$OPEN_SCREEN_CC" -noixemul -m68020 -Os \
+            "$ROOT_DIR/tools/amiga/p96-open-screen.c" \
+            -o "$WORKDIR/Workbench/p96-open-screen"
+    fi
+fi
+
+{
+cat <<'EOF'
 C:MakeDir RAM:T RAM:ENV RAM:ENV/Sys RAM:Clipboards
 C:Copy >NIL: ENVARC: RAM:ENV ALL NOREQ
 Assign ENV: RAM:ENV
@@ -124,11 +175,17 @@ Assign LIBS: SYS:Classes ADD
 Echo "before uaegfx smoke" >DH0:unix-p96-before-uaegfx-smoke
 DEVS:Monitors/uaegfx
 C:IPrefs
+EOF
+if [ -n "$open_screen_args" ]; then
+    printf 'DH0:p96-open-screen %s >DH0:unix-p96-open-screen-smoke\n' "$open_screen_args"
+fi
+cat <<'EOF'
 C:LoadWB
 Echo "after uaegfx smoke" >DH0:unix-p96-after-uaegfx-smoke
 Wait 20
 EndCLI >NIL:
 EOF
+} > "$WORKDIR/Workbench/S/Startup-Sequence"
 
 : > "$LOG"
 
@@ -174,7 +231,7 @@ if kill -0 "$pid" 2>/dev/null; then
 fi
 wait "$pid" || true
 pid=
-trap 'rm -rf "$WORKDIR"' EXIT
+trap cleanup EXIT
 
 test -f "$WORKDIR/Workbench/unix-p96-before-uaegfx-smoke"
 test -f "$WORKDIR/Workbench/unix-p96-after-uaegfx-smoke"
@@ -195,6 +252,10 @@ if [ -n "$EXPECT_RESINFO_BYTES" ]; then
 fi
 if [ -n "$SCREENMODE" ]; then
     grep -q "Unix RTG SetGC: $SCREENMODE" "$LOG"
+fi
+if [ -n "$OPEN_SCREEN" ]; then
+    grep -q "OPENSCREEN OK" "$WORKDIR/Workbench/unix-p96-open-screen-smoke"
+    grep -q "Unix RTG SetGC: $OPEN_SCREEN" "$LOG"
 fi
 if grep -q "not executable" "$LOG" || grep -q "failed to load config" "$LOG" || grep -q "cfgfile_load_2 failed" "$LOG"; then
     echo "Unexpected failure in P96 guest smoke log: $LOG" >&2
