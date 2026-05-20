@@ -44,8 +44,9 @@ static void REGPARAM3 gfxmem4_wput(uaecptr, uae_u32) REGPARAM;
 static void REGPARAM3 gfxmem4_bput(uaecptr, uae_u32) REGPARAM;
 static int REGPARAM3 gfxmem4_check(uaecptr, uae_u32) REGPARAM;
 static uae_u8 *REGPARAM3 gfxmem4_xlate(uaecptr) REGPARAM;
+static void unix_picasso_mark_dirty_offset(int index, uae_u32 offset, uae_u32 size);
 
-#define UNIX_RTG_MEMORY_FUNCTIONS(prefix, bank) \
+#define UNIX_RTG_MEMORY_FUNCTIONS(prefix, bank, index) \
 static uae_u32 REGPARAM2 prefix ## _lget(uaecptr addr) \
 { \
     addr &= bank.mask; \
@@ -77,6 +78,7 @@ static void REGPARAM2 prefix ## _lput(uaecptr addr, uae_u32 value) \
         return; \
     } \
     do_put_mem_long((uae_u32 *)(bank.baseaddr + addr), value); \
+    unix_picasso_mark_dirty_offset(index, addr, 4); \
 } \
 static void REGPARAM2 prefix ## _wput(uaecptr addr, uae_u32 value) \
 { \
@@ -85,6 +87,7 @@ static void REGPARAM2 prefix ## _wput(uaecptr addr, uae_u32 value) \
         return; \
     } \
     do_put_mem_word((uae_u16 *)(bank.baseaddr + addr), value); \
+    unix_picasso_mark_dirty_offset(index, addr, 2); \
 } \
 static void REGPARAM2 prefix ## _bput(uaecptr addr, uae_u32 value) \
 { \
@@ -93,6 +96,7 @@ static void REGPARAM2 prefix ## _bput(uaecptr addr, uae_u32 value) \
         return; \
     } \
     bank.baseaddr[addr] = (uae_u8)value; \
+    unix_picasso_mark_dirty_offset(index, addr, 1); \
 } \
 static int REGPARAM2 prefix ## _check(uaecptr addr, uae_u32 size) \
 { \
@@ -147,10 +151,10 @@ addrbank gfxmem4_bank = {
     NULL, 0, 0, 1
 };
 
-UNIX_RTG_MEMORY_FUNCTIONS(gfxmem, gfxmem_bank)
-UNIX_RTG_MEMORY_FUNCTIONS(gfxmem2, gfxmem2_bank)
-UNIX_RTG_MEMORY_FUNCTIONS(gfxmem3, gfxmem3_bank)
-UNIX_RTG_MEMORY_FUNCTIONS(gfxmem4, gfxmem4_bank)
+UNIX_RTG_MEMORY_FUNCTIONS(gfxmem, gfxmem_bank, 0)
+UNIX_RTG_MEMORY_FUNCTIONS(gfxmem2, gfxmem2_bank, 1)
+UNIX_RTG_MEMORY_FUNCTIONS(gfxmem3, gfxmem3_bank, 2)
+UNIX_RTG_MEMORY_FUNCTIONS(gfxmem4, gfxmem4_bank, 3)
 
 addrbank *gfxmem_banks[MAX_RTG_BOARDS] = {
     &gfxmem_bank,
@@ -158,6 +162,180 @@ addrbank *gfxmem_banks[MAX_RTG_BOARDS] = {
     &gfxmem3_bank,
     &gfxmem4_bank
 };
+
+static const int unix_rtg_watch_page_size = 4096;
+static uae_u8 *unix_rtg_dirty_pages[MAX_RTG_BOARDS];
+static uae_u8 **unix_rtg_writewatch_pages[MAX_RTG_BOARDS];
+static int unix_rtg_watch_page_count[MAX_RTG_BOARDS];
+static int unix_rtg_writewatch_count[MAX_RTG_BOARDS];
+static int unix_rtg_watch_offset[MAX_RTG_BOARDS];
+
+static bool unix_picasso_valid_watch_index(int index)
+{
+    return index >= 0 && index < MAX_RTG_BOARDS && gfxmem_banks[index] != NULL;
+}
+
+static void unix_picasso_mark_dirty_offset(int index, uae_u32 offset, uae_u32 size)
+{
+    if (!size || !unix_picasso_valid_watch_index(index) || !unix_rtg_dirty_pages[index]) {
+        return;
+    }
+
+    addrbank *bank = gfxmem_banks[index];
+    if (!bank->allocated_size || offset >= bank->allocated_size) {
+        return;
+    }
+
+    uae_u32 end = offset + size;
+    if (end < offset || end > bank->allocated_size) {
+        end = bank->allocated_size;
+    }
+    if (end <= offset) {
+        return;
+    }
+
+    int first_page = offset / unix_rtg_watch_page_size;
+    int last_page = (end - 1) / unix_rtg_watch_page_size;
+    if (last_page >= unix_rtg_watch_page_count[index]) {
+        last_page = unix_rtg_watch_page_count[index] - 1;
+    }
+    for (int page = first_page; page <= last_page; page++) {
+        unix_rtg_dirty_pages[index][page] = 1;
+    }
+}
+
+static void unix_picasso_mark_dirty_addr(int index, uaecptr addr, uae_u32 size)
+{
+    if (!size || !unix_picasso_valid_watch_index(index)) {
+        return;
+    }
+
+    addrbank *bank = gfxmem_banks[index];
+    if (addr < bank->start || addr >= bank->start + bank->allocated_size) {
+        return;
+    }
+    unix_picasso_mark_dirty_offset(index, addr - bank->start, size);
+}
+
+static void unix_picasso_mark_renderinfo_rect(const RenderInfo *ri, uae_u32 x, uae_u32 y,
+    uae_u32 width, uae_u32 height, int bytes_per_pixel)
+{
+    if (!ri || !width || !height || bytes_per_pixel <= 0) {
+        return;
+    }
+
+    uae_u32 row_bytes = width * bytes_per_pixel;
+    int row_stride = ri->BytesPerRow > 0 ? ri->BytesPerRow : (int)row_bytes;
+    for (uae_u32 row = 0; row < height; row++) {
+        unix_picasso_mark_dirty_addr(0,
+            ri->AMemory + (y + row) * row_stride + x * bytes_per_pixel,
+            row_bytes);
+    }
+}
+
+void picasso_allocatewritewatch(int index, int gfxmemsize)
+{
+    if (index < 0 || index >= MAX_RTG_BOARDS) {
+        return;
+    }
+
+    xfree(unix_rtg_dirty_pages[index]);
+    xfree(unix_rtg_writewatch_pages[index]);
+    unix_rtg_dirty_pages[index] = NULL;
+    unix_rtg_writewatch_pages[index] = NULL;
+    unix_rtg_watch_page_count[index] = 0;
+    unix_rtg_writewatch_count[index] = 0;
+    unix_rtg_watch_offset[index] = 0;
+
+    if (gfxmemsize <= 0) {
+        return;
+    }
+
+    int pages = (gfxmemsize + unix_rtg_watch_page_size - 1) / unix_rtg_watch_page_size;
+    unix_rtg_dirty_pages[index] = xcalloc(uae_u8, pages);
+    unix_rtg_writewatch_pages[index] = xcalloc(uae_u8 *, pages);
+    if (!unix_rtg_dirty_pages[index] || !unix_rtg_writewatch_pages[index]) {
+        xfree(unix_rtg_dirty_pages[index]);
+        xfree(unix_rtg_writewatch_pages[index]);
+        unix_rtg_dirty_pages[index] = NULL;
+        unix_rtg_writewatch_pages[index] = NULL;
+        return;
+    }
+    unix_rtg_watch_page_count[index] = pages;
+}
+
+int picasso_getwritewatch(int index, int offset, uae_u8 ***gwwbufp, uae_u8 **startp)
+{
+    if (gwwbufp) {
+        *gwwbufp = NULL;
+    }
+    if (startp) {
+        *startp = NULL;
+    }
+    if (!unix_picasso_valid_watch_index(index) || !unix_rtg_dirty_pages[index] ||
+        !unix_rtg_writewatch_pages[index] || offset < 0) {
+        return -1;
+    }
+
+    addrbank *bank = gfxmem_banks[index];
+    if (!bank->baseaddr || offset >= (int)bank->allocated_size) {
+        unix_rtg_writewatch_count[index] = 0;
+        return -1;
+    }
+
+    uae_u8 *start = bank->baseaddr + offset;
+    int first_page = offset / unix_rtg_watch_page_size;
+    int count = 0;
+    for (int page = first_page; page < unix_rtg_watch_page_count[index]; page++) {
+        if (!unix_rtg_dirty_pages[index][page]) {
+            continue;
+        }
+        uae_u32 page_offset = page * unix_rtg_watch_page_size;
+        if (page_offset < (uae_u32)offset) {
+            page_offset = offset;
+        }
+        unix_rtg_writewatch_pages[index][count++] = bank->baseaddr + page_offset;
+        unix_rtg_dirty_pages[index][page] = 0;
+    }
+
+    unix_rtg_writewatch_count[index] = count;
+    unix_rtg_watch_offset[index] = offset;
+    if (gwwbufp) {
+        *gwwbufp = unix_rtg_writewatch_pages[index];
+    }
+    if (startp) {
+        *startp = start;
+    }
+    return count;
+}
+
+bool picasso_is_vram_dirty(int index, uaecptr addr, int size)
+{
+    if (!unix_picasso_valid_watch_index(index) || size <= 0) {
+        return false;
+    }
+
+    addrbank *bank = gfxmem_banks[index];
+    if (!bank->baseaddr || addr < bank->start) {
+        return false;
+    }
+    uae_u32 base_offset = addr - bank->start;
+    uae_u32 offset = base_offset + unix_rtg_watch_offset[index];
+    if (offset < base_offset || offset >= bank->allocated_size) {
+        return false;
+    }
+
+    uae_u8 *start = bank->baseaddr + offset;
+    uae_u8 *end = start + size;
+    for (int i = 0; i < unix_rtg_writewatch_count[index]; i++) {
+        uae_u8 *page = unix_rtg_writewatch_pages[index][i];
+        uae_u8 *page_end = page + unix_rtg_watch_page_size;
+        if (start < page_end && end > page) {
+            return true;
+        }
+    }
+    return false;
+}
 
 struct unix_rtg_board {
     int id;
@@ -1072,6 +1250,7 @@ static uae_u32 REGPARAM2 unix_picasso_fill_rect(TrapContext *ctx)
             }
         }
     }
+    unix_picasso_mark_renderinfo_rect(&ri, x, y, width, height, bytes_per_pixel);
     return 1;
 }
 
@@ -1115,6 +1294,7 @@ static uae_u32 REGPARAM2 unix_picasso_invert_rect(TrapContext *ctx)
             dst[col] ^= mask;
         }
     }
+    unix_picasso_mark_renderinfo_rect(&ri, x, y, width, height, bytes_per_pixel);
     return 1;
 }
 
@@ -1163,6 +1343,7 @@ static uae_u32 unix_picasso_blit_rect_common(TrapContext *ctx, uaecptr srcinfo, 
                 memmove(dstbase + row * dst->BytesPerRow, srcbase + row * src_ri.BytesPerRow, width_in_bytes);
             }
         }
+        unix_picasso_mark_renderinfo_rect(dst, dstx, dsty, width, height, bytes_per_pixel);
         return 1;
     }
 
@@ -1178,6 +1359,7 @@ static uae_u32 unix_picasso_blit_rect_common(TrapContext *ctx, uaecptr srcinfo, 
             dstrow[col] = (uae_u8)((value & mask) | (olddst & ~mask));
         }
     }
+    unix_picasso_mark_renderinfo_rect(dst, dstx, dsty, width, height, bytes_per_pixel);
     return 1;
 }
 
@@ -1307,6 +1489,7 @@ static uae_u32 REGPARAM2 unix_picasso_blit_pattern(TrapContext *ctx)
             }
         }
     }
+    unix_picasso_mark_renderinfo_rect(&ri, x, y, width, height, bytes_per_pixel);
     return 1;
 }
 
@@ -1415,6 +1598,7 @@ static uae_u32 REGPARAM2 unix_picasso_blit_template(TrapContext *ctx)
             }
         }
     }
+    unix_picasso_mark_renderinfo_rect(&ri, x, y, width, height, bytes_per_pixel);
     return 1;
 }
 
@@ -1528,6 +1712,7 @@ static uae_u32 REGPARAM2 unix_picasso_blit_planar2chunky(TrapContext *ctx)
             dst[col] = (uae_u8)((value & mask) | (olddst & ~mask));
         }
     }
+    unix_picasso_mark_renderinfo_rect(&ri, dstx, dsty, width, height, 1);
     return 1;
 }
 
@@ -1599,6 +1784,7 @@ static uae_u32 REGPARAM2 unix_picasso_blit_planar2direct(TrapContext *ctx)
             unix_picasso_store_pen(dstrow, out, bytes_per_pixel);
         }
     }
+    unix_picasso_mark_renderinfo_rect(&ri, dstx, dsty, width, height, bytes_per_pixel);
     return 1;
 }
 

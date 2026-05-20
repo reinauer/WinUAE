@@ -480,20 +480,6 @@ void gfx_unlock_picasso(int monid, bool dorender)
         show_screen(monid, 0);
     }
 }
-void picasso_allocatewritewatch(int, int) {}
-
-int picasso_getwritewatch(int, int, uae_u8 ***gwwbufp, uae_u8 **startp)
-{
-    if (gwwbufp) {
-        *gwwbufp = NULL;
-    }
-    if (startp) {
-        *startp = NULL;
-    }
-    return 0;
-}
-
-bool picasso_is_vram_dirty(int, uaecptr, int) { return true; }
 void picasso_invalidate(int, int, int, int, int) {}
 
 void picasso_handle_vsync(void)
