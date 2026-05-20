@@ -9,7 +9,7 @@ Build macOS dependencies into a private prefix with a fixed deployment target.
 Use the resulting prefix as CMAKE_PREFIX_PATH when configuring WinUAE.
 
 Arguments:
-  prefix  Install prefix for SDL3 and Qt. Defaults to
+  prefix  Install prefix for SDL3, Qt, and optional libpng. Defaults to
           WINUAE_DEPS_PREFIX or <repo>/../winuae-macos-deps.
 
 Environment:
@@ -20,12 +20,17 @@ Environment:
                                   WINUAE_SKIP_SDL3=1.
   WINUAE_QT_SOURCE                Qt 6 source tree, or a qtbase CMake source
                                   tree. Required unless WINUAE_SKIP_QT=1.
+  WINUAE_LIBPNG_SOURCE            libpng source tree. Optional unless
+                                  WINUAE_REQUIRE_LIBPNG=1.
   WINUAE_SKIP_SDL3=1              Do not build SDL3.
   WINUAE_SKIP_QT=1                Do not build Qt.
+  WINUAE_SKIP_LIBPNG=1            Do not build libpng.
+  WINUAE_REQUIRE_LIBPNG=1         Fail if WINUAE_LIBPNG_SOURCE is missing.
   WINUAE_SDL3_CMAKE_ARGS          Extra arguments passed to SDL3 CMake.
   WINUAE_QT_CONFIGURE_ARGS        Extra arguments passed to Qt configure,
                                   in addition to the release-safe defaults.
   WINUAE_QT_CMAKE_ARGS            Extra arguments passed to Qt CMake.
+  WINUAE_LIBPNG_CMAKE_ARGS        Extra arguments passed to libpng CMake.
 EOF
 }
 
@@ -41,6 +46,7 @@ prefix="${1:-${WINUAE_DEPS_PREFIX:-${source_dir}/../winuae-macos-deps}}"
 build_dir="${WINUAE_DEPS_BUILD_DIR:-${prefix}/build}"
 sdl_source="${WINUAE_SDL3_SOURCE:-}"
 qt_source="${WINUAE_QT_SOURCE:-}"
+libpng_source="${WINUAE_LIBPNG_SOURCE:-}"
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
     echo "error: macOS dependency builds require Darwin/macOS" >&2
@@ -94,6 +100,27 @@ split_extra_args() {
 }
 
 mkdir -p "${prefix}" "${build_dir}"
+
+if [[ "${WINUAE_SKIP_LIBPNG:-0}" != "1" ]]; then
+    if [[ -n "${libpng_source}" ]]; then
+        require_source "libpng" "${libpng_source}"
+        run_cmake_build "${libpng_source}" "${build_dir}/libpng" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="${prefix}" \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET="${target}" \
+            -DPNG_SHARED=ON \
+            -DPNG_STATIC=OFF \
+            -DPNG_TESTS=OFF \
+            -DPNG_TOOLS=OFF \
+            ${WINUAE_LIBPNG_CMAKE_ARGS:-}
+    elif [[ "${WINUAE_REQUIRE_LIBPNG:-0}" == "1" ]]; then
+        echo "error: libpng source path is required when WINUAE_REQUIRE_LIBPNG=1" >&2
+        usage >&2
+        exit 1
+    else
+        echo "note: WINUAE_LIBPNG_SOURCE not set; skipping private libpng build" >&2
+    fi
+fi
 
 if [[ "${WINUAE_SKIP_SDL3:-0}" != "1" ]]; then
     require_source "SDL3" "${sdl_source}"
