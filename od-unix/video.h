@@ -27,6 +27,7 @@ void unix_video_present(const struct unix_video_frame *frame);
 void unix_video_set_title(const TCHAR *title);
 bool unix_video_set_window_mode(enum unix_video_window_mode mode, int display_index, int width, int height, int refresh_rate);
 enum unix_video_window_mode unix_video_get_window_mode(void);
+float unix_video_get_display_refresh_rate(int display_index);
 void unix_video_get_desktop(int *dw, int *dh, int *x, int *y, int *w, int *h);
 void unix_video_set_mouse_grab(bool grab);
 bool unix_video_get_mouse_grab(void);

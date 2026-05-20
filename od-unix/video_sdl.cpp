@@ -111,6 +111,17 @@ static void center_window_on_display(SDL_DisplayID display)
     SDL_SetWindowPosition(s_window, SDL_WINDOWPOS_CENTERED_DISPLAY(display), SDL_WINDOWPOS_CENTERED_DISPLAY(display));
 }
 
+static float refresh_rate_from_mode(const SDL_DisplayMode *mode)
+{
+    if (!mode) {
+        return 0.0f;
+    }
+    if (mode->refresh_rate_numerator > 0 && mode->refresh_rate_denominator > 0) {
+        return (float)mode->refresh_rate_numerator / (float)mode->refresh_rate_denominator;
+    }
+    return mode->refresh_rate;
+}
+
 static bool copy_sdl_display_name(int index, bool friendlyname, TCHAR *dst, size_t dstsize)
 {
     int count = 0;
@@ -721,6 +732,28 @@ bool unix_video_set_window_mode(enum unix_video_window_mode mode, int display_in
 enum unix_video_window_mode unix_video_get_window_mode(void)
 {
     return s_active_window_mode;
+}
+
+float unix_video_get_display_refresh_rate(int display_index)
+{
+    if (!unix_video_setup()) {
+        return 0.0f;
+    }
+
+    SDL_DisplayID display = 0;
+    if (display_index < 0 && s_window) {
+        display = SDL_GetDisplayForWindow(s_window);
+    }
+    if (!display) {
+        display = get_sdl_display_for_index(display_index);
+    }
+
+    const SDL_DisplayMode *mode = display ? SDL_GetCurrentDisplayMode(display) : NULL;
+    float refresh = refresh_rate_from_mode(mode);
+    if (refresh <= 0.0f && display) {
+        refresh = refresh_rate_from_mode(SDL_GetDesktopDisplayMode(display));
+    }
+    return refresh;
 }
 
 void unix_video_set_mouse_grab(bool grab)
