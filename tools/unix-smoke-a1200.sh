@@ -11,6 +11,7 @@ RTG_Z3=${WINUAE_SMOKE_RTG_Z3:-0}
 UAEGFX=${WINUAE_SMOKE_UAEGFX:-0}
 UAEGFX_DRIVER=${WINUAE_SMOKE_UAEGFX_DRIVER:-0}
 UAEGFX_SCREEN=${WINUAE_SMOKE_UAEGFX_SCREEN:-0}
+DRIVECLICK=${WINUAE_SMOKE_DRIVECLICK:-0}
 
 ROM=${WINUAE_KICKSTART_ROM:-}
 ADF=${WINUAE_FLOPPY0:-}
@@ -50,6 +51,12 @@ if [ "$RTG_Z3" = "1" ]; then
         -s cpu_24bit_addressing=false \
         -s gfxcard_size=16 \
         -s gfxcard_type=ZorroIII
+fi
+if [ "$DRIVECLICK" = "1" ]; then
+    set -- "$@" \
+        -s floppy0sound=1 \
+        -s floppy0soundvolume_empty=0 \
+        -s floppy0soundvolume_disk=0
 fi
 
 "$EXE" \
@@ -98,6 +105,9 @@ if [ "$UAEGFX_SCREEN" = "1" ]; then
     grep -q "Unix RTG SetGC:" "$LOG"
     grep -q "Unix RTG SetPanning:" "$LOG"
     grep -q "Unix RTG SetSwitch:" "$LOG"
+fi
+if [ "$DRIVECLICK" = "1" ]; then
+    grep -q "Unix driveclick: loaded built-in A500 sample set" "$LOG"
 fi
 if grep -q "failed to load config" "$LOG" || grep -q "cfgfile_load_2 failed" "$LOG"; then
     echo "Unexpected config load failure in smoke log: $LOG" >&2
