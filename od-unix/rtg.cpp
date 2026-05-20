@@ -425,6 +425,15 @@ static void unix_picasso_store_pen(uae_u8 *dst, uae_u32 pen, int bytes_per_pixel
     }
 }
 
+static void unix_picasso_store_pen_masked(uae_u8 *dst, uae_u32 pen, int bytes_per_pixel, uae_u8 mask)
+{
+    if (bytes_per_pixel == 1 && mask != 0xff) {
+        dst[0] = (uae_u8)((pen & mask) | (dst[0] & ~mask));
+        return;
+    }
+    unix_picasso_store_pen(dst, pen, bytes_per_pixel);
+}
+
 static uae_u8 unix_picasso_blit_op(uae_u8 src, uae_u8 dst, BLIT_OPCODE op)
 {
     switch (op) {
@@ -462,6 +471,55 @@ static uae_u8 unix_picasso_blit_op(uae_u8 src, uae_u8 dst, BLIT_OPCODE op)
         return 0xff;
     default:
         return dst;
+    }
+}
+
+static uae_u32 unix_picasso_rgb_full_mask(uae_u32 rgbfmt)
+{
+    static const uae_u32 masks[] = {
+        0x00000000,
+        0xffffffff,
+        0x00ffffff,
+        0x00ffffff,
+        0xffffffff,
+        0x7fff7fff,
+        0xffffff00,
+        0xffffff00,
+        0x00ffffff,
+        0x00ffffff,
+        0xffffffff,
+        0xff7fff7f,
+        0xffffffff,
+        0x7fff7fff,
+        0xffffffff,
+        0xffffffff
+    };
+
+    if (rgbfmt < sizeof masks / sizeof masks[0]) {
+        return masks[rgbfmt];
+    }
+    return 0xffffffff;
+}
+
+static void unix_picasso_xor_pixel(uae_u8 *dst, int bytes_per_pixel, uae_u32 rgbfmt, uae_u8 mask)
+{
+    uae_u32 rgbmask = unix_picasso_rgb_full_mask(rgbfmt);
+
+    switch (bytes_per_pixel) {
+    case 1:
+        dst[0] ^= (uae_u8)(rgbmask & mask);
+        break;
+    case 2:
+        do_put_mem_word((uae_u16 *)dst, do_get_mem_word((uae_u16 *)dst) ^ (uae_u16)rgbmask);
+        break;
+    case 3:
+        dst[0] ^= 0xff;
+        dst[1] ^= 0xff;
+        dst[2] ^= 0xff;
+        break;
+    case 4:
+        do_put_mem_long((uae_u32 *)dst, do_get_mem_long((uae_u32 *)dst) ^ rgbmask);
+        break;
     }
 }
 
@@ -1064,6 +1122,206 @@ static uae_u32 REGPARAM2 unix_picasso_blit_rect_no_mask_complete(TrapContext *ct
         (BLIT_OPCODE)(trap_get_dreg(ctx, 6) & 0xff));
 }
 
+struct unix_picasso_pattern_info {
+    uaecptr memory;
+    uae_u16 xoffset;
+    uae_u16 yoffset;
+    uae_u32 fgpen;
+    uae_u32 bgpen;
+    uae_u8 size;
+    uae_u8 drawmode;
+};
+
+static bool unix_picasso_load_pattern_info(TrapContext *ctx, uaecptr pattern_info, unix_picasso_pattern_info *pattern)
+{
+    if (!pattern || !trap_valid_address(ctx, pattern_info, PSSO_Pattern_sizeof)) {
+        return false;
+    }
+
+    pattern->memory = trap_get_long(ctx, pattern_info + PSSO_Pattern_Memory);
+    pattern->xoffset = trap_get_word(ctx, pattern_info + PSSO_Pattern_XOffset);
+    pattern->yoffset = trap_get_word(ctx, pattern_info + PSSO_Pattern_YOffset);
+    pattern->fgpen = trap_get_long(ctx, pattern_info + PSSO_Pattern_FgPen);
+    pattern->bgpen = trap_get_long(ctx, pattern_info + PSSO_Pattern_BgPen);
+    pattern->size = trap_get_byte(ctx, pattern_info + PSSO_Pattern_Size);
+    pattern->drawmode = trap_get_byte(ctx, pattern_info + PSSO_Pattern_DrawMode);
+    if (pattern->size > 16) {
+        return false;
+    }
+    return trap_valid_address(ctx, pattern->memory, (2u << pattern->size));
+}
+
+static uae_u32 REGPARAM2 unix_picasso_blit_pattern(TrapContext *ctx)
+{
+    RenderInfo ri;
+    unix_picasso_pattern_info pattern;
+    uaecptr renderinfo = trap_get_areg(ctx, 1);
+    uaecptr pattern_info = trap_get_areg(ctx, 2);
+    uae_u32 x = (uae_u16)trap_get_dreg(ctx, 0);
+    uae_u32 y = (uae_u16)trap_get_dreg(ctx, 1);
+    uae_u32 width = (uae_u16)trap_get_dreg(ctx, 2);
+    uae_u32 height = (uae_u16)trap_get_dreg(ctx, 3);
+    uae_u8 mask = (uae_u8)trap_get_dreg(ctx, 4);
+    uae_u32 rgbfmt = trap_get_dreg(ctx, 7);
+    int bytes_per_pixel = unix_picasso_bytes_per_pixel(rgbfmt);
+
+    if (!bytes_per_pixel ||
+        !unix_picasso_renderinfo(ctx, renderinfo, &ri) ||
+        !unix_picasso_load_pattern_info(ctx, pattern_info, &pattern)) {
+        return 0;
+    }
+    if (!unix_picasso_validate_rect(&ri, rgbfmt, &x, &y, &width, &height)) {
+        write_log(_T("Unix RTG BlitPattern invalid region: %08X:%d:%d (%dx%d)-(%dx%d)\n"),
+            ri.AMemory, ri.BytesPerRow, ri.RGBFormat, x, y, width, height);
+        return 1;
+    }
+    if (!width || !height) {
+        return 1;
+    }
+
+    bool inverted = (pattern.drawmode & INVERS) != 0;
+    uae_u8 drawmode = pattern.drawmode & 3;
+    uae_u32 ymask = (1u << pattern.size) - 1;
+    uae_u8 *dst = ri.Memory + y * ri.BytesPerRow + x * bytes_per_pixel;
+
+    for (uae_u32 row = 0; row < height; row++, dst += ri.BytesPerRow) {
+        uae_u32 pattern_row = (row + pattern.yoffset) & ymask;
+        uae_u16 data = trap_get_word(ctx, pattern.memory + pattern_row * 2);
+        uae_u8 *dstrow = dst;
+
+        for (uae_u32 col = 0; col < width; col++, dstrow += bytes_per_pixel) {
+            uae_u32 bit_index = (col + pattern.xoffset) & 15;
+            bool bit_set = (data & (0x8000 >> bit_index)) != 0;
+            if (inverted) {
+                bit_set = !bit_set;
+            }
+
+            switch (drawmode) {
+            case JAM1:
+                if (bit_set) {
+                    unix_picasso_store_pen_masked(dstrow, pattern.fgpen, bytes_per_pixel, mask);
+                }
+                break;
+            case JAM2:
+                unix_picasso_store_pen_masked(dstrow, bit_set ? pattern.fgpen : pattern.bgpen, bytes_per_pixel, mask);
+                break;
+            case COMP:
+                if (bit_set) {
+                    unix_picasso_xor_pixel(dstrow, bytes_per_pixel, rgbfmt, mask);
+                }
+                break;
+            }
+        }
+    }
+    return 1;
+}
+
+struct unix_picasso_template_info {
+    uaecptr memory;
+    uae_s16 bytes_per_row;
+    uae_u8 xoffset;
+    uae_u8 drawmode;
+    uae_u32 fgpen;
+    uae_u32 bgpen;
+};
+
+static bool unix_picasso_load_template_info(TrapContext *ctx, uaecptr template_info,
+    unix_picasso_template_info *tmpl)
+{
+    if (!tmpl || !trap_valid_address(ctx, template_info, PSSO_Template_sizeof)) {
+        return false;
+    }
+
+    tmpl->memory = trap_get_long(ctx, template_info + PSSO_Template_Memory);
+    tmpl->bytes_per_row = (uae_s16)trap_get_word(ctx, template_info + PSSO_Template_BytesPerRow);
+    tmpl->xoffset = trap_get_byte(ctx, template_info + PSSO_Template_XOffset);
+    tmpl->drawmode = trap_get_byte(ctx, template_info + PSSO_Template_DrawMode);
+    tmpl->fgpen = trap_get_long(ctx, template_info + PSSO_Template_FgPen);
+    tmpl->bgpen = trap_get_long(ctx, template_info + PSSO_Template_BgPen);
+    if (tmpl->bytes_per_row <= 0) {
+        return false;
+    }
+    return trap_valid_address(ctx, tmpl->memory, 1);
+}
+
+static bool unix_picasso_validate_template_source(TrapContext *ctx,
+    const unix_picasso_template_info *tmpl, uae_u32 width, uae_u32 height)
+{
+    if (!height || !width) {
+        return trap_valid_address(ctx, tmpl->memory, 1);
+    }
+
+    uae_u64 last_byte = (uae_u64)(height - 1) * tmpl->bytes_per_row + (tmpl->xoffset + width - 1) / 8;
+    return last_byte <= 0xffffffffu && trap_valid_address(ctx, tmpl->memory, (uae_u32)last_byte + 1);
+}
+
+static uae_u32 REGPARAM2 unix_picasso_blit_template(TrapContext *ctx)
+{
+    RenderInfo ri;
+    unix_picasso_template_info tmpl;
+    uaecptr renderinfo = trap_get_areg(ctx, 1);
+    uaecptr template_info = trap_get_areg(ctx, 2);
+    uae_u32 x = (uae_u16)trap_get_dreg(ctx, 0);
+    uae_u32 y = (uae_u16)trap_get_dreg(ctx, 1);
+    uae_u32 width = (uae_u16)trap_get_dreg(ctx, 2);
+    uae_u32 height = (uae_u16)trap_get_dreg(ctx, 3);
+    uae_u8 mask = (uae_u8)trap_get_dreg(ctx, 4);
+    uae_u32 rgbfmt = trap_get_dreg(ctx, 7);
+    int bytes_per_pixel = unix_picasso_bytes_per_pixel(rgbfmt);
+
+    if (!bytes_per_pixel ||
+        !unix_picasso_renderinfo(ctx, renderinfo, &ri) ||
+        !unix_picasso_load_template_info(ctx, template_info, &tmpl)) {
+        return 0;
+    }
+    if (!unix_picasso_validate_rect(&ri, rgbfmt, &x, &y, &width, &height)) {
+        write_log(_T("Unix RTG BlitTemplate invalid region: %08X:%d:%d (%dx%d)-(%dx%d)\n"),
+            ri.AMemory, ri.BytesPerRow, ri.RGBFormat, x, y, width, height);
+        return 1;
+    }
+    if (!width || !height) {
+        return 1;
+    }
+    if (!unix_picasso_validate_template_source(ctx, &tmpl, width, height)) {
+        return 0;
+    }
+
+    bool inverted = (tmpl.drawmode & INVERS) != 0;
+    uae_u8 drawmode = tmpl.drawmode & 3;
+    uae_u8 *dst = ri.Memory + y * ri.BytesPerRow + x * bytes_per_pixel;
+
+    for (uae_u32 row = 0; row < height; row++, dst += ri.BytesPerRow) {
+        uaecptr srcrow = tmpl.memory + row * tmpl.bytes_per_row;
+        uae_u8 *dstrow = dst;
+
+        for (uae_u32 col = 0; col < width; col++, dstrow += bytes_per_pixel) {
+            uae_u32 bit_index = tmpl.xoffset + col;
+            uae_u8 data = trap_get_byte(ctx, srcrow + bit_index / 8);
+            bool bit_set = (data & (0x80 >> (bit_index & 7))) != 0;
+            if (inverted) {
+                bit_set = !bit_set;
+            }
+
+            switch (drawmode) {
+            case JAM1:
+                if (bit_set) {
+                    unix_picasso_store_pen_masked(dstrow, tmpl.fgpen, bytes_per_pixel, mask);
+                }
+                break;
+            case JAM2:
+                unix_picasso_store_pen_masked(dstrow, bit_set ? tmpl.fgpen : tmpl.bgpen, bytes_per_pixel, mask);
+                break;
+            case COMP:
+                if (bit_set) {
+                    unix_picasso_xor_pixel(dstrow, bytes_per_pixel, rgbfmt, mask);
+                }
+                break;
+            }
+        }
+    }
+    return 1;
+}
+
 static void unix_picasso_reset_palette(struct picasso96_state_struct *state)
 {
     for (int i = 0; i < 256 * 2; i++) {
@@ -1214,10 +1472,10 @@ static void unix_init_uaegfx_funcs(TrapContext *ctx, uaecptr start, uaecptr ABI)
     UNIX_RTGCALL(UNIX_PSSO_BoardInfo_FillRect, UNIX_PSSO_BoardInfo_FillRectDefault, unix_picasso_fill_rect);
     UNIX_RTGCALL(UNIX_PSSO_BoardInfo_BlitRect, UNIX_PSSO_BoardInfo_BlitRectDefault, unix_picasso_blit_rect);
     UNIX_RTGCALL(UNIX_PSSO_BoardInfo_BlitPlanar2Chunky, UNIX_PSSO_BoardInfo_BlitPlanar2ChunkyDefault, unix_picasso_default_unsupported);
-    UNIX_RTGCALL(UNIX_PSSO_BoardInfo_BlitTemplate, UNIX_PSSO_BoardInfo_BlitTemplateDefault, unix_picasso_default_unsupported);
+    UNIX_RTGCALL(UNIX_PSSO_BoardInfo_BlitTemplate, UNIX_PSSO_BoardInfo_BlitTemplateDefault, unix_picasso_blit_template);
     UNIX_RTGCALL(UNIX_PSSO_BoardInfo_InvertRect, UNIX_PSSO_BoardInfo_InvertRectDefault, unix_picasso_invert_rect);
     UNIX_RTGCALL(UNIX_PSSO_BoardInfo_BlitRectNoMaskComplete, UNIX_PSSO_BoardInfo_BlitRectNoMaskCompleteDefault, unix_picasso_blit_rect_no_mask_complete);
-    UNIX_RTGCALL(UNIX_PSSO_BoardInfo_BlitPattern, UNIX_PSSO_BoardInfo_BlitPatternDefault, unix_picasso_default_unsupported);
+    UNIX_RTGCALL(UNIX_PSSO_BoardInfo_BlitPattern, UNIX_PSSO_BoardInfo_BlitPatternDefault, unix_picasso_blit_pattern);
 
     UNIX_RTGCALL2(UNIX_PSSO_BoardInfo_SetSwitch, unix_picasso_set_switch);
     UNIX_RTGCALL2(UNIX_PSSO_BoardInfo_SetColorArray, unix_picasso_set_color_array);
