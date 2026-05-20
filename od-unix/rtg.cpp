@@ -523,6 +523,60 @@ static void unix_picasso_xor_pixel(uae_u8 *dst, int bytes_per_pixel, uae_u32 rgb
     }
 }
 
+static uae_u32 unix_picasso_load_pen(const uae_u8 *src, int bytes_per_pixel)
+{
+    switch (bytes_per_pixel) {
+    case 1:
+        return src[0];
+    case 2:
+        return do_get_mem_word((uae_u16 *)src);
+    case 3:
+        return ((uae_u32)src[0] << 16) | ((uae_u32)src[1] << 8) | src[2];
+    case 4:
+        return do_get_mem_long((uae_u32 *)src);
+    }
+    return 0;
+}
+
+static uae_u32 unix_picasso_blit_op_long(uae_u32 src, uae_u32 src_inv, uae_u32 dst, uae_u32 dst_inv,
+    BLIT_OPCODE op)
+{
+    switch (op) {
+    case BLIT_FALSE:
+        return 0;
+    case BLIT_NOR:
+        return ~(src | dst);
+    case BLIT_ONLYDST:
+        return dst & src_inv;
+    case BLIT_NOTSRC:
+        return src_inv;
+    case BLIT_ONLYSRC:
+        return src & dst_inv;
+    case BLIT_NOTDST:
+        return dst_inv;
+    case BLIT_EOR:
+        return src ^ dst;
+    case BLIT_NAND:
+        return ~(src & dst);
+    case BLIT_AND:
+        return src & dst;
+    case BLIT_NEOR:
+        return ~(src ^ dst);
+    case BLIT_DST:
+        return dst;
+    case BLIT_NOTONLYSRC:
+        return src_inv | dst;
+    case BLIT_NOTONLYDST:
+        return dst_inv | src;
+    case BLIT_OR:
+        return src | dst;
+    case BLIT_TRUE:
+        return 0xffffffff;
+    default:
+        return dst;
+    }
+}
+
 static int unix_picasso_depth_supported(int depth)
 {
     uae_u32 flags = unix_rtg_modeflags();
@@ -1322,6 +1376,186 @@ static uae_u32 REGPARAM2 unix_picasso_blit_template(TrapContext *ctx)
     return 1;
 }
 
+struct unix_picasso_bitmap_info {
+    uae_u16 bytes_per_row;
+    uae_u16 rows;
+    uae_u8 depth;
+    uaecptr planes[8];
+};
+
+static bool unix_picasso_load_bitmap_info(TrapContext *ctx, uaecptr bitmap_info, unix_picasso_bitmap_info *bitmap)
+{
+    if (!bitmap || !trap_valid_address(ctx, bitmap_info, PSSO_BitMap_sizeof)) {
+        return false;
+    }
+
+    bitmap->bytes_per_row = trap_get_word(ctx, bitmap_info + PSSO_BitMap_BytesPerRow);
+    bitmap->rows = trap_get_word(ctx, bitmap_info + PSSO_BitMap_Rows);
+    bitmap->depth = trap_get_byte(ctx, bitmap_info + PSSO_BitMap_Depth);
+    if (!bitmap->bytes_per_row || !bitmap->depth || bitmap->depth > 8) {
+        return false;
+    }
+    for (int i = 0; i < bitmap->depth; i++) {
+        bitmap->planes[i] = trap_get_long(ctx, bitmap_info + PSSO_BitMap_Planes + i * 4);
+    }
+    return true;
+}
+
+static bool unix_picasso_validate_bitmap_source(TrapContext *ctx, const unix_picasso_bitmap_info *bitmap,
+    uae_u32 srcx, uae_u32 srcy, uae_u32 width, uae_u32 height)
+{
+    if (!bitmap || !width || !height) {
+        return true;
+    }
+    if (srcy >= bitmap->rows || height > bitmap->rows - srcy) {
+        return false;
+    }
+
+    uae_u64 last_byte = (uae_u64)(srcy + height - 1) * bitmap->bytes_per_row + (srcx + width - 1) / 8;
+    if (last_byte > 0xffffffffu) {
+        return false;
+    }
+    for (int i = 0; i < bitmap->depth; i++) {
+        uaecptr plane = bitmap->planes[i];
+        if (plane != 0 && plane != 0xffffffff && !trap_valid_address(ctx, plane, (uae_u32)last_byte + 1)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static uae_u8 unix_picasso_planar_pixel(TrapContext *ctx, const unix_picasso_bitmap_info *bitmap,
+    uae_u32 x, uae_u32 y)
+{
+    uae_u8 value = 0;
+    uaecptr row_offset = y * bitmap->bytes_per_row + x / 8;
+    uae_u8 bit = 0x80 >> (x & 7);
+
+    for (int i = 0; i < bitmap->depth; i++) {
+        uaecptr plane = bitmap->planes[i];
+        if (plane == 0xffffffff) {
+            value |= 1 << i;
+        } else if (plane != 0 && (trap_get_byte(ctx, plane + row_offset) & bit)) {
+            value |= 1 << i;
+        }
+    }
+    return value;
+}
+
+static uae_u32 REGPARAM2 unix_picasso_blit_planar2chunky(TrapContext *ctx)
+{
+    RenderInfo ri;
+    unix_picasso_bitmap_info bitmap;
+    uaecptr bitmap_info = trap_get_areg(ctx, 1);
+    uaecptr renderinfo = trap_get_areg(ctx, 2);
+    uae_u32 srcx = (uae_u16)trap_get_dreg(ctx, 0);
+    uae_u32 srcy = (uae_u16)trap_get_dreg(ctx, 1);
+    uae_u32 dstx = (uae_u16)trap_get_dreg(ctx, 2);
+    uae_u32 dsty = (uae_u16)trap_get_dreg(ctx, 3);
+    uae_u32 width = (uae_u16)trap_get_dreg(ctx, 4);
+    uae_u32 height = (uae_u16)trap_get_dreg(ctx, 5);
+    BLIT_OPCODE minterm = (BLIT_OPCODE)(trap_get_dreg(ctx, 6) & 0xff);
+    uae_u8 mask = (uae_u8)trap_get_dreg(ctx, 7);
+
+    if (minterm < BLIT_FALSE || minterm >= BLIT_LAST ||
+        !unix_picasso_renderinfo(ctx, renderinfo, &ri) ||
+        !unix_picasso_load_bitmap_info(ctx, bitmap_info, &bitmap) ||
+        unix_picasso_bytes_per_pixel(ri.RGBFormat) != 1) {
+        return 0;
+    }
+    if (!unix_picasso_validate_rect(&ri, ri.RGBFormat, &dstx, &dsty, &width, &height)) {
+        write_log(_T("Unix RTG BlitPlanar2Chunky invalid region: %08X:%d:%d (%dx%d)-(%dx%d)\n"),
+            ri.AMemory, ri.BytesPerRow, ri.RGBFormat, dstx, dsty, width, height);
+        return 1;
+    }
+    if (!width || !height) {
+        return 1;
+    }
+    if (!unix_picasso_validate_bitmap_source(ctx, &bitmap, srcx, srcy, width, height)) {
+        return 0;
+    }
+
+    uae_u8 *dst = ri.Memory + dsty * ri.BytesPerRow + dstx;
+    for (uae_u32 row = 0; row < height; row++, dst += ri.BytesPerRow) {
+        for (uae_u32 col = 0; col < width; col++) {
+            uae_u8 src = unix_picasso_planar_pixel(ctx, &bitmap, srcx + col, srcy + row);
+            uae_u8 olddst = dst[col];
+            uae_u8 value = unix_picasso_blit_op(src, olddst, minterm);
+            dst[col] = (uae_u8)((value & mask) | (olddst & ~mask));
+        }
+    }
+    return 1;
+}
+
+static uae_u32 unix_picasso_cim_color(TrapContext *ctx, uaecptr cim, uae_u8 index)
+{
+    return trap_get_long(ctx, cim + 4 + index * 4);
+}
+
+static uae_u32 REGPARAM2 unix_picasso_blit_planar2direct(TrapContext *ctx)
+{
+    RenderInfo ri;
+    unix_picasso_bitmap_info bitmap;
+    uaecptr bitmap_info = trap_get_areg(ctx, 1);
+    uaecptr renderinfo = trap_get_areg(ctx, 2);
+    uaecptr cim = trap_get_areg(ctx, 3);
+    uae_u32 srcx = (uae_u16)trap_get_dreg(ctx, 0);
+    uae_u32 srcy = (uae_u16)trap_get_dreg(ctx, 1);
+    uae_u32 dstx = (uae_u16)trap_get_dreg(ctx, 2);
+    uae_u32 dsty = (uae_u16)trap_get_dreg(ctx, 3);
+    uae_u32 width = (uae_u16)trap_get_dreg(ctx, 4);
+    uae_u32 height = (uae_u16)trap_get_dreg(ctx, 5);
+    BLIT_OPCODE minterm = (BLIT_OPCODE)(trap_get_dreg(ctx, 6) & 0xff);
+    uae_u8 mask = (uae_u8)trap_get_dreg(ctx, 7);
+
+    if (minterm < BLIT_FALSE || minterm >= BLIT_LAST ||
+        !trap_valid_address(ctx, cim, sizeof(ColorIndexMapping)) ||
+        !unix_picasso_renderinfo(ctx, renderinfo, &ri) ||
+        !unix_picasso_load_bitmap_info(ctx, bitmap_info, &bitmap)) {
+        return 0;
+    }
+
+    int bytes_per_pixel = unix_picasso_bytes_per_pixel(ri.RGBFormat);
+    if (bytes_per_pixel < 2) {
+        return 0;
+    }
+    if (!unix_picasso_validate_rect(&ri, ri.RGBFormat, &dstx, &dsty, &width, &height)) {
+        write_log(_T("Unix RTG BlitPlanar2Direct invalid region: %08X:%d:%d (%dx%d)-(%dx%d)\n"),
+            ri.AMemory, ri.BytesPerRow, ri.RGBFormat, dstx, dsty, width, height);
+        return 1;
+    }
+    if (!width || !height) {
+        return 1;
+    }
+    if (!unix_picasso_validate_bitmap_source(ctx, &bitmap, srcx, srcy, width, height)) {
+        return 0;
+    }
+
+    uae_u8 depthmask = (1 << bitmap.depth) - 1;
+    uae_u32 rgbmask = unix_picasso_rgb_full_mask(ri.RGBFormat);
+    uae_u8 *dst = ri.Memory + dsty * ri.BytesPerRow + dstx * bytes_per_pixel;
+    for (uae_u32 row = 0; row < height; row++, dst += ri.BytesPerRow) {
+        uae_u8 *dstrow = dst;
+        for (uae_u32 col = 0; col < width; col++, dstrow += bytes_per_pixel) {
+            uae_u8 value = unix_picasso_planar_pixel(ctx, &bitmap, srcx + col, srcy + row) & depthmask;
+            uae_u8 inverted_value = (value ^ mask) & depthmask;
+            uae_u32 src = unix_picasso_cim_color(ctx, cim, value);
+            uae_u32 src_inv = unix_picasso_cim_color(ctx, cim, inverted_value);
+            uae_u32 olddst = unix_picasso_load_pen(dstrow, bytes_per_pixel);
+            uae_u32 out;
+            if (minterm == BLIT_FALSE) {
+                out = unix_picasso_cim_color(ctx, cim, 0);
+            } else if (minterm == BLIT_TRUE) {
+                out = unix_picasso_cim_color(ctx, cim, depthmask);
+            } else {
+                out = unix_picasso_blit_op_long(src, src_inv, olddst, olddst ^ rgbmask, minterm);
+            }
+            unix_picasso_store_pen(dstrow, out, bytes_per_pixel);
+        }
+    }
+    return 1;
+}
+
 static void unix_picasso_reset_palette(struct picasso96_state_struct *state)
 {
     for (int i = 0; i < 256 * 2; i++) {
@@ -1468,10 +1702,10 @@ static void unix_init_uaegfx_funcs(TrapContext *ctx, uaecptr start, uaecptr ABI)
     UNIX_RTGNONE(UNIX_PSSO_BoardInfo_WaitVerticalSync);
     UNIX_RTGNONE(UNIX_PSSO_BoardInfo_WaitBlitter);
 
-    UNIX_RTGCALL(UNIX_PSSO_BoardInfo_BlitPlanar2Direct, UNIX_PSSO_BoardInfo_BlitPlanar2DirectDefault, unix_picasso_default_unsupported);
+    UNIX_RTGCALL(UNIX_PSSO_BoardInfo_BlitPlanar2Direct, UNIX_PSSO_BoardInfo_BlitPlanar2DirectDefault, unix_picasso_blit_planar2direct);
     UNIX_RTGCALL(UNIX_PSSO_BoardInfo_FillRect, UNIX_PSSO_BoardInfo_FillRectDefault, unix_picasso_fill_rect);
     UNIX_RTGCALL(UNIX_PSSO_BoardInfo_BlitRect, UNIX_PSSO_BoardInfo_BlitRectDefault, unix_picasso_blit_rect);
-    UNIX_RTGCALL(UNIX_PSSO_BoardInfo_BlitPlanar2Chunky, UNIX_PSSO_BoardInfo_BlitPlanar2ChunkyDefault, unix_picasso_default_unsupported);
+    UNIX_RTGCALL(UNIX_PSSO_BoardInfo_BlitPlanar2Chunky, UNIX_PSSO_BoardInfo_BlitPlanar2ChunkyDefault, unix_picasso_blit_planar2chunky);
     UNIX_RTGCALL(UNIX_PSSO_BoardInfo_BlitTemplate, UNIX_PSSO_BoardInfo_BlitTemplateDefault, unix_picasso_blit_template);
     UNIX_RTGCALL(UNIX_PSSO_BoardInfo_InvertRect, UNIX_PSSO_BoardInfo_InvertRectDefault, unix_picasso_invert_rect);
     UNIX_RTGCALL(UNIX_PSSO_BoardInfo_BlitRectNoMaskComplete, UNIX_PSSO_BoardInfo_BlitRectNoMaskCompleteDefault, unix_picasso_blit_rect_no_mask_complete);
