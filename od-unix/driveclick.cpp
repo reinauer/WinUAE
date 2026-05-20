@@ -148,8 +148,12 @@ int driveclick_loadresource(struct drvsample *sp, int)
 	for (int i = 0; builtin_samples[i].name; i++) {
 		struct drvsample *sample = sp + builtin_samples[i].slot;
 		if (!load_builtin_sample(builtin_samples[i].name, sample)) {
+			write_log(_T("Unix driveclick: missing built-in sample '%s'\n"), builtin_samples[i].name);
 			ok = false;
 		}
+	}
+	if (ok) {
+		write_log(_T("Unix driveclick: loaded built-in A500 sample set\n"));
 	}
 	return ok ? 1 : 0;
 }
