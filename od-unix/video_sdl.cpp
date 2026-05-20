@@ -39,6 +39,7 @@ static bool s_status_colors_ready;
 static Uint8 s_status_click_button;
 
 static constexpr int UnixStatusScale = 2;
+static TCHAR s_display_name[MAX_DPATH];
 
 static int clamp_window_dimension(int value, int fallback, int maxvalue)
 {
@@ -57,6 +58,89 @@ static SDL_PixelFormat texture_format_for_pixbytes(int pixbytes)
         return SDL_PIXELFORMAT_RGB565;
     }
     return SDL_PIXELFORMAT_ARGB8888;
+}
+
+static SDL_DisplayID *get_sdl_displays(int *count)
+{
+    if (count) {
+        *count = 0;
+    }
+    if (!unix_video_setup()) {
+        return NULL;
+    }
+    return SDL_GetDisplays(count);
+}
+
+static bool copy_sdl_display_name(int index, bool friendlyname, TCHAR *dst, size_t dstsize)
+{
+    int count = 0;
+    SDL_DisplayID *displays = get_sdl_displays(&count);
+    if (!displays) {
+        return false;
+    }
+
+    bool found = false;
+    if (index >= 0 && index < count) {
+        if (friendlyname) {
+            const char *name = SDL_GetDisplayName(displays[index]);
+            if (name && name[0]) {
+                snprintf(dst, dstsize, "%s", name);
+                found = true;
+            }
+        } else {
+            snprintf(dst, dstsize, "SDL:%u", (unsigned int)displays[index]);
+            found = true;
+        }
+    }
+
+    SDL_free(displays);
+    return found;
+}
+
+int target_get_display(const TCHAR *name)
+{
+    if (!name || !name[0]) {
+        return -1;
+    }
+
+    int count = 0;
+    SDL_DisplayID *displays = get_sdl_displays(&count);
+    if (!displays) {
+        return -1;
+    }
+
+    int found = -1;
+    unsigned int displayid = 0;
+    if (sscanf(name, "SDL:%u", &displayid) == 1) {
+        for (int i = 0; i < count; i++) {
+            if (displays[i] == (SDL_DisplayID)displayid) {
+                found = i + 1;
+                break;
+            }
+        }
+    } else {
+        for (int i = 0; i < count; i++) {
+            const char *displayname = SDL_GetDisplayName(displays[i]);
+            if (displayname && !_tcsicmp(displayname, name)) {
+                found = i + 1;
+                break;
+            }
+        }
+    }
+
+    SDL_free(displays);
+    return found;
+}
+
+const TCHAR *target_get_display_name(int num, bool friendlyname)
+{
+    if (num <= 0) {
+        return NULL;
+    }
+    if (!copy_sdl_display_name(num - 1, friendlyname, s_display_name, sizeof s_display_name / sizeof s_display_name[0])) {
+        return NULL;
+    }
+    return s_display_name;
 }
 
 static int unix_input_lock_state_from_sdl(SDL_Keymod mod)

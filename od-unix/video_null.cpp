@@ -67,3 +67,13 @@ void unix_video_get_desktop(int *dw, int *dh, int *x, int *y, int *w, int *h)
         *h = 480;
     }
 }
+
+int target_get_display(const TCHAR *)
+{
+    return -1;
+}
+
+const TCHAR *target_get_display_name(int, bool)
+{
+    return NULL;
+}
