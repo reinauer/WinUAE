@@ -406,7 +406,7 @@ void unlockscr(struct vidbuffer *vb, int, int)
 
 bool target_graphics_buffer_update(int, bool) { return true; }
 float target_adjust_vblank_hz(int, float hz) { return hz; }
-int target_get_display_scanline(int) { return 0; }
+int target_get_display_scanline(int) { return -1; }
 void target_spin(int)
 {
     static int spin_counter;
@@ -423,7 +423,12 @@ void getgfxoffset(int, float *dxp, float *dyp, float *mxp, float *myp)
     if (myp) *myp = 1;
 }
 
-float target_getcurrentvblankrate(int) { return 60.0f; }
+float target_getcurrentvblankrate(int monid)
+{
+    int idx = unix_apmode_index(monid);
+    float rate = unix_video_get_display_refresh_rate(currprefs.gfx_apmode[idx].gfx_display);
+    return rate > 0.0f ? rate : 60.0f;
+}
 int debuggable(void) { return 0; }
 
 void refreshtitle(void)
