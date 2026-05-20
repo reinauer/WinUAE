@@ -128,6 +128,15 @@ fi
 open_screen_args=
 if [ -n "$OPEN_SCREEN" ]; then
     case "$OPEN_SCREEN" in
+        640x480x15)
+            open_screen_args='0x50031000 640 480 15'
+            ;;
+        800x600x15)
+            open_screen_args='0x50041000 800 600 15'
+            ;;
+        1024x768x15)
+            open_screen_args='0x50051000 1024 768 15'
+            ;;
         640x480x16)
             open_screen_args='0x50031000 640 480 16'
             ;;

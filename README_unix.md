@@ -402,11 +402,12 @@ export WINUAE_A4000_KICKSTART_ROM=/path/to/A4000.47.115.rom
 export WINUAE_P96_WORKBENCH_DIR=/path/to/Workbench
 cmake --build /tmp/winuae_cmake_build --target winuae_unix_smoke_p96_guest_800x600
 cmake --build /tmp/winuae_cmake_build --target winuae_unix_smoke_p96_guest_16bit_modes
+cmake --build /tmp/winuae_cmake_build --target winuae_unix_smoke_p96_guest_15bit_open
 cmake --build /tmp/winuae_cmake_build --target winuae_unix_smoke_p96_guest_16bit_open
 cmake --build /tmp/winuae_cmake_build --target winuae_unix_smoke_p96_guest_32bit_open
 ```
 
-The `16bit_modes` target verifies the Windows-compatible `rtg_modes=0x10` mode-list path. The `16bit_open` and `32bit_open` targets additionally build a tiny Amiga-side Picasso96API helper with `m68k-amigaos-gcc` and verify direct `640x480x16` / `640x480x32` P96 screen opens through `SetGC`/`SetPanning`. If that compiler is not installed, set `WINUAE_P96_OPEN_SCREEN_BINARY` to a prebuilt helper binary.
+The `16bit_modes` target verifies the Windows-compatible `rtg_modes=0x10` mode-list path. The `15bit_open`, `16bit_open`, and `32bit_open` targets additionally build a tiny Amiga-side Picasso96API helper with `m68k-amigaos-gcc` and verify direct `640x480x15` / `640x480x16` / `640x480x32` P96 screen opens through `SetGC`/`SetPanning`. If that compiler is not installed, set `WINUAE_P96_OPEN_SCREEN_BINARY` to a prebuilt helper binary.
 
 Optional overrides:
 
