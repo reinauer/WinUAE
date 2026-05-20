@@ -1,14 +1,56 @@
 #include <exec/types.h>
+#include <graphics/gfx.h>
+#include <graphics/gfxmacros.h>
+#include <graphics/rastport.h>
 #include <intuition/intuition.h>
 #include <intuition/screens.h>
 #include <libraries/Picasso96.h>
 #include <proto/dos.h>
 #include <proto/exec.h>
+#include <proto/graphics.h>
 #include <proto/intuition.h>
 #include <proto/Picasso96.h>
 #include <stdlib.h>
 
 struct Library *P96Base;
+
+static void draw_smoke(struct Screen *screen)
+{
+    static UWORD pattern[] = { 0xaaaa, 0x5555 };
+    static const char label[] = "P96 draw";
+    struct RastPort *rp = &screen->RastPort;
+    PLANEPTR plane;
+
+    SetAPen(rp, 1);
+    RectFill(rp, 8, 8, 80, 40);
+
+    SetAPen(rp, 2);
+    SetBPen(rp, 0);
+    Move(rp, 12, 70);
+    Text(rp, (STRPTR)label, sizeof label - 1);
+
+    SetAfPt(rp, pattern, 1);
+    SetAPen(rp, 3);
+    SetBPen(rp, 0);
+    RectFill(rp, 96, 8, 160, 48);
+    SetAfPt(rp, NULL, 0);
+
+    plane = AllocRaster(16, 16);
+    if (plane) {
+        struct BitMap bitmap;
+        UWORD *words = (UWORD *)plane;
+        int i;
+
+        InitBitMap(&bitmap, 1, 16, 16);
+        bitmap.Planes[0] = plane;
+        BltClear(plane, RASSIZE(16, 16), 0);
+        for (i = 0; i < 16; i++) {
+            words[i] = (i & 1) ? 0x0f0f : 0xf0f0;
+        }
+        BltBitMap(&bitmap, 0, 0, rp->BitMap, 176, 16, 16, 16, 0xc0, 0xff, NULL);
+        FreeRaster(plane, 16, 16);
+    }
+}
 
 int main(int argc, char **argv)
 {
@@ -77,6 +119,8 @@ int main(int argc, char **argv)
     }
 
     Printf("OPENSCREEN OK %08lx %ldx%ldx%ld\n", display_id, width, height, depth);
+    draw_smoke(screen);
+    Printf("DRAW OK\n");
     Delay(100);
     p96CloseScreen(screen);
     CloseLibrary(P96Base);

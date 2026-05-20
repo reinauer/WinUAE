@@ -19,6 +19,7 @@ SCREENMODE=${WINUAE_P96_SCREENMODE:-}
 OPEN_SCREEN=${WINUAE_P96_OPEN_SCREEN:-}
 OPEN_SCREEN_BINARY=${WINUAE_P96_OPEN_SCREEN_BINARY:-}
 OPEN_SCREEN_CC=${WINUAE_M68K_CC:-m68k-amigaos-gcc}
+EXPECT_DRAW_BLITS=${WINUAE_P96_EXPECT_DRAW_BLITS:-}
 EXPECT_MODE_MASK=${WINUAE_P96_EXPECT_MODE_MASK:-}
 EXPECT_RESINFO_BYTES=${WINUAE_P96_EXPECT_RESINFO_BYTES:-}
 KEEP_WORKDIR=${WINUAE_KEEP_SMOKE_WORKDIR:-0}
@@ -128,6 +129,15 @@ fi
 open_screen_args=
 if [ -n "$OPEN_SCREEN" ]; then
     case "$OPEN_SCREEN" in
+        640x480x8)
+            open_screen_args='0x50031000 640 480 8'
+            ;;
+        800x600x8)
+            open_screen_args='0x50041000 800 600 8'
+            ;;
+        1024x768x8)
+            open_screen_args='0x50051000 1024 768 8'
+            ;;
         640x480x15)
             open_screen_args='0x50031000 640 480 15'
             ;;
@@ -265,6 +275,24 @@ fi
 if [ -n "$OPEN_SCREEN" ]; then
     grep -q "OPENSCREEN OK" "$WORKDIR/Workbench/unix-p96-open-screen-smoke"
     grep -q "Unix RTG SetGC: $OPEN_SCREEN" "$LOG"
+fi
+if [ -n "$EXPECT_DRAW_BLITS" ]; then
+    grep -q "DRAW OK" "$WORKDIR/Workbench/unix-p96-open-screen-smoke"
+    grep -q "Unix RTG FillRect" "$LOG"
+    grep -q "Unix RTG BlitTemplate" "$LOG"
+    grep -q "Unix RTG BlitPattern" "$LOG"
+    case "$EXPECT_DRAW_BLITS" in
+        chunky)
+            grep -q "Unix RTG BlitPlanar2Chunky" "$LOG"
+            ;;
+        direct)
+            grep -q "Unix RTG BlitPlanar2Direct" "$LOG"
+            ;;
+        *)
+            echo "Unsupported WINUAE_P96_EXPECT_DRAW_BLITS: $EXPECT_DRAW_BLITS" >&2
+            exit 2
+            ;;
+    esac
 fi
 if grep -q "not executable" "$LOG" || grep -q "failed to load config" "$LOG" || grep -q "cfgfile_load_2 failed" "$LOG"; then
     echo "Unexpected failure in P96 guest smoke log: $LOG" >&2
