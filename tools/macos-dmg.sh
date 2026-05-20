@@ -15,6 +15,12 @@ Arguments:
 
 Environment:
   WINUAE_SKIP_FINDER_LAYOUT=1  Skip Finder window layout customization.
+  WINUAE_DMG_CODESIGN_IDENTITY codesign identity for the final DMG.
+                               Defaults to WINUAE_CODESIGN_IDENTITY when set.
+  WINUAE_DMG_CODESIGN_OPTIONS  Extra options passed to codesign for the DMG.
+  WINUAE_NOTARY_PROFILE        notarytool keychain profile. When set, submit
+                               the final DMG and staple the ticket.
+  WINUAE_SKIP_NOTARIZATION=1   Do not submit/staple even if a profile is set.
 EOF
 }
 
@@ -52,6 +58,16 @@ cleanup() {
     fi
 }
 trap cleanup EXIT
+
+split_extra_args() {
+    if [[ -n "${1:-}" ]]; then
+        # Intentionally split user-provided extra flags the same way a shell would.
+        # shellcheck disable=SC2206
+        extra_args=($1)
+    else
+        extra_args=()
+    fi
+}
 
 rm -rf "${staging_dir}" "${rw_dmg}" "${final_dmg}"
 mkdir -p "${staging_dir}/.background"
@@ -165,7 +181,26 @@ sync
 hdiutil detach "${mount_dir}" -quiet
 mount_dir=""
 hdiutil convert "${rw_dmg}" -format UDZO -imagekey zlib-level=9 -o "${final_dmg}" -ov >/dev/null
+
+dmg_codesign_identity="${WINUAE_DMG_CODESIGN_IDENTITY:-${WINUAE_CODESIGN_IDENTITY:-}}"
+if [[ -n "${dmg_codesign_identity}" && "${dmg_codesign_identity}" != "-" ]] && command -v codesign >/dev/null 2>&1; then
+    dmg_codesign_args=(--force --sign "${dmg_codesign_identity}")
+    split_extra_args "${WINUAE_DMG_CODESIGN_OPTIONS:-}"
+    dmg_codesign_args+=("${extra_args[@]}")
+    codesign "${dmg_codesign_args[@]}" "${final_dmg}"
+fi
+
 hdiutil verify "${final_dmg}" >/dev/null
+
+if [[ "${WINUAE_SKIP_NOTARIZATION:-0}" != "1" && -n "${WINUAE_NOTARY_PROFILE:-}" ]]; then
+    if ! command -v xcrun >/dev/null 2>&1; then
+        echo "error: notarization requires xcrun/notarytool" >&2
+        exit 1
+    fi
+    xcrun notarytool submit "${final_dmg}" --keychain-profile "${WINUAE_NOTARY_PROFILE}" --wait
+    xcrun stapler staple "${final_dmg}"
+fi
+
 "${script_dir}/macos-verify-dmg.sh" "${final_dmg}" >/dev/null
 rm -rf "${rw_dmg}" "${staging_dir}"
 
