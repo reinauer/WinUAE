@@ -394,6 +394,18 @@ export WINUAE_SMOKE_UAEGFX_SCREEN=1
 tools/unix-smoke-uaegfx.sh -f /path/to/p96-workbench.uae
 ```
 
+The stricter guest P96 smoke targets require a copied Workbench/Picasso96 tree:
+
+```sh
+export WINUAE_KICKSTART_ROM=/path/to/A1200.47.115.rom
+export WINUAE_A4000_KICKSTART_ROM=/path/to/A4000.47.115.rom
+export WINUAE_P96_WORKBENCH_DIR=/path/to/Workbench
+cmake --build /tmp/winuae_cmake_build --target winuae_unix_smoke_p96_guest_800x600
+cmake --build /tmp/winuae_cmake_build --target winuae_unix_smoke_p96_guest_16bit_modes
+```
+
+The `16bit_modes` target verifies the Windows-compatible `rtg_modes=0x10` mode-list path. It does not yet prove that Workbench/IPrefs opens a 16-bit P96 screen.
+
 Optional overrides:
 
 ```sh
