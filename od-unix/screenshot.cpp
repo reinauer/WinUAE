@@ -6,6 +6,7 @@
 #include "xwin.h"
 #include "fsdb.h"
 
+#include <algorithm>
 #include <errno.h>
 #include <vector>
 
@@ -246,11 +247,114 @@ static bool unix_write_png(const TCHAR *filename, const struct vidbuffer *vb)
 }
 #endif
 
+static int unix_screenshot_clamp_multiplier(int value)
+{
+    if (value < 1) {
+        return 1;
+    }
+    if (value > 8) {
+        return 8;
+    }
+    return value;
+}
+
+static uae_u32 unix_screenshot_get_pixel(const struct vidbuffer *vb, int x, int y)
+{
+    const uae_u8 *src = vb->bufmem + (size_t)y * (size_t)vb->rowbytes + (size_t)x * (size_t)vb->pixbytes;
+
+    if (vb->pixbytes == 4) {
+        return ((const uae_u32 *)src)[0];
+    }
+
+    const uae_u16 pixel = (uae_u16)src[0] | ((uae_u16)src[1] << 8);
+    const uae_u8 r = (uae_u8)((((pixel >> 11) & 0x1f) * 255) / 31);
+    const uae_u8 g = (uae_u8)((((pixel >> 5) & 0x3f) * 255) / 63);
+    const uae_u8 b = (uae_u8)(((pixel & 0x1f) * 255) / 31);
+    return (uae_u32)b | ((uae_u32)g << 8) | ((uae_u32)r << 16);
+}
+
+static bool unix_prepare_screenshot_buffer(const struct vidbuffer *src, struct vidbuffer *dst, std::vector<uae_u8> &storage)
+{
+    if (!src || !dst || !src->bufmem || src->outwidth <= 0 || src->outheight <= 0 || src->rowbytes <= 0) {
+        return false;
+    }
+    if (src->pixbytes != 4 && src->pixbytes != 2) {
+        write_log(_T("Unix screenshot: unsupported pixel size %d\n"), src->pixbytes);
+        return false;
+    }
+
+    int width = currprefs.screenshot_width > 0 ? currprefs.screenshot_width : src->outwidth;
+    int height = currprefs.screenshot_height > 0 ? currprefs.screenshot_height : src->outheight;
+    if (width <= 0 || height <= 0) {
+        return false;
+    }
+
+    int xmult = unix_screenshot_clamp_multiplier(currprefs.screenshot_xmult + 1);
+    int ymult = unix_screenshot_clamp_multiplier(currprefs.screenshot_ymult + 1);
+    while (currprefs.screenshot_output_width > width * xmult && xmult < 8) {
+        xmult++;
+    }
+    while (currprefs.screenshot_output_height > height * ymult && ymult < 8) {
+        ymult++;
+    }
+
+    const int output_width = width * xmult;
+    const int output_height = height * ymult;
+    const int output_rowbytes = output_width * 4;
+    storage.assign((size_t)output_rowbytes * (size_t)output_height, 0);
+
+    int xoffset = currprefs.screenshot_xoffset < 0 ? (width - src->outwidth) / 2 : -currprefs.screenshot_xoffset;
+    int yoffset = currprefs.screenshot_yoffset < 0 ? (height - src->outheight) / 2 : -currprefs.screenshot_yoffset;
+    int dst_x = 0;
+    int dst_y = 0;
+    int src_x = 0;
+    int src_y = 0;
+
+    if (xoffset > 0) {
+        dst_x = std::min(xoffset, std::max(0, width - src->outwidth));
+    } else if (xoffset < 0) {
+        src_x = std::min(-xoffset, std::max(0, src->outwidth - width));
+    }
+    if (yoffset > 0) {
+        dst_y = std::min(yoffset, std::max(0, height - src->outheight));
+    } else if (yoffset < 0) {
+        src_y = std::min(-yoffset, std::max(0, src->outheight - height));
+    }
+
+    const int copy_width = std::min(width - dst_x, src->outwidth - src_x);
+    const int copy_height = std::min(height - dst_y, src->outheight - src_y);
+    if (copy_width > 0 && copy_height > 0) {
+        for (int y = 0; y < copy_height; y++) {
+            for (int x = 0; x < copy_width; x++) {
+                const uae_u32 pixel = unix_screenshot_get_pixel(src, src_x + x, src_y + y);
+                for (int yy = 0; yy < ymult; yy++) {
+                    uae_u32 *out = (uae_u32 *)(storage.data()
+                        + (size_t)((dst_y + y) * ymult + yy) * (size_t)output_rowbytes)
+                        + (size_t)(dst_x + x) * (size_t)xmult;
+                    for (int xx = 0; xx < xmult; xx++) {
+                        out[xx] = pixel;
+                    }
+                }
+            }
+        }
+    }
+
+    memset(dst, 0, sizeof *dst);
+    dst->bufmem = storage.data();
+    dst->outwidth = output_width;
+    dst->outheight = output_height;
+    dst->rowbytes = output_rowbytes;
+    dst->pixbytes = 4;
+    return true;
+}
+
 static bool unix_save_screenshot_file(int monid)
 {
     TCHAR path[MAX_DPATH];
     TCHAR base[MAX_DPATH];
     TCHAR filename[MAX_DPATH];
+    std::vector<uae_u8> prepared_storage;
+    struct vidbuffer prepared;
 
     if (monid < 0 || monid >= MAX_AMIGADISPLAYS) {
         monid = 0;
@@ -259,6 +363,9 @@ static bool unix_save_screenshot_file(int monid)
     struct vidbuffer *vb = vidinfo->inbuffer ? vidinfo->inbuffer : &vidinfo->drawbuffer;
     if (!vb || !vb->bufmem || vb->outwidth <= 0 || vb->outheight <= 0) {
         write_log(_T("Unix screenshot: no active video buffer\n"));
+        return false;
+    }
+    if (!unix_prepare_screenshot_buffer(vb, &prepared, prepared_storage)) {
         return false;
     }
 
@@ -281,11 +388,11 @@ static bool unix_save_screenshot_file(int monid)
             continue;
         }
 #ifdef WINUAE_UNIX_WITH_LIBPNG
-        if (!unix_write_png(filename, vb)) {
+        if (!unix_write_png(filename, &prepared)) {
             return false;
         }
 #else
-        if (!unix_write_bmp(filename, vb)) {
+        if (!unix_write_bmp(filename, &prepared)) {
             return false;
         }
 #endif
