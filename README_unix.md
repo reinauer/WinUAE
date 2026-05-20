@@ -191,6 +191,19 @@ cmake --build /tmp/winuae_cmake_build --target winuae_unix_macos_release_check -
 
 This produces and verifies the DMG, then launches the packaged Qt app from an isolated temporary home directory when the integrated Qt UI is enabled. A macOS 13-targeted private-dependency DMG has been smoke-tested on macOS 13; keep using the private dependency prefix path for release artifacts instead of newer Homebrew Qt/SDL bottles.
 
+Local app bundles are ad-hoc signed by default. For Developer ID release signing and notarization, pass signing/notary settings through the packaging environment:
+
+```sh
+WINUAE_CODESIGN_IDENTITY="Developer ID Application: Example Team" \
+WINUAE_CODESIGN_OPTIONS="--options runtime --timestamp" \
+WINUAE_DMG_CODESIGN_IDENTITY="Developer ID Application: Example Team" \
+WINUAE_DMG_CODESIGN_OPTIONS="--timestamp" \
+WINUAE_NOTARY_PROFILE=winuae-notary \
+cmake --build /tmp/winuae_cmake_build --target winuae_unix_macos_dmg -j
+```
+
+`WINUAE_NOTARY_PROFILE` is the keychain profile configured with `xcrun notarytool store-credentials`. Leave it unset for local unsigned or ad-hoc signed builds.
+
 To force a configure from scratch:
 
 ```sh
