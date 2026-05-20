@@ -43,6 +43,11 @@ enum unix_video_window_mode unix_video_get_window_mode(void)
     return UNIX_VIDEO_WINDOWED;
 }
 
+float unix_video_get_display_refresh_rate(int)
+{
+    return 0.0f;
+}
+
 void unix_video_set_mouse_grab(bool)
 {
 }
