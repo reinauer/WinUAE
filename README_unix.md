@@ -17,7 +17,7 @@ This is an early macOS/Linux port of the WinUAE source tree. The current Unix bu
 - The Qt Paths page now writes real Unix target path settings for configuration files, NVRAM, screenshots, videos, save images, rips, data, and ROMs, so runtime helpers use the configured directories. Older `unix.ui.*` path keys are still read for compatibility.
 - Native Unix serial support is available for POSIX serial devices and TCP listener endpoints.
 - A2065 Ethernet can use the built-in SLIRP user-mode NAT backend.
-- UAE Zorro II/Zorro III RTG RAM can be configured and autoconfigured, with an initial Unix `uaegfx.card` install path; guest Picasso96 monitor-driver testing and accelerated RTG operations are still incomplete.
+- UAE Zorro II/Zorro III RTG RAM can be configured and autoconfigured, with an initial Unix `uaegfx.card` install path and guest Picasso96 monitor-driver smoke coverage, including 8-bit Workbench mode open and a direct 16-bit P96 screen-open test. Accelerated RTG operations are still incomplete.
 - The Qt Expansions page can enable common Zorro/expansion board ROM entries using the same `*_rom_file` and `*_rom_options` keys as WinUAE.
 - Full UI parity with the Windows configuration dialogs and platform packaging are still incomplete.
 - If SDL3 is not found, CMake currently builds a headless/null-video target.
@@ -402,9 +402,10 @@ export WINUAE_A4000_KICKSTART_ROM=/path/to/A4000.47.115.rom
 export WINUAE_P96_WORKBENCH_DIR=/path/to/Workbench
 cmake --build /tmp/winuae_cmake_build --target winuae_unix_smoke_p96_guest_800x600
 cmake --build /tmp/winuae_cmake_build --target winuae_unix_smoke_p96_guest_16bit_modes
+cmake --build /tmp/winuae_cmake_build --target winuae_unix_smoke_p96_guest_16bit_open
 ```
 
-The `16bit_modes` target verifies the Windows-compatible `rtg_modes=0x10` mode-list path. It does not yet prove that Workbench/IPrefs opens a 16-bit P96 screen.
+The `16bit_modes` target verifies the Windows-compatible `rtg_modes=0x10` mode-list path. The `16bit_open` target additionally builds a tiny Amiga-side Picasso96API helper with `m68k-amigaos-gcc` and verifies a direct `640x480x16` P96 screen open through `SetGC`/`SetPanning`. If that compiler is not installed, set `WINUAE_P96_OPEN_SCREEN_BINARY` to a prebuilt helper binary.
 
 Optional overrides:
 
