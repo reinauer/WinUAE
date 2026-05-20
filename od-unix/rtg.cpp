@@ -1064,9 +1064,19 @@ static uae_u32 REGPARAM2 unix_picasso_blit_rect_no_mask_complete(TrapContext *ct
         (BLIT_OPCODE)(trap_get_dreg(ctx, 6) & 0xff));
 }
 
+static void unix_picasso_reset_palette(struct picasso96_state_struct *state)
+{
+    for (int i = 0; i < 256 * 2; i++) {
+        state->CLUT[i].Pad = 0xff;
+    }
+}
+
 static uae_u32 REGPARAM2 unix_picasso_set_display(TrapContext *ctx)
 {
-    struct picasso_vidbuf_description *vidinfo = &picasso_vidinfo[currprefs.rtgboards[0].monitor_id];
+    int monid = currprefs.rtgboards[0].monitor_id;
+    struct picasso96_state_struct *state = &picasso96_state[monid];
+    struct picasso_vidbuf_description *vidinfo = &picasso_vidinfo[monid];
+    unix_picasso_reset_palette(state);
     atomic_or(&vidinfo->picasso_state_change, UNIX_PICASSO_STATE_SETDISPLAY);
     return !(trap_get_dreg(ctx, 0) != 0);
 }
