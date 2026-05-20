@@ -184,8 +184,6 @@ uae_u8 *target_load_keyfile(struct uae_prefs *, const TCHAR *, int *size, TCHAR 
     }
     return NULL;
 }
-int target_get_display(const TCHAR *) { return 0; }
-const TCHAR *target_get_display_name(int, bool) { return _T("Unix display"); }
 int check_prefs_changed_gfx(void) { return 0; }
 uae_u32 emulib_target_getcpurate(uae_u32, uae_u32 *low)
 {
