@@ -26,6 +26,16 @@ static SDL_Texture *s_status_texture;
 static bool s_setup_done;
 static bool s_available;
 static bool s_mouse_grabbed;
+static enum unix_video_window_mode s_requested_window_mode = UNIX_VIDEO_WINDOWED;
+static enum unix_video_window_mode s_active_window_mode = UNIX_VIDEO_WINDOWED;
+static int s_requested_display_index;
+static int s_active_display_index = -1;
+static int s_requested_fullscreen_width;
+static int s_requested_fullscreen_height;
+static int s_requested_fullscreen_refresh;
+static int s_active_fullscreen_width = -1;
+static int s_active_fullscreen_height = -1;
+static int s_active_fullscreen_refresh = -1;
 static int s_texture_width;
 static int s_texture_height;
 static int s_texture_pixbytes;
@@ -69,6 +79,36 @@ static SDL_DisplayID *get_sdl_displays(int *count)
         return NULL;
     }
     return SDL_GetDisplays(count);
+}
+
+static SDL_DisplayID get_sdl_display_for_index(int display_index)
+{
+    int count = 0;
+    SDL_DisplayID *displays = get_sdl_displays(&count);
+    SDL_DisplayID display = 0;
+
+    if (displays && count > 0) {
+        if (display_index > 0 && display_index <= count) {
+            display = displays[display_index - 1];
+        } else {
+            display = displays[0];
+        }
+    }
+    if (displays) {
+        SDL_free(displays);
+    }
+    if (!display) {
+        display = SDL_GetPrimaryDisplay();
+    }
+    return display;
+}
+
+static void center_window_on_display(SDL_DisplayID display)
+{
+    if (!s_window || !display) {
+        return;
+    }
+    SDL_SetWindowPosition(s_window, SDL_WINDOWPOS_CENTERED_DISPLAY(display), SDL_WINDOWPOS_CENTERED_DISPLAY(display));
 }
 
 static bool copy_sdl_display_name(int index, bool friendlyname, TCHAR *dst, size_t dstsize)
@@ -389,6 +429,75 @@ bool unix_video_setup(void)
     return true;
 }
 
+static bool apply_window_mode(void)
+{
+    if (!s_window || !s_setup_done || !s_available) {
+        return false;
+    }
+
+    if (s_requested_window_mode == s_active_window_mode &&
+        s_requested_display_index == s_active_display_index &&
+        s_requested_fullscreen_width == s_active_fullscreen_width &&
+        s_requested_fullscreen_height == s_active_fullscreen_height &&
+        s_requested_fullscreen_refresh == s_active_fullscreen_refresh) {
+        return true;
+    }
+
+    SDL_DisplayID display = get_sdl_display_for_index(s_requested_display_index);
+    center_window_on_display(display);
+
+    if (s_requested_window_mode == UNIX_VIDEO_WINDOWED) {
+        if (!SDL_SetWindowFullscreen(s_window, false)) {
+            write_log(_T("SDL3: failed to leave fullscreen: %s\n"), SDL_GetError());
+            return false;
+        }
+        s_active_window_mode = UNIX_VIDEO_WINDOWED;
+        s_active_display_index = s_requested_display_index;
+        s_active_fullscreen_width = s_requested_fullscreen_width;
+        s_active_fullscreen_height = s_requested_fullscreen_height;
+        s_active_fullscreen_refresh = s_requested_fullscreen_refresh;
+        return true;
+    }
+
+    SDL_DisplayMode fullscreen_mode;
+    const SDL_DisplayMode *mode = NULL;
+    if (s_requested_window_mode == UNIX_VIDEO_FULLSCREEN) {
+        if (s_requested_fullscreen_width > 0 && s_requested_fullscreen_height > 0) {
+            float refresh = s_requested_fullscreen_refresh > 0 ? (float)s_requested_fullscreen_refresh : 0.0f;
+            if (SDL_GetClosestFullscreenDisplayMode(display, s_requested_fullscreen_width,
+                s_requested_fullscreen_height, refresh, true, &fullscreen_mode)) {
+                mode = &fullscreen_mode;
+            } else {
+                write_log(_T("SDL3: no exclusive fullscreen mode %dx%d@%d on display %d, using desktop fullscreen\n"),
+                    s_requested_fullscreen_width, s_requested_fullscreen_height,
+                    s_requested_fullscreen_refresh, s_requested_display_index);
+            }
+        } else {
+            const SDL_DisplayMode *desktop = SDL_GetDesktopDisplayMode(display);
+            if (desktop) {
+                fullscreen_mode = *desktop;
+                mode = &fullscreen_mode;
+            }
+        }
+    }
+
+    if (!SDL_SetWindowFullscreenMode(s_window, mode)) {
+        write_log(_T("SDL3: failed to set fullscreen mode: %s\n"), SDL_GetError());
+        return false;
+    }
+    if (!SDL_SetWindowFullscreen(s_window, true)) {
+        write_log(_T("SDL3: failed to enter fullscreen: %s\n"), SDL_GetError());
+        return false;
+    }
+
+    s_active_window_mode = s_requested_window_mode;
+    s_active_display_index = s_requested_display_index;
+    s_active_fullscreen_width = s_requested_fullscreen_width;
+    s_active_fullscreen_height = s_requested_fullscreen_height;
+    s_active_fullscreen_refresh = s_requested_fullscreen_refresh;
+    return true;
+}
+
 bool unix_video_init(int width, int height, int pixbytes)
 {
     if (!unix_video_setup()) {
@@ -409,7 +518,7 @@ bool unix_video_init(int width, int height, int pixbytes)
             s_available = false;
             return false;
         }
-        SDL_SetWindowPosition(s_window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+        center_window_on_display(get_sdl_display_for_index(s_requested_display_index));
     }
 
     if (!s_renderer) {
@@ -427,6 +536,8 @@ bool unix_video_init(int width, int height, int pixbytes)
         SDL_RenderClear(s_renderer);
         SDL_RenderPresent(s_renderer);
     }
+
+    apply_window_mode();
 
     return ensure_texture(width, height, pixbytes);
 }
@@ -591,6 +702,25 @@ void unix_video_set_title(const TCHAR *title)
     if (s_window && title) {
         SDL_SetWindowTitle(s_window, title);
     }
+}
+
+bool unix_video_set_window_mode(enum unix_video_window_mode mode, int display_index, int width, int height, int refresh_rate)
+{
+    s_requested_window_mode = mode;
+    s_requested_display_index = display_index;
+    s_requested_fullscreen_width = width;
+    s_requested_fullscreen_height = height;
+    s_requested_fullscreen_refresh = refresh_rate;
+
+    if (!s_window) {
+        return true;
+    }
+    return apply_window_mode();
+}
+
+enum unix_video_window_mode unix_video_get_window_mode(void)
+{
+    return s_active_window_mode;
 }
 
 void unix_video_set_mouse_grab(bool grab)

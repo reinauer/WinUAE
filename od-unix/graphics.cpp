@@ -10,6 +10,7 @@
 #include "uae.h"
 #include "video.h"
 #include "host.h"
+#include "devices.h"
 
 #include <stdlib.h>
 
@@ -96,6 +97,85 @@ static void unix_init_display_buffers(void)
     vidinfo->inbuffer = &vidinfo->drawbuffer;
 }
 
+static int unix_apmode_index(int monid)
+{
+    if (monid >= 0 && monid < MAX_AMIGADISPLAYS && adisplays[monid].picasso_on) {
+        return APMODE_RTG;
+    }
+    return APMODE_NATIVE;
+}
+
+static int unix_fullscreen_state(int fullscreen)
+{
+    if (fullscreen == GFX_FULLSCREEN) {
+        return 1;
+    }
+    if (fullscreen == GFX_FULLWINDOW) {
+        return -1;
+    }
+    return 0;
+}
+
+static enum unix_video_window_mode unix_video_mode_from_prefs(int fullscreen)
+{
+    if (fullscreen == GFX_FULLSCREEN) {
+        return UNIX_VIDEO_FULLSCREEN;
+    }
+    if (fullscreen == GFX_FULLWINDOW) {
+        return UNIX_VIDEO_FULLWINDOW;
+    }
+    return UNIX_VIDEO_WINDOWED;
+}
+
+static void unix_apply_video_mode_from_prefs(struct uae_prefs *prefs, int monid)
+{
+    if (monid < 0 || monid >= MAX_AMIGADISPLAYS) {
+        return;
+    }
+
+    fixup_prefs_dimensions(prefs);
+    int idx = unix_apmode_index(monid);
+    struct apmode *ap = &prefs->gfx_apmode[idx];
+    struct wh *size = ap->gfx_fullscreen == GFX_WINDOW
+        ? &prefs->gfx_monitor[monid].gfx_size_win
+        : &prefs->gfx_monitor[monid].gfx_size_fs;
+
+    prefs->gfx_monitor[monid].gfx_size = *size;
+    int width = size->special == WH_NATIVE ? 0 : size->width;
+    int height = size->special == WH_NATIVE ? 0 : size->height;
+    unix_video_set_window_mode(unix_video_mode_from_prefs(ap->gfx_fullscreen),
+        ap->gfx_display, width, height, ap->gfx_refreshrate);
+}
+
+static bool unix_runtime_graphics_prefs_changed(int monid)
+{
+    int idx = unix_apmode_index(monid);
+
+    return currprefs.gfx_apmode[APMODE_NATIVE].gfx_fullscreen != changed_prefs.gfx_apmode[APMODE_NATIVE].gfx_fullscreen ||
+        currprefs.gfx_apmode[APMODE_RTG].gfx_fullscreen != changed_prefs.gfx_apmode[APMODE_RTG].gfx_fullscreen ||
+        currprefs.gfx_apmode[APMODE_NATIVE].gfx_display != changed_prefs.gfx_apmode[APMODE_NATIVE].gfx_display ||
+        currprefs.gfx_apmode[APMODE_RTG].gfx_display != changed_prefs.gfx_apmode[APMODE_RTG].gfx_display ||
+        currprefs.gfx_apmode[idx].gfx_refreshrate != changed_prefs.gfx_apmode[idx].gfx_refreshrate ||
+        currprefs.gfx_monitor[monid].gfx_size_fs.width != changed_prefs.gfx_monitor[monid].gfx_size_fs.width ||
+        currprefs.gfx_monitor[monid].gfx_size_fs.height != changed_prefs.gfx_monitor[monid].gfx_size_fs.height ||
+        currprefs.gfx_monitor[monid].gfx_size_fs.special != changed_prefs.gfx_monitor[monid].gfx_size_fs.special ||
+        currprefs.gfx_monitor[monid].gfx_size_win.width != changed_prefs.gfx_monitor[monid].gfx_size_win.width ||
+        currprefs.gfx_monitor[monid].gfx_size_win.height != changed_prefs.gfx_monitor[monid].gfx_size_win.height ||
+        currprefs.gfx_monitor[monid].gfx_size_win.special != changed_prefs.gfx_monitor[monid].gfx_size_win.special;
+}
+
+static void unix_copy_runtime_graphics_prefs(int monid)
+{
+    currprefs.gfx_apmode[APMODE_NATIVE].gfx_fullscreen = changed_prefs.gfx_apmode[APMODE_NATIVE].gfx_fullscreen;
+    currprefs.gfx_apmode[APMODE_RTG].gfx_fullscreen = changed_prefs.gfx_apmode[APMODE_RTG].gfx_fullscreen;
+    currprefs.gfx_apmode[APMODE_NATIVE].gfx_display = changed_prefs.gfx_apmode[APMODE_NATIVE].gfx_display;
+    currprefs.gfx_apmode[APMODE_RTG].gfx_display = changed_prefs.gfx_apmode[APMODE_RTG].gfx_display;
+    currprefs.gfx_apmode[APMODE_NATIVE].gfx_refreshrate = changed_prefs.gfx_apmode[APMODE_NATIVE].gfx_refreshrate;
+    currprefs.gfx_apmode[APMODE_RTG].gfx_refreshrate = changed_prefs.gfx_apmode[APMODE_RTG].gfx_refreshrate;
+    currprefs.gfx_monitor[monid].gfx_size_fs = changed_prefs.gfx_monitor[monid].gfx_size_fs;
+    currprefs.gfx_monitor[monid].gfx_size_win = changed_prefs.gfx_monitor[monid].gfx_size_win;
+}
+
 int graphics_setup(void)
 {
     unix_video_debug = getenv("WINUAE_UNIX_VIDEO_DEBUG") != NULL;
@@ -115,6 +195,7 @@ int graphics_init(bool)
     if (!unix_video_init(vb->outwidth, vb->outheight, vb->pixbytes)) {
         write_log(_T("Unix video: no window presenter available, continuing headless\n"));
     }
+    unix_apply_video_mode_from_prefs(&currprefs, 0);
     unix_graphics_initialized = true;
     return 1;
 }
@@ -148,8 +229,63 @@ int handle_msgpump(bool)
     return got;
 }
 
-int isfullscreen(void) { return 0; }
-void toggle_fullscreen(int, int) {}
+int check_prefs_changed_gfx(void)
+{
+    int flags = config_changed_flags;
+    bool changed = unix_runtime_graphics_prefs_changed(0);
+
+    if (!unix_graphics_initialized || (!changed && !flags)) {
+        return 0;
+    }
+
+    config_changed_flags = 0;
+    if (changed) {
+        unix_copy_runtime_graphics_prefs(0);
+        unix_apply_video_mode_from_prefs(&currprefs, 0);
+    }
+    return 1;
+}
+
+int isfullscreen(void)
+{
+    int idx = unix_apmode_index(0);
+    return unix_fullscreen_state(currprefs.gfx_apmode[idx].gfx_fullscreen);
+}
+
+void toggle_fullscreen(int monid, int mode)
+{
+    if (monid < 0 || monid >= MAX_AMIGADISPLAYS) {
+        return;
+    }
+
+    int idx = unix_apmode_index(monid);
+    int v = changed_prefs.gfx_apmode[idx].gfx_fullscreen;
+    static int wasfs[2];
+
+    if (mode < 0) {
+        if (v == GFX_FULLWINDOW) {
+            wasfs[idx] = -1;
+            v = GFX_WINDOW;
+        } else if (v == GFX_WINDOW) {
+            v = wasfs[idx] >= 0 ? GFX_FULLSCREEN : GFX_FULLWINDOW;
+        } else if (v == GFX_FULLSCREEN) {
+            wasfs[idx] = 1;
+            v = GFX_WINDOW;
+        }
+    } else if (mode == 0) {
+        v = v == GFX_FULLSCREEN ? GFX_WINDOW : GFX_FULLSCREEN;
+    } else if (mode == 1) {
+        v = v == GFX_FULLSCREEN ? GFX_FULLWINDOW : GFX_FULLSCREEN;
+    } else if (mode == 2) {
+        v = v == GFX_FULLWINDOW ? GFX_WINDOW : GFX_FULLWINDOW;
+    } else if (mode == 10) {
+        v = GFX_WINDOW;
+    }
+
+    changed_prefs.gfx_apmode[idx].gfx_fullscreen = v;
+    devices_unsafeperiod();
+    set_config_changed();
+}
 bool toggle_rtg(int monid, int)
 {
     return monid >= 0 && monid < MAX_AMIGAMONITORS && currprefs.rtgboards[0].rtgmem_size > 0;
