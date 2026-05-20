@@ -1,4 +1,4 @@
-#!/usr/bin/env sh
+#!/usr/bin/env bash
 set -eu
 
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
@@ -7,6 +7,7 @@ EXE=${WINUAE_EXE:-"$BUILD_DIR/winuae_unix"}
 LOG=${WINUAE_SMOKE_LOG:-/tmp/winuae_unix_p96_guest_smoke.log}
 RUN_SECONDS=${WINUAE_SMOKE_SECONDS:-45}
 Z3=${WINUAE_P96_Z3:-0}
+USER_ARGS=("$@")
 
 if [ "$Z3" = "1" ]; then
     ROM=${WINUAE_A4000_KICKSTART_ROM:-${WINUAE_KICKSTART_ROM:-}}
@@ -15,6 +16,8 @@ else
 fi
 WORKBENCH=${WINUAE_P96_WORKBENCH_DIR:-}
 SCREENMODE=${WINUAE_P96_SCREENMODE:-}
+EXPECT_MODE_MASK=${WINUAE_P96_EXPECT_MODE_MASK:-}
+EXPECT_RESINFO_BYTES=${WINUAE_P96_EXPECT_RESINFO_BYTES:-}
 
 if [ -z "$ROM" ] || [ -z "$WORKBENCH" ]; then
     echo "Set WINUAE_KICKSTART_ROM and WINUAE_P96_WORKBENCH_DIR before running this smoke test." >&2
@@ -63,6 +66,18 @@ write_screenmode_prefs() {
             display_id='\120\005\020\000'
             depth='\000\010'
             ;;
+        640x480x15)
+            display_id='\120\003\020\000'
+            depth='\000\017'
+            ;;
+        800x600x15)
+            display_id='\120\004\020\000'
+            depth='\000\017'
+            ;;
+        1024x768x15)
+            display_id='\120\005\020\000'
+            depth='\000\017'
+            ;;
         640x480x16)
             display_id='\120\003\020\000'
             depth='\000\020'
@@ -95,6 +110,8 @@ write_screenmode_prefs() {
 
 if [ -n "$SCREENMODE" ]; then
     write_screenmode_prefs "$SCREENMODE" "$WORKDIR/Workbench/Prefs/Env-Archive/Sys/ScreenMode.prefs"
+    mkdir -p "$WORKDIR/Workbench/Prefs/Env-Archive/Picasso96"
+    printf 'All' > "$WORKDIR/Workbench/Prefs/Env-Archive/Picasso96/ShowModes"
 fi
 
 cat > "$WORKDIR/Workbench/S/Startup-Sequence" <<'EOF'
@@ -147,7 +164,7 @@ else
         -s gfxcard_type=ZorroII
 fi
 
-"$EXE" "$@" > "$LOG" 2>&1 &
+"$EXE" "$@" "${USER_ARGS[@]}" > "$LOG" 2>&1 &
 
 pid=$!
 
@@ -170,6 +187,12 @@ grep -q "Unix RTG InitCard:" "$LOG"
 grep -q "Unix RTG SetGC:" "$LOG"
 grep -q "Unix RTG SetPanning:" "$LOG"
 grep -q "Unix RTG SetSwitch:" "$LOG"
+if [ -n "$EXPECT_MODE_MASK" ]; then
+    grep -qi "Unix RTG mode mask: $EXPECT_MODE_MASK" "$LOG"
+fi
+if [ -n "$EXPECT_RESINFO_BYTES" ]; then
+    grep -Eq "Unix RTG P96 RESINFO: .*\($EXPECT_RESINFO_BYTES bytes\)" "$LOG"
+fi
 if [ -n "$SCREENMODE" ]; then
     grep -q "Unix RTG SetGC: $SCREENMODE" "$LOG"
 fi
