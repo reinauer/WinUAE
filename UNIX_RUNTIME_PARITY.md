@@ -80,7 +80,7 @@ Status values:
 | TCP/telnet serial listener | Partial | `od-unix/serial.cpp` supports `TCP:host:port`, `TCP://host:port`, and `/wait` with basic telnet IAC filtering. The Qt UI now offers the Windows-style `TCP://0.0.0.0:1234` listener entries, config round-trip coverage normalizes legacy `serial_port` to `unix.serial_port`, and `tools/unix-smoke-serial-tcp.sh` checks a localhost `nc` connection plus `/wait` startup. | Test longer real serial workloads and consider pseudo-terminal convenience endpoints. |
 | Windows serial UDP transport | Deferred | Windows defines `SERIAL_ENET`; Unix `enet_*` serial helpers return empty results. | Keep deferred unless a concrete compatibility need appears. |
 | `uaeserial.device` | Deferred | Windows defines and links `UAESERIAL`; Unix does not. | Decide after base serial testing. |
-| Parallel port and printer | Stubbed | Unix defines `PARALLEL_PORT`, but `od-unix/parallel.cpp` returns no printer/parallel data; `PARALLEL_DIRECT` is not enabled. | Add CUPS/file-printer backend if printer support matters; direct parallel can remain deferred. |
+| Parallel port and printer | Stubbed | Unix defines `PARALLEL_PORT`, but `od-unix/parallel.cpp` returns no printer/parallel data; `PARALLEL_DIRECT` is not enabled. The Qt printer controls are disabled and save neutral printer settings until a backend exists, matching the Windows behavior when no printer is available. | Add CUPS/file-printer backend if printer support matters; direct parallel can remain deferred. |
 
 ## Expansion Boards And Advanced Hardware
 
