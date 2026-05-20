@@ -7030,8 +7030,14 @@ private:
         rtgCenter = new QCheckBox(QStringLiteral("Always center"));
         rtgIntegerScale = new QCheckBox(QStringLiteral("Integer scaling"));
         rtgMultithread = new QCheckBox(QStringLiteral("Multithreaded"));
+        rtgMultithread->setEnabled(false);
+        rtgMultithread->setToolTip(QStringLiteral("Windows RTG render-thread option; the Unix RTG renderer is currently single-threaded."));
         rtgHardwareSprite = new QCheckBox(QStringLiteral("Hardware sprite emulation"));
+        rtgHardwareSprite->setEnabled(false);
+        rtgHardwareSprite->setToolTip(QStringLiteral("Windows registers Picasso96 hardware-sprite callbacks; the Unix uaegfx.card layer does not implement them yet."));
         rtgHardwareVBlank = new QCheckBox(QStringLiteral("Hardware vertical blank interrupt"));
+        rtgHardwareVBlank->setEnabled(false);
+        rtgHardwareVBlank->setToolTip(QStringLiteral("Windows registers a Picasso96 hardware-interrupt callback; the Unix uaegfx.card layer does not implement it yet."));
         rtgAutoswitch = new QCheckBox(QStringLiteral("Native/RTG autoswitch"));
         rtgInitialMonitor = new QCheckBox(QStringLiteral("Override initial native chipset display"));
         rtg8Bit = combo({ QStringLiteral("(8bit)"), QStringLiteral("8-bit (*)") }, QStringLiteral("8-bit (*)"));
@@ -7040,7 +7046,7 @@ private:
         rtg32Bit = combo({ QStringLiteral("(32bit)"), QStringLiteral("All 32-bit"), QStringLiteral("A8R8G8B8"), QStringLiteral("A8B8G8R8"), QStringLiteral("R8G8B8A8"), QStringLiteral("B8G8R8A8 (*)") }, QStringLiteral("B8G8R8A8 (*)"));
         rtgDisplay = combo({ QStringLiteral("Default display") }, QStringLiteral("Default display"));
         rtgDisplay->setEnabled(false);
-        rtgDisplay->setToolTip(QStringLiteral("Unix display enumeration is not connected to the Qt launcher yet."));
+        rtgDisplay->setToolTip(QStringLiteral("Use the Display page for the shared host display setting; separate RTG monitor placement is not connected yet."));
         rtgRefreshRate = combo({ QStringLiteral("Chipset"), QStringLiteral("Default"), QStringLiteral("50"), QStringLiteral("60"), QStringLiteral("70"), QStringLiteral("75") }, QStringLiteral("Chipset"));
         rtgRefreshRate->setEditable(true);
         rtgBuffers = combo({ QStringLiteral("Double"), QStringLiteral("Triple") }, QStringLiteral("Double"));
@@ -12134,7 +12140,7 @@ private:
         rtgCenter->setChecked(false);
         rtgIntegerScale->setChecked(false);
         rtgMultithread->setChecked(false);
-        rtgHardwareSprite->setChecked(true);
+        rtgHardwareSprite->setChecked(false);
         rtgHardwareVBlank->setChecked(false);
         rtgAutoswitch->setChecked(true);
         rtgInitialMonitor->setChecked(false);
@@ -13794,9 +13800,9 @@ private:
         } else if (rtgRefreshRate->currentText() != QStringLiteral("Default")) {
             settings.insert(QStringLiteral("gfx_refreshrate_rtg"), rtgRefreshRate->currentText());
         }
-        settings.insert(QStringLiteral("gfxcard_hardware_vblank"), rtgHardwareVBlank->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
-        settings.insert(QStringLiteral("gfxcard_hardware_sprite"), rtgHardwareSprite->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
-        settings.insert(QStringLiteral("gfxcard_multithread"), rtgMultithread->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
+        settings.insert(QStringLiteral("gfxcard_hardware_vblank"), rtgHardwareVBlank->isEnabled() && rtgHardwareVBlank->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
+        settings.insert(QStringLiteral("gfxcard_hardware_sprite"), rtgHardwareSprite->isEnabled() && rtgHardwareSprite->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
+        settings.insert(QStringLiteral("gfxcard_multithread"), rtgMultithread->isEnabled() && rtgMultithread->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
         settings.insert(QStringLiteral("rtg_modes"), QStringLiteral("0x%1").arg(rtgModeMask(), 0, 16));
         const QString cpuBoardConfig = selectedCpuBoardConfigValue();
         if (cpuBoardConfig.isEmpty()) {
@@ -15053,11 +15059,11 @@ private:
                 rtgRefreshRate->setCurrentText(value);
             }
         } else if (key == QStringLiteral("gfxcard_hardware_vblank")) {
-            rtgHardwareVBlank->setChecked(configBoolValue(value));
+            rtgHardwareVBlank->setChecked(rtgHardwareVBlank->isEnabled() && configBoolValue(value));
         } else if (key == QStringLiteral("gfxcard_hardware_sprite")) {
-            rtgHardwareSprite->setChecked(configBoolValue(value));
+            rtgHardwareSprite->setChecked(rtgHardwareSprite->isEnabled() && configBoolValue(value));
         } else if (key == QStringLiteral("gfxcard_multithread")) {
-            rtgMultithread->setChecked(configBoolValue(value));
+            rtgMultithread->setChecked(rtgMultithread->isEnabled() && configBoolValue(value));
         } else if (key == QStringLiteral("rtg_modes")) {
             bool ok = false;
             int mask = value.toInt(&ok, 0);
