@@ -33,6 +33,16 @@ void unix_video_set_title(const TCHAR *)
 {
 }
 
+bool unix_video_set_window_mode(enum unix_video_window_mode, int, int, int, int)
+{
+    return false;
+}
+
+enum unix_video_window_mode unix_video_get_window_mode(void)
+{
+    return UNIX_VIDEO_WINDOWED;
+}
+
 void unix_video_set_mouse_grab(bool)
 {
 }
