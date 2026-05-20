@@ -48,6 +48,14 @@
 #define WINUAE_UNIX_VERSION_REVISION 0
 #endif
 
+#ifndef UAE_UNIX_WITH_BSDSOCKET
+#define UAE_UNIX_WITH_BSDSOCKET 0
+#endif
+
+#ifndef UAE_UNIX_WITH_UAESCSI
+#define UAE_UNIX_WITH_UAESCSI 0
+#endif
+
 static bool systemPrefersDarkMode();
 static void applyApplicationColors(QApplication &app, bool dark);
 
@@ -7171,6 +7179,14 @@ private:
         expansionBsdsocket = new QCheckBox(QStringLiteral("bsdsocket.library"));
         expansionScsiDevice = new QCheckBox(QStringLiteral("uaescsi.device"));
         expansionSana2 = new QCheckBox(QStringLiteral("uaenet.device"));
+#if !UAE_UNIX_WITH_BSDSOCKET
+        expansionBsdsocket->setEnabled(false);
+        expansionBsdsocket->setToolTip(QStringLiteral("Unix bsdsocket.library backend is not enabled in this build yet."));
+#endif
+#if !UAE_UNIX_WITH_UAESCSI
+        expansionScsiDevice->setEnabled(false);
+        expansionScsiDevice->setToolTip(QStringLiteral("Unix uaescsi.device backend is not enabled in this build yet."));
+#endif
         expansionSana2->setEnabled(false);
         expansionSana2->setToolTip(QStringLiteral("Unix SANA-II backend is not enabled in this build yet."));
         misc->addWidget(expansionBsdsocket, 0, 0);
@@ -13673,8 +13689,8 @@ private:
                 settings.insert(QStringLiteral("cpuboard_settings"), cpuBoardSettingsRaw.trimmed());
             }
         }
-        settings.insert(QStringLiteral("bsdsocket_emu"), expansionBsdsocket->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
-        settings.insert(QStringLiteral("scsi"), expansionScsiDevice->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
+        settings.insert(QStringLiteral("bsdsocket_emu"), expansionBsdsocket->isEnabled() && expansionBsdsocket->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
+        settings.insert(QStringLiteral("scsi"), expansionScsiDevice->isEnabled() && expansionScsiDevice->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
         settings.insert(QStringLiteral("sana2"), expansionSana2->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
         if (!windowWidth->text().isEmpty()) {
             settings.insert(QStringLiteral("gfx_width_windowed"), windowWidth->text());
@@ -14924,10 +14940,10 @@ private:
             }
         } else if (applyExpansionBoardSetting(key, value)) {
         } else if (key == QStringLiteral("bsdsocket_emu")) {
-            expansionBsdsocket->setChecked(configBoolValue(value));
+            expansionBsdsocket->setChecked(expansionBsdsocket->isEnabled() && configBoolValue(value));
         } else if (key == QStringLiteral("scsi")) {
             const QString lower = value.toLower();
-            expansionScsiDevice->setChecked(lower != QStringLiteral("false") && lower != QStringLiteral("0") && !lower.isEmpty());
+            expansionScsiDevice->setChecked(expansionScsiDevice->isEnabled() && lower != QStringLiteral("false") && lower != QStringLiteral("0") && !lower.isEmpty());
         } else if (key == QStringLiteral("sana2")) {
             expansionSana2->setChecked(configBoolValue(value));
         } else if (key == QStringLiteral("unix.soundcard") || key == QStringLiteral("soundcard")) {
