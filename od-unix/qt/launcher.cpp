@@ -56,6 +56,10 @@
 #define UAE_UNIX_WITH_UAESCSI 0
 #endif
 
+#ifndef UAE_UNIX_WITH_PRINTER
+#define UAE_UNIX_WITH_PRINTER 0
+#endif
+
 static bool systemPrefersDarkMode();
 static void applyApplicationColors(QApplication &app, bool dark);
 
@@ -80,6 +84,15 @@ static constexpr int InputFlagInvert = 32;
 static constexpr int InputFlagSetOnOff = 128;
 static constexpr int InputFlagSetOnOffVal1 = 256;
 static constexpr int InputFlagSetOnOffVal2 = 512;
+
+static bool unixPrinterBackendAvailable()
+{
+#if UAE_UNIX_WITH_PRINTER
+    return true;
+#else
+    return false;
+#endif
+}
 
 struct WinUaeQtInputEventChoice {
     const char *display;
@@ -9178,10 +9191,17 @@ private:
         printerPort = combo({ QStringLiteral("<None>") });
         printerType = combo(configChoiceDisplays(printerTypeChoices, int(sizeof(printerTypeChoices) / sizeof(printerTypeChoices[0]))));
         QPushButton *flushPrinter = new QPushButton(QStringLiteral("Flush print job"));
-        disableUnavailable(flushPrinter, QStringLiteral("Printer output is not connected to a Unix backend yet."));
         printerAutoFlush = new QSpinBox;
         printerAutoFlush->setRange(0, 3600);
         ghostscriptParams = new QLineEdit;
+        if (!unixPrinterBackendAvailable()) {
+            const QString reason = QStringLiteral("Printer output is not connected to a Unix backend yet.");
+            disableUnavailable(printerPort, reason);
+            disableUnavailable(printerType, reason);
+            disableUnavailable(flushPrinter, reason);
+            disableUnavailable(printerAutoFlush, reason);
+            disableUnavailable(ghostscriptParams, reason);
+        }
         samplerDevice = combo({ QStringLiteral("<None>") });
         samplerStereo = new QCheckBox(QStringLiteral("Stereo sampler"));
         parallel->addWidget(label(QStringLiteral("Printer:")), 0, 0);
@@ -13588,16 +13608,23 @@ private:
             settings.insert(QStringLiteral("floppy%1soundvolume_empty").arg(i), QString::number(floppySoundEmptyAttenuationValue(i)));
             settings.insert(QStringLiteral("floppy%1soundvolume_disk").arg(i), QString::number(floppySoundDiskAttenuationValue(i)));
         }
-        const QString printerTypeValue = configChoiceValue(printerTypeChoices, int(sizeof(printerTypeChoices) / sizeof(printerTypeChoices[0])), printerType->currentText());
-        settings.insert(QStringLiteral("parallel_matrix_emulation"),
-            printerTypeValue.startsWith(QStringLiteral("postscript_")) ? QStringLiteral("none") : printerTypeValue);
-        settings.insert(QStringLiteral("parallel_postscript_detection"),
-            printerTypeValue.startsWith(QStringLiteral("postscript_")) ? QStringLiteral("true") : QStringLiteral("false"));
-        settings.insert(QStringLiteral("parallel_postscript_emulation"),
-            printerTypeValue == QStringLiteral("postscript_emulation") ? QStringLiteral("true") : QStringLiteral("false"));
-        settings.insert(QStringLiteral("parallel_autoflush"), QString::number(printerAutoFlush->value()));
-        if (!ghostscriptParams->text().trimmed().isEmpty()) {
-            settings.insert(QStringLiteral("ghostscript_parameters"), ghostscriptParams->text().trimmed());
+        if (unixPrinterBackendAvailable()) {
+            const QString printerTypeValue = configChoiceValue(printerTypeChoices, int(sizeof(printerTypeChoices) / sizeof(printerTypeChoices[0])), printerType->currentText());
+            settings.insert(QStringLiteral("parallel_matrix_emulation"),
+                printerTypeValue.startsWith(QStringLiteral("postscript_")) ? QStringLiteral("none") : printerTypeValue);
+            settings.insert(QStringLiteral("parallel_postscript_detection"),
+                printerTypeValue.startsWith(QStringLiteral("postscript_")) ? QStringLiteral("true") : QStringLiteral("false"));
+            settings.insert(QStringLiteral("parallel_postscript_emulation"),
+                printerTypeValue == QStringLiteral("postscript_emulation") ? QStringLiteral("true") : QStringLiteral("false"));
+            settings.insert(QStringLiteral("parallel_autoflush"), QString::number(printerAutoFlush->value()));
+            if (!ghostscriptParams->text().trimmed().isEmpty()) {
+                settings.insert(QStringLiteral("ghostscript_parameters"), ghostscriptParams->text().trimmed());
+            }
+        } else {
+            settings.insert(QStringLiteral("parallel_matrix_emulation"), QStringLiteral("none"));
+            settings.insert(QStringLiteral("parallel_postscript_detection"), QStringLiteral("false"));
+            settings.insert(QStringLiteral("parallel_postscript_emulation"), QStringLiteral("false"));
+            settings.insert(QStringLiteral("parallel_autoflush"), QStringLiteral("5"));
         }
         settings.insert(QStringLiteral("sampler_stereo"), samplerStereo->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
         const QString serial = serialPort->currentText().trimmed();
@@ -15025,23 +15052,33 @@ private:
                 loadSelectedFloppySound();
             }
         } else if (key == QStringLiteral("parallel_matrix_emulation")) {
-            printerType->setCurrentText(configChoiceDisplay(printerTypeChoices, int(sizeof(printerTypeChoices) / sizeof(printerTypeChoices[0])), value));
+            if (unixPrinterBackendAvailable()) {
+                printerType->setCurrentText(configChoiceDisplay(printerTypeChoices, int(sizeof(printerTypeChoices) / sizeof(printerTypeChoices[0])), value));
+            }
         } else if (key == QStringLiteral("parallel_postscript_detection")) {
-            if (configBoolValue(value)) {
-                printerType->setCurrentText(QStringLiteral("PostScript (Passthrough)"));
-            } else if (printerType->currentText().startsWith(QStringLiteral("PostScript"))) {
-                printerType->setCurrentText(QStringLiteral("Passthrough"));
+            if (unixPrinterBackendAvailable()) {
+                if (configBoolValue(value)) {
+                    printerType->setCurrentText(QStringLiteral("PostScript (Passthrough)"));
+                } else if (printerType->currentText().startsWith(QStringLiteral("PostScript"))) {
+                    printerType->setCurrentText(QStringLiteral("Passthrough"));
+                }
             }
         } else if (key == QStringLiteral("parallel_postscript_emulation")) {
-            if (configBoolValue(value)) {
-                printerType->setCurrentText(QStringLiteral("PostScript (Emulation)"));
-            } else if (printerType->currentText() == QStringLiteral("PostScript (Emulation)")) {
-                printerType->setCurrentText(QStringLiteral("PostScript (Passthrough)"));
+            if (unixPrinterBackendAvailable()) {
+                if (configBoolValue(value)) {
+                    printerType->setCurrentText(QStringLiteral("PostScript (Emulation)"));
+                } else if (printerType->currentText() == QStringLiteral("PostScript (Emulation)")) {
+                    printerType->setCurrentText(QStringLiteral("PostScript (Passthrough)"));
+                }
             }
         } else if (key == QStringLiteral("parallel_autoflush")) {
-            printerAutoFlush->setValue(qBound(0, value.toInt(), 3600));
+            if (unixPrinterBackendAvailable()) {
+                printerAutoFlush->setValue(qBound(0, value.toInt(), 3600));
+            }
         } else if (key == QStringLiteral("ghostscript_parameters")) {
-            ghostscriptParams->setText(value);
+            if (unixPrinterBackendAvailable()) {
+                ghostscriptParams->setText(value);
+            }
         } else if (key == QStringLiteral("sampler_stereo")) {
             samplerStereo->setChecked(configBoolValue(value));
             updateIoPortsState();
