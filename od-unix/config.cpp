@@ -260,6 +260,8 @@ static int activity_priority_index_from_value(int value, int defpri)
     }
 }
 
+static const TCHAR *configmult[] = { _T("1x"), _T("2x"), _T("3x"), _T("4x"), _T("5x"), _T("6x"), _T("7x"), _T("8x"), NULL };
+
 static void add_line(std::vector<std::string> &lines, const std::string &option, const std::string &value)
 {
     if (!value.empty()) {
@@ -463,6 +465,26 @@ int target_parse_option(struct uae_prefs *p, const TCHAR *option, const TCHAR *v
         }
         return 1;
     }
+    if (cfgfile_intval(option, value, _T("recording_width"), &p->aviout_width, 1)
+        || cfgfile_intval(option, value, _T("recording_height"), &p->aviout_height, 1)
+        || cfgfile_intval(option, value, _T("recording_x"), &p->aviout_xoffset, 1)
+        || cfgfile_intval(option, value, _T("recording_y"), &p->aviout_yoffset, 1)
+        || cfgfile_intval(option, value, _T("screenshot_width"), &p->screenshot_width, 1)
+        || cfgfile_intval(option, value, _T("screenshot_height"), &p->screenshot_height, 1)
+        || cfgfile_intval(option, value, _T("screenshot_x"), &p->screenshot_xoffset, 1)
+        || cfgfile_intval(option, value, _T("screenshot_y"), &p->screenshot_yoffset, 1)
+        || cfgfile_intval(option, value, _T("screenshot_min_width"), &p->screenshot_min_width, 1)
+        || cfgfile_intval(option, value, _T("screenshot_min_height"), &p->screenshot_min_height, 1)
+        || cfgfile_intval(option, value, _T("screenshot_max_width"), &p->screenshot_max_width, 1)
+        || cfgfile_intval(option, value, _T("screenshot_max_height"), &p->screenshot_max_height, 1)
+        || cfgfile_intval(option, value, _T("screenshot_output_width_limit"), &p->screenshot_output_width, 1)
+        || cfgfile_intval(option, value, _T("screenshot_output_height_limit"), &p->screenshot_output_height, 1)) {
+        return 1;
+    }
+    if (cfgfile_strval(option, value, _T("screenshot_mult_width"), &p->screenshot_xmult, configmult, 0)
+        || cfgfile_strval(option, value, _T("screenshot_mult_height"), &p->screenshot_ymult, configmult, 0)) {
+        return 1;
+    }
     if (!_tcsicmp(option, _T("serial_port"))) {
         std::string port = trim_copy(value ? value : "");
         if (port.size() >= 2 &&
@@ -528,6 +550,22 @@ void target_save_options(struct zfile *f, struct uae_prefs *p)
     if (name && name[0]) {
         cfgfile_target_write_str(f, _T("soundcardname"), name);
     }
+    cfgfile_target_dwrite(f, _T("recording_width"), _T("%d"), p->aviout_width);
+    cfgfile_target_dwrite(f, _T("recording_height"), _T("%d"), p->aviout_height);
+    cfgfile_target_dwrite(f, _T("recording_x"), _T("%d"), p->aviout_xoffset);
+    cfgfile_target_dwrite(f, _T("recording_y"), _T("%d"), p->aviout_yoffset);
+    cfgfile_target_dwrite(f, _T("screenshot_width"), _T("%d"), p->screenshot_width);
+    cfgfile_target_dwrite(f, _T("screenshot_height"), _T("%d"), p->screenshot_height);
+    cfgfile_target_dwrite(f, _T("screenshot_x"), _T("%d"), p->screenshot_xoffset);
+    cfgfile_target_dwrite(f, _T("screenshot_y"), _T("%d"), p->screenshot_yoffset);
+    cfgfile_target_dwrite(f, _T("screenshot_min_width"), _T("%d"), p->screenshot_min_width);
+    cfgfile_target_dwrite(f, _T("screenshot_min_height"), _T("%d"), p->screenshot_min_height);
+    cfgfile_target_dwrite(f, _T("screenshot_max_width"), _T("%d"), p->screenshot_max_width);
+    cfgfile_target_dwrite(f, _T("screenshot_max_height"), _T("%d"), p->screenshot_max_height);
+    cfgfile_target_dwrite(f, _T("screenshot_output_width_limit"), _T("%d"), p->screenshot_output_width);
+    cfgfile_target_dwrite(f, _T("screenshot_output_height_limit"), _T("%d"), p->screenshot_output_height);
+    cfgfile_target_dwrite_str(f, _T("screenshot_mult_width"), configmult[p->screenshot_xmult]);
+    cfgfile_target_dwrite_str(f, _T("screenshot_mult_height"), configmult[p->screenshot_ymult]);
     if (path_configuration[0]) {
         cfgfile_target_write_str(f, _T("config_path"), path_configuration);
     }
