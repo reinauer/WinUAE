@@ -1507,6 +1507,46 @@ static QString magicMouseCursorText(const QString &value)
 static constexpr int SoundVolumeCount = 5;
 static constexpr int FloppySoundDriveCount = 4;
 
+static QVector<QPair<QString, QString>> displayDeviceChoices()
+{
+    QVector<QPair<QString, QString>> choices;
+    choices.append(qMakePair(QStringLiteral("Default display"), QString()));
+
+#ifdef UAE_UNIX_WITH_SDL3
+    SDL_SetMainReady();
+    const bool wasVideoInitialized = SDL_WasInit(SDL_INIT_VIDEO) != 0;
+    if (wasVideoInitialized || SDL_InitSubSystem(SDL_INIT_VIDEO)) {
+        int count = 0;
+        SDL_DisplayID *displays = SDL_GetDisplays(&count);
+        if (displays) {
+            for (int i = 0; i < count; i++) {
+                const char *name = SDL_GetDisplayName(displays[i]);
+                const QString friendly = QString::fromUtf8(name && name[0] ? name : "Unknown display");
+                choices.append(qMakePair(
+                    QStringLiteral("Display %1: %2").arg(i + 1).arg(friendly),
+                    QStringLiteral("SDL:%1").arg(uint(displays[i]))));
+            }
+            SDL_free(displays);
+        }
+        if (!wasVideoInitialized) {
+            SDL_QuitSubSystem(SDL_INIT_VIDEO);
+        }
+    }
+#endif
+
+    return choices;
+}
+
+static QString displayFriendlyName(const QString &displayText)
+{
+    if (displayText == QStringLiteral("Default display")) {
+        return QString();
+    }
+    const QString prefix = QStringLiteral(": ");
+    const int separator = displayText.indexOf(prefix);
+    return separator >= 0 ? displayText.mid(separator + prefix.size()) : displayText;
+}
+
 static QVector<QPair<QString, QString>> soundDeviceChoices()
 {
     QVector<QPair<QString, QString>> choices;
@@ -5155,6 +5195,7 @@ private:
     QLineEdit *windowWidth = nullptr;
     QLineEdit *windowHeight = nullptr;
     QCheckBox *windowResize = nullptr;
+    QComboBox *hostDisplay = nullptr;
     QComboBox *fullscreenResolution = nullptr;
     QComboBox *displayRefreshRate = nullptr;
     QComboBox *displayBufferCount = nullptr;
@@ -8144,9 +8185,15 @@ private:
         fullscreenResolution->setEditable(true);
         displayRefreshRate = combo({ QStringLiteral("Default"), QStringLiteral("50"), QStringLiteral("60"), QStringLiteral("70"), QStringLiteral("75"), QStringLiteral("120"), QStringLiteral("144") }, QStringLiteral("Default"));
         displayBufferCount = combo({ QStringLiteral("Double"), QStringLiteral("Triple") }, QStringLiteral("Double"));
+        hostDisplay = new QComboBox;
+        const QVector<QPair<QString, QString>> displays = displayDeviceChoices();
+        for (const QPair<QString, QString> &display : displays) {
+            hostDisplay->addItem(display.first, display.second);
+            hostDisplay->setItemData(hostDisplay->count() - 1, displayFriendlyName(display.first), Qt::UserRole + 1);
+        }
         QGridLayout *screen = new QGridLayout;
         screen->setColumnStretch(1, 1);
-        screen->addWidget(combo({ QStringLiteral("Default display") }), 0, 0, 1, 4);
+        screen->addWidget(hostDisplay, 0, 0, 1, 4);
         screen->addWidget(label(QStringLiteral("Fullscreen:")), 1, 0);
         screen->addWidget(fullscreenResolution, 1, 1, 1, 2);
         screen->addWidget(displayRefreshRate, 1, 3);
@@ -8952,6 +8999,32 @@ private:
         floppySoundDiskVolume->setValue(100 - floppySoundDiskAttenuation[drive]);
         floppySoundUpdating = false;
         updateFloppySoundVolumeLabels();
+    }
+
+    void selectHostDisplayByIndex(int index)
+    {
+        if (hostDisplay && index >= 0 && index < hostDisplay->count()) {
+            hostDisplay->setCurrentIndex(index);
+        }
+    }
+
+    void selectHostDisplayByName(const QString &value)
+    {
+        if (!hostDisplay || value.trimmed().isEmpty()) {
+            return;
+        }
+        const QString wanted = value.trimmed();
+        for (int i = 0; i < hostDisplay->count(); i++) {
+            const QString configName = hostDisplay->itemData(i).toString();
+            const QString friendlyName = hostDisplay->itemData(i, Qt::UserRole + 1).toString();
+            const QString displayName = hostDisplay->itemText(i);
+            if (configName.compare(wanted, Qt::CaseInsensitive) == 0
+                || friendlyName.compare(wanted, Qt::CaseInsensitive) == 0
+                || displayName.compare(wanted, Qt::CaseInsensitive) == 0) {
+                hostDisplay->setCurrentIndex(i);
+                return;
+            }
+        }
     }
 
     void selectSoundDeviceByConfigName(const QString &value)
@@ -12128,6 +12201,7 @@ private:
         windowWidth->setText(QStringLiteral("720"));
         windowHeight->setText(QStringLiteral("568"));
         windowResize->setChecked(true);
+        hostDisplay->setCurrentIndex(0);
         fullscreenResolution->setProperty("winuae_width", QString());
         fullscreenResolution->setProperty("winuae_height", QString());
         fullscreenResolution->setCurrentText(QStringLiteral("Native"));
@@ -13744,6 +13818,19 @@ private:
         settings.insert(QStringLiteral("bsdsocket_emu"), expansionBsdsocket->isEnabled() && expansionBsdsocket->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
         settings.insert(QStringLiteral("scsi"), expansionScsiDevice->isEnabled() && expansionScsiDevice->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
         settings.insert(QStringLiteral("sana2"), expansionSana2->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
+        const int displayIndex = qMax(0, hostDisplay->currentIndex());
+        settings.insert(QStringLiteral("gfx_display"), QString::number(displayIndex));
+        settings.insert(QStringLiteral("gfx_display_rtg"), QString::number(displayIndex));
+        const QString displayName = hostDisplay->currentData().toString();
+        const QString displayFriendly = hostDisplay->currentData(Qt::UserRole + 1).toString();
+        if (!displayName.isEmpty()) {
+            settings.insert(QStringLiteral("gfx_display_name"), displayName);
+            settings.insert(QStringLiteral("gfx_display_name_rtg"), displayName);
+        }
+        if (!displayFriendly.isEmpty()) {
+            settings.insert(QStringLiteral("gfx_display_friendlyname"), displayFriendly);
+            settings.insert(QStringLiteral("gfx_display_friendlyname_rtg"), displayFriendly);
+        }
         if (!windowWidth->text().isEmpty()) {
             settings.insert(QStringLiteral("gfx_width_windowed"), windowWidth->text());
         }
@@ -14158,6 +14245,12 @@ private:
             QStringLiteral("bsdsocket_emu"),
             QStringLiteral("scsi"),
             QStringLiteral("sana2"),
+            QStringLiteral("gfx_display"),
+            QStringLiteral("gfx_display_rtg"),
+            QStringLiteral("gfx_display_name"),
+            QStringLiteral("gfx_display_name_rtg"),
+            QStringLiteral("gfx_display_friendlyname"),
+            QStringLiteral("gfx_display_friendlyname_rtg"),
             QStringLiteral("gfx_width_windowed"),
             QStringLiteral("gfx_height_windowed"),
             QStringLiteral("gfx_width_fullscreen"),
@@ -15256,6 +15349,17 @@ private:
         } else if (key == QStringLiteral("tablet_library")) {
             tabletLibrary->setChecked(configBoolValue(value));
             updateMouseExtraState();
+        } else if (key == QStringLiteral("gfx_display") || key == QStringLiteral("gfx_display_rtg")) {
+            bool ok = false;
+            const int index = value.toInt(&ok);
+            if (ok) {
+                selectHostDisplayByIndex(index);
+            }
+        } else if (key == QStringLiteral("gfx_display_name")
+            || key == QStringLiteral("gfx_display_name_rtg")
+            || key == QStringLiteral("gfx_display_friendlyname")
+            || key == QStringLiteral("gfx_display_friendlyname_rtg")) {
+            selectHostDisplayByName(value);
         } else if (key == QStringLiteral("gfx_width_windowed")) {
             windowWidth->setText(value);
         } else if (key == QStringLiteral("gfx_height_windowed")) {
