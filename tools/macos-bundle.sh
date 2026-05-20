@@ -18,6 +18,11 @@ Environment:
   WINUAE_SKIP_MACOS_DEPLOYMENT_CHECK=1
                               Do not check bundled Mach-O deployment targets.
   WINUAE_SKIP_CODESIGN=1     Do not ad-hoc codesign the bundle.
+  WINUAE_CODESIGN_IDENTITY   codesign identity. Defaults to "-" for ad-hoc.
+  WINUAE_CODESIGN_OPTIONS    Extra options passed to codesign, for example
+                              "--options runtime --timestamp".
+  WINUAE_CODESIGN_ENTITLEMENTS
+                              Optional entitlements plist passed to codesign.
 EOF
 }
 
@@ -70,6 +75,16 @@ append_qt_plugin_candidate() {
     local candidate="$1"
     if [[ -n "${candidate}" && -f "${candidate}/platforms/libqcocoa.dylib" ]]; then
         qt_plugin_candidates+=("${candidate}")
+    fi
+}
+
+split_extra_args() {
+    if [[ -n "${1:-}" ]]; then
+        # Intentionally split user-provided extra flags the same way a shell would.
+        # shellcheck disable=SC2206
+        extra_args=($1)
+    else
+        extra_args=()
     fi
 }
 
@@ -203,7 +218,14 @@ if [[ "${WINUAE_SKIP_MACOS_DEPLOYMENT_CHECK:-0}" != "1" ]]; then
 fi
 
 if [[ "${WINUAE_SKIP_CODESIGN:-0}" != "1" ]] && command -v codesign >/dev/null 2>&1; then
-    codesign --force --deep --sign - "${app_dir}"
+    codesign_identity="${WINUAE_CODESIGN_IDENTITY:--}"
+    codesign_args=(--force --deep --sign "${codesign_identity}")
+    split_extra_args "${WINUAE_CODESIGN_OPTIONS:-}"
+    codesign_args+=("${extra_args[@]}")
+    if [[ -n "${WINUAE_CODESIGN_ENTITLEMENTS:-}" ]]; then
+        codesign_args+=(--entitlements "${WINUAE_CODESIGN_ENTITLEMENTS}")
+    fi
+    codesign "${codesign_args[@]}" "${app_dir}"
 fi
 
 echo "${app_dir}"
