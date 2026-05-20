@@ -60,6 +60,10 @@
 #define UAE_UNIX_WITH_PRINTER 0
 #endif
 
+#ifndef UAE_UNIX_WITH_TABLET
+#define UAE_UNIX_WITH_TABLET 0
+#endif
+
 static bool systemPrefersDarkMode();
 static void applyApplicationColors(QApplication &app, bool dark);
 
@@ -88,6 +92,15 @@ static constexpr int InputFlagSetOnOffVal2 = 512;
 static bool unixPrinterBackendAvailable()
 {
 #if UAE_UNIX_WITH_PRINTER
+    return true;
+#else
+    return false;
+#endif
+}
+
+static bool unixTabletBackendAvailable()
+{
+#if UAE_UNIX_WITH_TABLET
     return true;
 #else
     return false;
@@ -9092,6 +9105,11 @@ private:
         }, QStringLiteral("Show both cursors"));
         tabletLibrary = new QCheckBox(QStringLiteral("Tablet.library emulation"));
         tabletMode = combo({ QStringLiteral("-"), QStringLiteral("Tablet emulation") }, QStringLiteral("-"));
+        if (!unixTabletBackendAvailable()) {
+            const QString reason = QStringLiteral("Native tablet input is not implemented by the Unix input backend yet.");
+            disableUnavailable(tabletLibrary, reason);
+            disableUnavailable(tabletMode, reason);
+        }
 
         mouse->addWidget(label(QStringLiteral("Mouse speed:")), 0, 0);
         mouse->addWidget(mouseSpeed, 0, 1);
@@ -9145,18 +9163,25 @@ private:
 
     void updateMouseExtraState()
     {
-        const bool tabletEnabled = virtualMouseDriver && (virtualMouseDriver->isChecked() || (tabletMode && tabletMode->currentText() == QStringLiteral("Tablet emulation")));
+        const bool tabletBackend = unixTabletBackendAvailable();
+        const bool virtualMouseEnabled = virtualMouseDriver && virtualMouseDriver->isChecked();
+        const bool tabletModeSelected = tabletMode && tabletMode->currentText() == QStringLiteral("Tablet emulation");
+        const bool absoluteMouseEnabled = virtualMouseEnabled || (tabletBackend && tabletModeSelected);
+        const bool tabletEnabled = tabletBackend && absoluteMouseEnabled;
         if (magicMouseCursor) {
-            magicMouseCursor->setEnabled(tabletEnabled);
+            magicMouseCursor->setEnabled(absoluteMouseEnabled);
         }
         if (tabletLibrary) {
             tabletLibrary->setEnabled(tabletEnabled);
-            if (!tabletEnabled) {
+            if (!tabletBackend || !tabletEnabled) {
                 tabletLibrary->setChecked(false);
             }
         }
         if (tabletMode) {
-            tabletMode->setEnabled(tabletEnabled || (virtualMouseDriver && virtualMouseDriver->isChecked()));
+            tabletMode->setEnabled(tabletBackend && absoluteMouseEnabled);
+            if (!tabletBackend) {
+                tabletMode->setCurrentText(QStringLiteral("-"));
+            }
         }
     }
 
@@ -13835,7 +13860,7 @@ private:
         settings.insert(QStringLiteral("magic_mouse"), (untrapMode == 2 || untrapMode == 3) ? QStringLiteral("true") : QStringLiteral("false"));
         settings.insert(QStringLiteral("magic_mousecursor"), magicMouseCursorConfigValue(magicMouseCursor->currentText()));
         QString absoluteMouse = QStringLiteral("none");
-        if (tabletMode->currentText() == QStringLiteral("Tablet emulation")) {
+        if (unixTabletBackendAvailable() && tabletMode->currentText() == QStringLiteral("Tablet emulation")) {
             absoluteMouse = QStringLiteral("tablet");
         } else if (virtualMouseDriver->isChecked()) {
             absoluteMouse = QStringLiteral("mousehack");
