@@ -72,7 +72,7 @@ Status values:
 
 | Windows feature area | Unix status | Evidence | Next action |
 | --- | --- | --- | --- |
-| A2065 Ethernet with built-in SLIRP | Partial | CMake option `WINUAE_UNIX_WITH_SLIRP` defaults on and defines `A2065`, `WITH_SLIRP`, `WITH_BUILTIN_SLIRP`; CMake links `a2065.cpp` and `slirp/*`. | Validate guest driver behavior with a real setup and add smoke coverage for autoconfig. |
+| A2065 Ethernet with built-in SLIRP | Partial | CMake option `WINUAE_UNIX_WITH_SLIRP` defaults on and defines `A2065`, `WITH_SLIRP`, `WITH_BUILTIN_SLIRP`; CMake links `a2065.cpp` and `slirp/*`, and `tools/unix-smoke-a2065.sh` covers A2065 autoconfig with the built-in SLIRP selection. | Validate guest driver behavior with a real setup. |
 | SANA-II `uaenet.device` | Deferred | Windows defines `SANA2`; Unix does not, and CMake does not link `sana2.cpp`. | Enable after A2065/SLIRP is validated or when pcap/tap/tun backend exists. |
 | pcap/tap/tun native Ethernet | Deferred | Windows defines `WITH_UAENET_PCAP`; Unix does not. | Add native pcap/tap/tun behind explicit CMake options. |
 | `bsdsocket.library` | Deferred | CMake links `bsdsocket.cpp`, but the implementation is inactive because Unix does not define `BSDSOCKET` in `od-unix/sysconfig.h`; `od-unix/stubs.cpp` supplies the fallback interrupt symbols. | Decide whether to define and validate it, or remove it from the Unix source list until ready. |
@@ -109,7 +109,7 @@ Status values:
 ## Highest-Risk Gaps
 
 1. RTG/Picasso96 is visible in the UI and partially active, with guest-driver smoke coverage for Z2/Z3 startup and one non-default 800x600x8 mode. Direct-color/depth switching, dirty tracking, sprites/overlays, multi-monitor behavior, and accelerated operations still need work before it should be considered Windows-equivalent.
-2. A2065/SLIRP is compiled by default, but SANA-II, pcap/tap/tun, and `bsdsocket.library` are not yet validated/enabled as a coherent networking story.
+2. A2065/SLIRP is compiled by default with autoconfig smoke coverage, but guest-driver networking, SANA-II, pcap/tap/tun, and `bsdsocket.library` are not yet validated/enabled as a coherent networking story.
 3. Audio output exists through SDL3, but Windows has many more audio/MIDI/board paths. The Unix UI should keep advanced sound/MIDI controls disabled until native backends exist.
 4. Host integration stubs are still broad: full clipboard sharing, screenshots/capture, sampler, printer/parallel, archive browsing, native media passthrough, CPU boards, and hardware graphics boards. Joystick/gamepad support has a first SDL3 backend and Qt remap/test UI, but still needs real-device validation and live `uae_prefs` runtime wiring.
 5. The Unix build defines some user-visible features whose backend is only partial or stubbed, especially `PARALLEL_PORT`, `PICASSO96`, and A2065/SLIRP. These should either become fully backed or be clearly reflected in the UI/status text.
