@@ -352,6 +352,16 @@ export WINUAE_A4091_HDF=/path/to/disk.hdf
 tools/unix-smoke-a4091-hdf.sh
 ```
 
+RIPPLE and AlfaPower/AT-Bus 2008 can be enabled without an external ROM path. In the Qt UI, enable the board on the Expansions page first, then choose `RIPPLE (IDE)` or `AlfaPower/AT-Bus 2008 (IDE)` in the hardfile dialog. The matching config tails are `ide0_ripple` and `ide0_alfapower`.
+
+The IDE expansion smoke targets create a temporary blank HDF if `WINUAE_IDE_EXPANSION_HDF` or `WINUAE_HARDFILE0` is not set:
+
+```sh
+export WINUAE_A1200_KICKSTART_ROM=/path/to/A1200.rom
+tools/unix-smoke-alfapower-hdf.sh
+tools/unix-smoke-ripple-hdf.sh
+```
+
 To automate the TCP serial listener path, including the Windows-style `/wait` startup behavior:
 
 ```sh

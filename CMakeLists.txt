@@ -501,6 +501,8 @@ if(WINUAE_UNIX_BUILD_EXECUTABLE)
     add_winuae_unix_smoke_target(winuae_unix_smoke_p96_guest_800x600 unix-smoke-p96-guest-800x600.sh)
     add_winuae_unix_smoke_target(winuae_unix_smoke_p96_guest_z3 unix-smoke-p96-guest-z3.sh)
     add_winuae_unix_smoke_target(winuae_unix_smoke_a4091_hdf unix-smoke-a4091-hdf.sh)
+    add_winuae_unix_smoke_target(winuae_unix_smoke_alfapower_hdf unix-smoke-alfapower-hdf.sh)
+    add_winuae_unix_smoke_target(winuae_unix_smoke_ripple_hdf unix-smoke-ripple-hdf.sh)
     add_winuae_unix_smoke_target(winuae_unix_smoke_serial_tcp unix-smoke-serial-tcp.sh)
     add_winuae_unix_smoke_target(winuae_unix_smoke_path_config unix-smoke-path-config.sh)
     add_custom_target(winuae_unix_smoke_basic
