@@ -25,6 +25,17 @@ function(winuae_unix_register_test target)
     endif()
 endfunction()
 
+function(winuae_unix_imported_location target out_var)
+    foreach(prop IMPORTED_LOCATION_RELEASE IMPORTED_LOCATION_RELWITHDEBINFO IMPORTED_LOCATION_MINSIZEREL IMPORTED_LOCATION_DEBUG IMPORTED_LOCATION)
+        get_target_property(location "${target}" "${prop}")
+        if(location AND NOT location MATCHES "-NOTFOUND$" AND EXISTS "${location}")
+            set("${out_var}" "${location}" PARENT_SCOPE)
+            return()
+        endif()
+    endforeach()
+    set("${out_var}" "" PARENT_SCOPE)
+endfunction()
+
 option(WINUAE_UNIX_BUILD_EXECUTABLE "Link the initial Unix command-line executable" ON)
 option(WINUAE_UNIX_WITH_SDL3 "Build the Unix SDL3 video/audio backend" ON)
 option(WINUAE_UNIX_WITH_SLIRP "Build built-in SLIRP user-mode networking and A2065 Ethernet support" ON)
@@ -315,7 +326,55 @@ if(WINUAE_UNIX_WITH_SDL3)
     elseif(TARGET SDL3)
         set(WINUAE_UNIX_SDL3_TARGET SDL3)
     endif()
-    if(NOT WINUAE_UNIX_SDL3_TARGET AND PkgConfig_FOUND)
+    if(WINUAE_UNIX_SDL3_TARGET AND APPLE)
+        winuae_unix_imported_location("${WINUAE_UNIX_SDL3_TARGET}" WINUAE_UNIX_SDL3_IMPORTED_LIBRARY)
+        if(WINUAE_UNIX_SDL3_IMPORTED_LIBRARY)
+            execute_process(
+                COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tools/macos-check-deployment-target.sh" "${WINUAE_UNIX_SDL3_IMPORTED_LIBRARY}" "${CMAKE_OSX_DEPLOYMENT_TARGET}"
+                RESULT_VARIABLE WINUAE_UNIX_SDL3_DEPLOYMENT_RESULT
+                OUTPUT_VARIABLE WINUAE_UNIX_SDL3_DEPLOYMENT_OUTPUT
+                ERROR_VARIABLE WINUAE_UNIX_SDL3_DEPLOYMENT_ERROR
+                OUTPUT_STRIP_TRAILING_WHITESPACE
+                ERROR_STRIP_TRAILING_WHITESPACE
+            )
+            if(NOT WINUAE_UNIX_SDL3_DEPLOYMENT_RESULT EQUAL 0)
+                message(STATUS "SDL3 is newer than CMAKE_OSX_DEPLOYMENT_TARGET=${CMAKE_OSX_DEPLOYMENT_TARGET}; ignoring package target. ${WINUAE_UNIX_SDL3_DEPLOYMENT_ERROR}")
+                unset(WINUAE_UNIX_SDL3_TARGET)
+                set(SDL3_FOUND OFF)
+            endif()
+        endif()
+    endif()
+    if(NOT WINUAE_UNIX_SDL3_TARGET)
+        find_path(WINUAE_UNIX_SDL3_INCLUDE_DIR NAMES SDL3/SDL.h)
+        find_library(WINUAE_UNIX_SDL3_FALLBACK_LIBRARY NAMES SDL3 SDL3.0)
+        if(WINUAE_UNIX_SDL3_INCLUDE_DIR AND WINUAE_UNIX_SDL3_FALLBACK_LIBRARY)
+            set(WINUAE_UNIX_SDL3_FALLBACK_OK ON)
+            if(APPLE)
+                execute_process(
+                    COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tools/macos-check-deployment-target.sh" "${WINUAE_UNIX_SDL3_FALLBACK_LIBRARY}" "${CMAKE_OSX_DEPLOYMENT_TARGET}"
+                    RESULT_VARIABLE WINUAE_UNIX_SDL3_FALLBACK_DEPLOYMENT_RESULT
+                    OUTPUT_VARIABLE WINUAE_UNIX_SDL3_FALLBACK_DEPLOYMENT_OUTPUT
+                    ERROR_VARIABLE WINUAE_UNIX_SDL3_FALLBACK_DEPLOYMENT_ERROR
+                    OUTPUT_STRIP_TRAILING_WHITESPACE
+                    ERROR_STRIP_TRAILING_WHITESPACE
+                )
+                if(NOT WINUAE_UNIX_SDL3_FALLBACK_DEPLOYMENT_RESULT EQUAL 0)
+                    message(STATUS "SDL3 library is newer than CMAKE_OSX_DEPLOYMENT_TARGET=${CMAKE_OSX_DEPLOYMENT_TARGET}; SDL3 disabled. ${WINUAE_UNIX_SDL3_FALLBACK_DEPLOYMENT_ERROR}")
+                    set(WINUAE_UNIX_SDL3_FALLBACK_OK OFF)
+                endif()
+            endif()
+            if(WINUAE_UNIX_SDL3_FALLBACK_OK)
+                add_library(WINUAE::SDL3 UNKNOWN IMPORTED)
+                set_target_properties(WINUAE::SDL3 PROPERTIES
+                    IMPORTED_LOCATION "${WINUAE_UNIX_SDL3_FALLBACK_LIBRARY}"
+                    INTERFACE_INCLUDE_DIRECTORIES "${WINUAE_UNIX_SDL3_INCLUDE_DIR}"
+                )
+                set(WINUAE_UNIX_SDL3_TARGET WINUAE::SDL3)
+                message(STATUS "Using SDL3 library: ${WINUAE_UNIX_SDL3_FALLBACK_LIBRARY}")
+            endif()
+        endif()
+    endif()
+    if(NOT WINUAE_UNIX_SDL3_TARGET AND PkgConfig_FOUND AND NOT APPLE)
         pkg_check_modules(SDL3 QUIET sdl3)
     endif()
 endif()
