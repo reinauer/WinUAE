@@ -69,17 +69,6 @@ uae_u8 *save_screenshot(int, size_t *len)
     return NULL;
 }
 
-uae_u8 *save_p96(size_t *len, uae_u8 *)
-{
-    if (len) {
-        *len = 0;
-    }
-    return NULL;
-}
-
-uae_u8 *restore_p96(uae_u8 *src) { return src; }
-void restore_p96_finish(void) {}
-
 void ldp_render(const char *, int, uae_u8 *, struct vidbuffer *, int, int, int, int)
 {
 }

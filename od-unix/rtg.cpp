@@ -6,6 +6,7 @@
 #include "traps.h"
 #include "autoconf.h"
 #include "picasso96.h"
+#include "savestate.h"
 #include "gfxboard.h"
 #include "xwin.h"
 
@@ -459,6 +460,7 @@ static uaecptr unix_uaegfx_resid;
 static uaecptr unix_uaegfx_base;
 static uaecptr unix_uaegfx_rom;
 static uaecptr unix_picasso_boardinfo;
+static uae_u32 unix_p96_restored_flags;
 static int unix_uaegfx_old;
 static int unix_uaegfx_active;
 static uae_u32 unix_reserved_gfxmem;
@@ -1178,6 +1180,7 @@ static uae_u32 REGPARAM2 unix_picasso_set_panning(TrapContext *ctx)
     state->BytesPerRow = state->VirtualWidth * state->BytesPerPixel;
     unix_picasso_set_panning_init(state);
     state->Extent = state->Address + state->BytesPerRow * state->VirtualHeight;
+    vidinfo->set_panning_called = 1;
 
     atomic_or(&vidinfo->picasso_state_change, UNIX_PICASSO_STATE_SETPANNING);
     write_log(_T("Unix RTG SetPanning: addr=%08X xy=%d,%d virt=%dx%d bpr=%d fmt=%d\n"),
@@ -1960,6 +1963,161 @@ static void unix_init_uaegfx_funcs(TrapContext *ctx, uaecptr start, uaecptr ABI)
     }
 
     write_log(_T("Unix RTG uaegfx.card code: %08X-%08X BI=%08X\n"), start, here(), ABI);
+}
+
+void restore_p96_finish(void)
+{
+    int monid = currprefs.rtgboards[0].monitor_id;
+    if (monid < 0 || monid >= MAX_AMIGAMONITORS) {
+        monid = 0;
+    }
+    struct amigadisplay *ad = &adisplays[monid];
+    struct picasso_vidbuf_description *vidinfo = &picasso_vidinfo[monid];
+
+    if (unix_uaegfx_rom && unix_picasso_boardinfo) {
+        unix_init_uaegfx_funcs(NULL, unix_uaegfx_rom, unix_picasso_boardinfo);
+        ad->picasso_requested_on = (unix_p96_restored_flags & 1) != 0;
+        vidinfo->picasso_active = ad->picasso_requested_on;
+        atomic_or(&vidinfo->picasso_state_change, UNIX_PICASSO_STATE_SETGC |
+            UNIX_PICASSO_STATE_SETPANNING | UNIX_PICASSO_STATE_SETSWITCH);
+        set_config_changed();
+    }
+}
+
+uae_u8 *restore_p96(uae_u8 *src)
+{
+    int monid = currprefs.rtgboards[0].monitor_id;
+    if (monid < 0 || monid >= MAX_AMIGAMONITORS) {
+        monid = 0;
+    }
+    struct picasso96_state_struct *state = &picasso96_state[monid];
+    struct picasso_vidbuf_description *vidinfo = &picasso_vidinfo[monid];
+
+    if (restore_u32() != 2) {
+        return src;
+    }
+
+    InitPicasso96(monid);
+    unix_p96_restored_flags = restore_u32();
+    changed_prefs.rtgboards[0].rtgmem_size = restore_u32();
+    state->Address = restore_u32();
+    state->RGBFormat = (RGBFTYPE)restore_u32();
+    state->Width = restore_u16();
+    state->Height = restore_u16();
+    state->VirtualWidth = restore_u16();
+    state->VirtualHeight = restore_u16();
+    state->XOffset = (uae_s16)restore_u16();
+    state->YOffset = (uae_s16)restore_u16();
+    state->GC_Depth = restore_u8();
+    state->GC_Flags = restore_u8();
+    state->BytesPerRow = restore_u16();
+    state->BytesPerPixel = restore_u8();
+    unix_uaegfx_base = restore_u32();
+    unix_uaegfx_rom = restore_u32();
+    unix_picasso_boardinfo = restore_u32();
+
+    for (int i = 0; i < 4; i++) {
+        restore_u32();
+    }
+    if (unix_p96_restored_flags & 64) {
+        for (int i = 0; i < 256; i++) {
+            state->CLUT[i].Red = restore_u8();
+            state->CLUT[i].Green = restore_u8();
+            state->CLUT[i].Blue = restore_u8();
+            state->CLUT[i].Pad = 0;
+            vidinfo->clut[i] = 0xff000000 |
+                ((uae_u32)state->CLUT[i].Red << 16) |
+                ((uae_u32)state->CLUT[i].Green << 8) |
+                state->CLUT[i].Blue;
+        }
+    }
+    if (unix_p96_restored_flags & 128) {
+        for (int i = 0; i < 6; i++) {
+            restore_u32();
+        }
+        restore_u8();
+        restore_u8();
+        for (int i = 0; i < 13; i++) {
+            restore_u16();
+        }
+        for (int i = 0; i < 256; i++) {
+            restore_u8();
+            restore_u8();
+            restore_u8();
+        }
+    }
+
+    state->HostAddress = NULL;
+    state->HLineDBL = 1;
+    state->VLineDBL = 1;
+    unix_picasso_set_panning_init(state);
+    state->Extent = state->Address + state->BytesPerRow * state->VirtualHeight;
+    vidinfo->set_panning_called = (unix_p96_restored_flags & 4) != 0;
+    vidinfo->full_refresh = 1;
+    return src;
+}
+
+uae_u8 *save_p96(size_t *len, uae_u8 *dstptr)
+{
+    int monid = currprefs.rtgboards[0].monitor_id;
+    if (monid < 0 || monid >= MAX_AMIGAMONITORS) {
+        monid = 0;
+    }
+    struct amigadisplay *ad = &adisplays[monid];
+    struct picasso96_state_struct *state = &picasso96_state[monid];
+    struct picasso_vidbuf_description *vidinfo = &picasso_vidinfo[monid];
+
+    if (len) {
+        *len = 0;
+    }
+    if (currprefs.rtgboards[0].rtgmem_size == 0) {
+        return NULL;
+    }
+
+    uae_u8 *dstbak;
+    uae_u8 *dst;
+    if (dstptr) {
+        dstbak = dst = dstptr;
+    } else {
+        dstbak = dst = xmalloc(uae_u8, 2048);
+    }
+
+    uae_u32 flags = (ad->picasso_on ? 1 : 0) |
+        ((state->Width && state->Height) ? 2 : 0) |
+        (vidinfo->set_panning_called ? 4 : 0) |
+        64;
+
+    save_u32(2);
+    save_u32(flags);
+    save_u32(currprefs.rtgboards[0].rtgmem_size);
+    save_u32(state->Address);
+    save_u32(state->RGBFormat);
+    save_u16(state->Width);
+    save_u16(state->Height);
+    save_u16(state->VirtualWidth);
+    save_u16(state->VirtualHeight);
+    save_u16((uae_u16)state->XOffset);
+    save_u16((uae_u16)state->YOffset);
+    save_u8(state->GC_Depth);
+    save_u8(state->GC_Flags);
+    save_u16(state->BytesPerRow);
+    save_u8(state->BytesPerPixel);
+    save_u32(unix_uaegfx_base);
+    save_u32(unix_uaegfx_rom);
+    save_u32(unix_picasso_boardinfo);
+    for (int i = 0; i < 4; i++) {
+        save_u32(0);
+    }
+    for (int i = 0; i < 256; i++) {
+        save_u8(state->CLUT[i].Red);
+        save_u8(state->CLUT[i].Green);
+        save_u8(state->CLUT[i].Blue);
+    }
+
+    if (len) {
+        *len = dst - dstbak;
+    }
+    return dstbak;
 }
 
 static uae_u32 REGPARAM2 unix_picasso_init_card(TrapContext *ctx)
