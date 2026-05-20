@@ -405,9 +405,11 @@ cmake --build /tmp/winuae_cmake_build --target winuae_unix_smoke_p96_guest_16bit
 cmake --build /tmp/winuae_cmake_build --target winuae_unix_smoke_p96_guest_15bit_open
 cmake --build /tmp/winuae_cmake_build --target winuae_unix_smoke_p96_guest_16bit_open
 cmake --build /tmp/winuae_cmake_build --target winuae_unix_smoke_p96_guest_32bit_open
+cmake --build /tmp/winuae_cmake_build --target winuae_unix_smoke_p96_guest_draw_8bit
+cmake --build /tmp/winuae_cmake_build --target winuae_unix_smoke_p96_guest_draw_16bit
 ```
 
-The `16bit_modes` target verifies the Windows-compatible `rtg_modes=0x10` mode-list path. The `15bit_open`, `16bit_open`, and `32bit_open` targets additionally build a tiny Amiga-side Picasso96API helper with `m68k-amigaos-gcc` and verify direct `640x480x15` / `640x480x16` / `640x480x32` P96 screen opens through `SetGC`/`SetPanning`. If that compiler is not installed, set `WINUAE_P96_OPEN_SCREEN_BINARY` to a prebuilt helper binary.
+The `16bit_modes` target verifies the Windows-compatible `rtg_modes=0x10` mode-list path. The `15bit_open`, `16bit_open`, and `32bit_open` targets additionally build a tiny Amiga-side Picasso96API helper with `m68k-amigaos-gcc` and verify direct `640x480x15` / `640x480x16` / `640x480x32` P96 screen opens through `SetGC`/`SetPanning`. The `draw_8bit` and `draw_16bit` targets enable Unix RTG trace logging and verify guest drawing calls through the CPU blitter callbacks. If that compiler is not installed, set `WINUAE_P96_OPEN_SCREEN_BINARY` to a prebuilt helper binary.
 
 Optional overrides:
 

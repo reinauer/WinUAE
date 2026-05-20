@@ -285,6 +285,36 @@ static int unix_uaegfx_old;
 static int unix_uaegfx_active;
 static uae_u32 unix_reserved_gfxmem;
 
+enum {
+    UNIX_RTG_TRACE_FILLRECT = 1 << 0,
+    UNIX_RTG_TRACE_INVERTRECT = 1 << 1,
+    UNIX_RTG_TRACE_BLITRECT = 1 << 2,
+    UNIX_RTG_TRACE_BLITRECT_NOMASK = 1 << 3,
+    UNIX_RTG_TRACE_BLITTEMPLATE = 1 << 4,
+    UNIX_RTG_TRACE_BLITPATTERN = 1 << 5,
+    UNIX_RTG_TRACE_PLANAR2CHUNKY = 1 << 6,
+    UNIX_RTG_TRACE_PLANAR2DIRECT = 1 << 7
+};
+
+static bool unix_rtg_trace_blits(void)
+{
+    static int enabled = -1;
+    if (enabled < 0) {
+        const char *value = getenv("WINUAE_UNIX_RTG_TRACE_BLITS");
+        enabled = value && value[0] && strcmp(value, "0") != 0;
+    }
+    return enabled != 0;
+}
+
+static void unix_rtg_trace_blit(uae_u32 bit, const TCHAR *name)
+{
+    static uae_u32 seen;
+    if (unix_rtg_trace_blits() && !(seen & bit)) {
+        seen |= bit;
+        write_log(_T("Unix RTG %s\n"), name);
+    }
+}
+
 static uae_u32 unix_rtg_modeflags(void)
 {
     return currprefs.picasso96_modeflags ? currprefs.picasso96_modeflags : UNIX_RTG_DEFAULT_MODEFLAGS;
@@ -1005,6 +1035,8 @@ static uae_u32 REGPARAM2 unix_picasso_get_compatible_dac_formats(TrapContext *ct
 
 static uae_u32 REGPARAM2 unix_picasso_fill_rect(TrapContext *ctx)
 {
+    unix_rtg_trace_blit(UNIX_RTG_TRACE_FILLRECT, _T("FillRect"));
+
     RenderInfo ri;
     uaecptr renderinfo = trap_get_areg(ctx, 1);
     uae_u32 x = (uae_u16)trap_get_dreg(ctx, 0);
@@ -1045,6 +1077,8 @@ static uae_u32 REGPARAM2 unix_picasso_fill_rect(TrapContext *ctx)
 
 static uae_u32 REGPARAM2 unix_picasso_invert_rect(TrapContext *ctx)
 {
+    unix_rtg_trace_blit(UNIX_RTG_TRACE_INVERTRECT, _T("InvertRect"));
+
     RenderInfo ri;
     uaecptr renderinfo = trap_get_areg(ctx, 1);
     uae_u32 x = (uae_u16)trap_get_dreg(ctx, 0);
@@ -1149,6 +1183,8 @@ static uae_u32 unix_picasso_blit_rect_common(TrapContext *ctx, uaecptr srcinfo, 
 
 static uae_u32 REGPARAM2 unix_picasso_blit_rect(TrapContext *ctx)
 {
+    unix_rtg_trace_blit(UNIX_RTG_TRACE_BLITRECT, _T("BlitRect"));
+
     uaecptr renderinfo = trap_get_areg(ctx, 1);
     return unix_picasso_blit_rect_common(ctx, renderinfo, 0,
         (uae_u16)trap_get_dreg(ctx, 0),
@@ -1164,6 +1200,8 @@ static uae_u32 REGPARAM2 unix_picasso_blit_rect(TrapContext *ctx)
 
 static uae_u32 REGPARAM2 unix_picasso_blit_rect_no_mask_complete(TrapContext *ctx)
 {
+    unix_rtg_trace_blit(UNIX_RTG_TRACE_BLITRECT_NOMASK, _T("BlitRectNoMaskComplete"));
+
     return unix_picasso_blit_rect_common(ctx, trap_get_areg(ctx, 1), trap_get_areg(ctx, 2),
         (uae_u16)trap_get_dreg(ctx, 0),
         (uae_u16)trap_get_dreg(ctx, 1),
@@ -1207,6 +1245,8 @@ static bool unix_picasso_load_pattern_info(TrapContext *ctx, uaecptr pattern_inf
 
 static uae_u32 REGPARAM2 unix_picasso_blit_pattern(TrapContext *ctx)
 {
+    unix_rtg_trace_blit(UNIX_RTG_TRACE_BLITPATTERN, _T("BlitPattern"));
+
     RenderInfo ri;
     unix_picasso_pattern_info pattern;
     uaecptr renderinfo = trap_get_areg(ctx, 1);
@@ -1311,6 +1351,8 @@ static bool unix_picasso_validate_template_source(TrapContext *ctx,
 
 static uae_u32 REGPARAM2 unix_picasso_blit_template(TrapContext *ctx)
 {
+    unix_rtg_trace_blit(UNIX_RTG_TRACE_BLITTEMPLATE, _T("BlitTemplate"));
+
     RenderInfo ri;
     unix_picasso_template_info tmpl;
     uaecptr renderinfo = trap_get_areg(ctx, 1);
@@ -1444,6 +1486,8 @@ static uae_u8 unix_picasso_planar_pixel(TrapContext *ctx, const unix_picasso_bit
 
 static uae_u32 REGPARAM2 unix_picasso_blit_planar2chunky(TrapContext *ctx)
 {
+    unix_rtg_trace_blit(UNIX_RTG_TRACE_PLANAR2CHUNKY, _T("BlitPlanar2Chunky"));
+
     RenderInfo ri;
     unix_picasso_bitmap_info bitmap;
     uaecptr bitmap_info = trap_get_areg(ctx, 1);
@@ -1494,6 +1538,8 @@ static uae_u32 unix_picasso_cim_color(TrapContext *ctx, uaecptr cim, uae_u8 inde
 
 static uae_u32 REGPARAM2 unix_picasso_blit_planar2direct(TrapContext *ctx)
 {
+    unix_rtg_trace_blit(UNIX_RTG_TRACE_PLANAR2DIRECT, _T("BlitPlanar2Direct"));
+
     RenderInfo ri;
     unix_picasso_bitmap_info bitmap;
     uaecptr bitmap_info = trap_get_areg(ctx, 1);
