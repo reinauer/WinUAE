@@ -9,14 +9,14 @@ This is an early macOS/Linux port of the WinUAE source tree. The current Unix bu
 - SDL3 provides the current window, framebuffer presentation, mouse input, keyboard input, audio output, and playback-device selection.
 - SDL3 gamepads and non-gamepad joysticks are exposed through the WinUAE input-device layer for game-port use; the Qt Game Ports/Input pages have first remap/test dialogs backed by SDL3 device enumeration and WinUAE config keys.
 - Qt Widgets provides an initial Windows-style configuration UI. When Qt is available, it is integrated into `winuae_unix` and the standalone `winuae_unix_qt` launcher is also built.
-- Host clipboard text paste is available through the same paste input event as Windows. The `clipboard_sharing` option has a first native text clipboard-device backend; image clipboard sharing is still incomplete.
+- Host clipboard text paste is available through the same paste input event as Windows. The `clipboard_sharing` option has native text clipboard-device support, and SDL3 builds exchange bitmap clipboard data through `image/bmp` and Amiga IFF ILBM conversion.
 - Floppy drive click sound config and sample loading are present, but audible click output still needs follow-up.
 - The integrated Qt Output page can toggle the core Sample ripper; ripped WAV files use the configured Rips path. The standalone launcher keeps this runtime action disabled.
 - The integrated Qt Output page can run Pro Wizard when the default `WINUAE_UNIX_WITH_PROWIZARD` build option is enabled. Save prompts use Qt warning dialogs with the same OK/Yes/No/Cancel return contract as Windows.
 - When opened during emulation, the integrated Qt Output page can play, start/stop, and save core input re-recordings. The standalone launcher keeps these runtime actions disabled.
 - The Qt Paths page now writes real Unix target path settings for configuration files, NVRAM, screenshots, videos, save images, rips, data, and ROMs, so runtime helpers use the configured directories. Older `unix.ui.*` path keys are still read for compatibility.
 - Native Unix serial support is available for POSIX serial devices and TCP listener endpoints.
-- A2065 Ethernet can use the built-in SLIRP user-mode NAT backend.
+- A2065 Ethernet and SANA-II `uaenet.device` can use the built-in SLIRP user-mode NAT backend.
 - UAE Zorro II/Zorro III RTG RAM can be configured and autoconfigured, with an initial Unix `uaegfx.card` install path and guest Picasso96 monitor-driver smoke coverage, including 8-bit Workbench mode open and direct 15-bit/16-bit/24-bit/32-bit P96 screen-open tests. Accelerated RTG operations are still incomplete.
 - The Qt Expansions page can enable common Zorro/expansion board ROM entries using the same `*_rom_file` and `*_rom_options` keys as WinUAE.
 - Full UI parity with the Windows configuration dialogs and platform packaging are still incomplete.
@@ -252,6 +252,8 @@ For A2065 SLIRP networking, use:
 configs/unix-a1200-install32-a2065.uae.example
 ```
 
+For SANA-II `uaenet.device` startup testing, add `-s sana2=true` or use the smoke target below. Guest TCP/IP stack validation is still pending.
+
 For Zorro III RTG RAM autoconfig bring-up testing, use:
 
 ```sh
@@ -333,6 +335,12 @@ To include A2065 SLIRP autoconfig in the same smoke path:
 
 ```sh
 tools/unix-smoke-a2065.sh
+```
+
+To include SANA-II `uaenet.device` startup and SLIRP unit enumeration in the same smoke path:
+
+```sh
+tools/unix-smoke-sana2.sh
 ```
 
 To include Zorro III RTG RAM autoconfig in the same smoke path:
@@ -453,6 +461,7 @@ export WINUAE_SMOKE_LOG=/tmp/winuae_unix_smoke.log
 -DWINUAE_UNIX_BUILD_EXECUTABLE=ON
 -DWINUAE_UNIX_WITH_SDL3=ON
 -DWINUAE_UNIX_WITH_SLIRP=ON
+-DWINUAE_UNIX_WITH_SANA2=ON
 -DWINUAE_UNIX_WITH_NCR_SCSI=ON
 -DWINUAE_UNIX_WITH_PROWIZARD=ON
 -DWINUAE_UNIX_WITH_QT_UI=ON
@@ -461,6 +470,7 @@ export WINUAE_SMOKE_LOG=/tmp/winuae_unix_smoke.log
 
 `WINUAE_UNIX_WITH_SDL3` is enabled by default. If SDL3 is not found through CMake package discovery or pkg-config, the build currently falls back to the null video presenter.
 `WINUAE_UNIX_WITH_SLIRP` is enabled by default and builds the bundled SLIRP backend plus A2065 emulation.
+`WINUAE_UNIX_WITH_SANA2` is enabled by default and builds `uaenet.device` on top of the Unix Ethernet backend when SLIRP is also enabled.
 `WINUAE_UNIX_WITH_NCR_SCSI` is enabled by default and builds the NCR/NCR9x SCSI controller emulation used by boards such as A4091. ROM-backed controller boards still need a valid board ROM path in the config.
 `WINUAE_UNIX_WITH_PROWIZARD` is enabled by default and builds the same Pro Wizard source set used by the Windows project.
 `WINUAE_UNIX_WITH_QT_UI` is enabled by default, but the `winuae_unix_qt` target is skipped when Qt Widgets is not installed.
