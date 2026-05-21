@@ -48,6 +48,11 @@ float unix_video_get_display_refresh_rate(int)
     return 0.0f;
 }
 
+int unix_video_get_display_modes(int, struct unix_video_display_mode *, int)
+{
+    return 0;
+}
+
 void unix_video_set_mouse_grab(bool)
 {
 }
