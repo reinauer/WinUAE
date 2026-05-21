@@ -80,6 +80,9 @@ int main(int argc, char **argv)
     case 16:
         rgb_format = RGBFB_R5G6B5PC;
         break;
+    case 24:
+        rgb_format = RGBFB_R8G8B8;
+        break;
     case 32:
         rgb_format = RGBFB_B8G8R8A8;
         break;

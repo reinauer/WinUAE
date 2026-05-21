@@ -17,7 +17,7 @@ This is an early macOS/Linux port of the WinUAE source tree. The current Unix bu
 - The Qt Paths page now writes real Unix target path settings for configuration files, NVRAM, screenshots, videos, save images, rips, data, and ROMs, so runtime helpers use the configured directories. Older `unix.ui.*` path keys are still read for compatibility.
 - Native Unix serial support is available for POSIX serial devices and TCP listener endpoints.
 - A2065 Ethernet can use the built-in SLIRP user-mode NAT backend.
-- UAE Zorro II/Zorro III RTG RAM can be configured and autoconfigured, with an initial Unix `uaegfx.card` install path and guest Picasso96 monitor-driver smoke coverage, including 8-bit Workbench mode open and direct 16-bit/32-bit P96 screen-open tests. Accelerated RTG operations are still incomplete.
+- UAE Zorro II/Zorro III RTG RAM can be configured and autoconfigured, with an initial Unix `uaegfx.card` install path and guest Picasso96 monitor-driver smoke coverage, including 8-bit Workbench mode open and direct 15-bit/16-bit/24-bit/32-bit P96 screen-open tests. Accelerated RTG operations are still incomplete.
 - The Qt Expansions page can enable common Zorro/expansion board ROM entries using the same `*_rom_file` and `*_rom_options` keys as WinUAE.
 - Full UI parity with the Windows configuration dialogs and platform packaging are still incomplete.
 - If SDL3 is not found, CMake currently builds a headless/null-video target.
@@ -422,7 +422,7 @@ cmake --build /tmp/winuae_cmake_build --target winuae_unix_smoke_p96_guest_draw_
 cmake --build /tmp/winuae_cmake_build --target winuae_unix_smoke_p96_guest_draw_16bit
 ```
 
-The `16bit_modes` target verifies the Windows-compatible `rtg_modes=0x10` mode-list path. The `15bit_open`, `16bit_open`, and `32bit_open` targets additionally build a tiny Amiga-side Picasso96API helper with `m68k-amigaos-gcc` and verify direct `640x480x15` / `640x480x16` / `640x480x32` P96 screen opens through `SetGC`/`SetPanning`. The `draw_8bit` and `draw_16bit` targets enable Unix RTG trace logging and verify guest drawing calls through the CPU blitter callbacks. If that compiler is not installed, set `WINUAE_P96_OPEN_SCREEN_BINARY` to a prebuilt helper binary.
+The `16bit_modes` target verifies the Windows-compatible `rtg_modes=0x10` mode-list path. The `15bit_open`, `16bit_open`, `24bit_open`, and `32bit_open` targets additionally build a tiny Amiga-side Picasso96API helper with `m68k-amigaos-gcc` and verify direct `640x480x15` / `640x480x16` / `640x480x24` / `640x480x32` P96 screen opens through `SetGC`/`SetPanning`. The `draw_8bit` and `draw_16bit` targets enable Unix RTG trace logging and verify guest drawing calls through the CPU blitter callbacks. If that compiler is not installed, set `WINUAE_P96_OPEN_SCREEN_BINARY` to a prebuilt helper binary.
 
 Optional overrides:
 
