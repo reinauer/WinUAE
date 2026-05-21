@@ -123,6 +123,7 @@ bool lanrover_init(struct autoconfig_info *) { return false; }
 bool xsurf_init(struct autoconfig_info *) { return false; }
 bool xsurf100_init(struct autoconfig_info *) { return false; }
 
+#ifndef WINUAE_UNIX_WITH_ARCHIVES
 struct zvolume *archive_directory_plain(struct zfile *) { return NULL; }
 struct zvolume *archive_directory_lha(struct zfile *) { return NULL; }
 struct zvolume *archive_directory_zip(struct zfile *) { return NULL; }
@@ -150,6 +151,7 @@ struct zfile *archive_unpackzfile(struct zfile *zf) { return zf; }
 struct zfile *archive_access_lha(struct znode *) { return NULL; }
 struct zfile *archive_getzfile(struct znode *, unsigned int, int) { return NULL; }
 int isfat(uae_u8 *) { return 0; }
+#endif
 
 int scsi_do_disk_change(int, int, int *pollmode) { if (pollmode) *pollmode = 0; return 0; }
 uae_u32 scsi_get_cd_drive_mask(void) { return 0; }

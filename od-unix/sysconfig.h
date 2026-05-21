@@ -132,6 +132,7 @@
 #include <time.h>
 
 typedef long uae_atomic;
+typedef int boolean;
 
 #define BYTE int8_t
 #define WORD int16_t
@@ -168,6 +169,7 @@ typedef long uae_atomic;
 #define _ftime ftime
 #define _timeb timeb
 #define _istalnum isalnum
+#define _daylight daylight
 
 static inline long uae_unix_timezone_offset(void)
 {
