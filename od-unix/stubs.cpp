@@ -79,6 +79,7 @@ void ldp_render(const char *, int, uae_u8 *, struct vidbuffer *, int, int, int, 
 {
 }
 
+#ifndef WITH_CPUBOARD
 bool cpuboard_autoconfig_init(struct autoconfig_info *) { return false; }
 bool cpuboard_maprom(void) { return false; }
 void cpuboard_map(void) {}
@@ -97,7 +98,9 @@ void cpuboard_set_flash_unlocked(bool) {}
 bool cpuboard_forced_hardreset(void) { return false; }
 bool cpuboard_fc_check(uaecptr, uae_u32 *, int, bool) { return false; }
 void cpuboard_gvpmaprom(int) {}
+#endif
 void unprotect_maprom(void) {}
+#ifndef WITH_CPUBOARD
 void cyberstorm_scsi_ram_put(uaecptr, uae_u32) {}
 uae_u32 cyberstorm_scsi_ram_get(uaecptr) { return 0; }
 int REGPARAM2 cyberstorm_scsi_ram_check(uaecptr, uae_u32) { return 0; }
@@ -105,6 +108,7 @@ uae_u8 *REGPARAM2 cyberstorm_scsi_ram_xlate(uaecptr) { return NULL; }
 void cyberstorm_mk3_ppc_irq(int, int) {}
 void blizzardppc_irq(int, int) {}
 void cyberstorm_mk3_ppc_irq_setonly(int, int) {}
+#endif
 void wildfire_ncr815_irq(int, int) {}
 
 struct netdriverdata **target_ethernet_enumerate(void)

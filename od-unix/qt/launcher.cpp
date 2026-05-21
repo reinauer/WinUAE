@@ -134,6 +134,10 @@
 #define UAE_UNIX_WITH_CPUBOARD 0
 #endif
 
+#ifndef UAE_UNIX_WITH_PPC
+#define UAE_UNIX_WITH_PPC 0
+#endif
+
 #ifndef UAE_UNIX_WITH_TABLET
 #define UAE_UNIX_WITH_TABLET 0
 #endif
@@ -288,6 +292,15 @@ static bool unixNativeTapeBackendAvailable()
 static bool unixCpuBoardBackendAvailable()
 {
 #if UAE_UNIX_WITH_CPUBOARD
+    return true;
+#else
+    return false;
+#endif
+}
+
+static bool unixPpcBackendAvailable()
+{
+#if UAE_UNIX_WITH_PPC
     return true;
 #else
     return false;
@@ -2709,7 +2722,11 @@ static QStringList quickstartConfigItems(const QuickstartModelChoice &choice)
     QStringList items;
     for (int i = 0; i < choice.configCount && i < MaxQuickstartConfigs; i++) {
         if (choice.configs[i]) {
-            items.append(QString::fromLatin1(choice.configs[i]));
+            const QString item = QString::fromLatin1(choice.configs[i]);
+            if (!unixPpcBackendAvailable() && item.contains(QStringLiteral("PPC"), Qt::CaseInsensitive)) {
+                continue;
+            }
+            items.append(item);
         }
     }
     return items;
