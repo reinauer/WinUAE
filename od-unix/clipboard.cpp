@@ -5,6 +5,10 @@
 #include <string>
 #include <vector>
 
+#ifdef UAE_UNIX_WITH_SDL3
+#include <SDL3/SDL.h>
+#endif
+
 #include "traps.h"
 #include "clipboard.h"
 #include "keybuf.h"
@@ -69,6 +73,20 @@ static bool write_command_input(const char *command, const std::string &text)
 
 static bool read_host_clipboard_text(std::string *text, size_t max_bytes)
 {
+#ifdef UAE_UNIX_WITH_SDL3
+	if (SDL_HasClipboardText()) {
+		char *clipboard = SDL_GetClipboardText();
+		if (clipboard) {
+			text->assign(clipboard);
+			SDL_free(clipboard);
+			if (text->size() > max_bytes) {
+				text->resize(max_bytes);
+			}
+			return true;
+		}
+	}
+#endif
+
 	const char *commands[] = {
 #ifdef __APPLE__
 		"/usr/bin/pbpaste",
@@ -92,6 +110,14 @@ static bool read_host_clipboard_text(std::string *text, size_t max_bytes)
 
 static bool write_host_clipboard_text(const std::string &text)
 {
+#ifdef UAE_UNIX_WITH_SDL3
+	if (SDL_SetClipboardText(text.c_str())) {
+		last_host_clipboard = text;
+		last_host_clipboard_valid = true;
+		return true;
+	}
+#endif
+
 	const char *commands[] = {
 #ifdef __APPLE__
 		"/usr/bin/pbcopy",
@@ -354,6 +380,11 @@ void clipboard_vsync(void)
 		host_poll_delay = 100;
 		clipboard_read_host(NULL, false, false);
 	}
+}
+
+void clipboard_host_changed(void)
+{
+	host_poll_delay = 0;
 }
 
 void clipboard_unsafeperiod(void)

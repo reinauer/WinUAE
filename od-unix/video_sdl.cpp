@@ -9,6 +9,8 @@
 #include <vector>
 
 #include "statusline.h"
+#include "traps.h"
+#include "clipboard.h"
 #include "disk.h"
 #include "gui.h"
 #include "input.h"
@@ -735,6 +737,9 @@ int unix_video_poll(bool *quit_requested)
         case SDL_EVENT_GAMEPAD_REMOVED:
         case SDL_EVENT_GAMEPAD_REMAPPED:
             unix_input_joystick_device_changed();
+            break;
+        case SDL_EVENT_CLIPBOARD_UPDATE:
+            clipboard_host_changed();
             break;
         default:
             break;
