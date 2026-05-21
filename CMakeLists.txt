@@ -48,6 +48,7 @@ option(WINUAE_UNIX_WITH_LIBPNG "Build optional PNG screenshot support when libpn
 option(WINUAE_UNIX_WITH_ARCHIVES "Build bundled ZIP/LHA/LZX/DMS/WRP archive support" ON)
 option(WINUAE_UNIX_WITH_UAESERIAL "Build uaeserial.device on top of the Unix serial backend" ON)
 option(WINUAE_UNIX_WITH_SAMPLER "Build SDL3 recording support for the parallel-port sampler" ON)
+option(WINUAE_UNIX_WITH_NATIVE_HARDDRIVES "Build Unix raw hard-drive enumeration and read-only open support" ON)
 
 set(WINUAE_UNIX_VERSION_MAJOR 0)
 set(WINUAE_UNIX_VERSION_MINOR 0)
@@ -116,6 +117,7 @@ set(WINUAE_UNIX_ENABLE_SANA2 OFF)
 set(WINUAE_UNIX_ENABLE_ARCHIVES OFF)
 set(WINUAE_UNIX_ENABLE_UAESERIAL OFF)
 set(WINUAE_UNIX_ENABLE_SAMPLER OFF)
+set(WINUAE_UNIX_ENABLE_NATIVE_HARDDRIVES OFF)
 
 set(WINUAE_UNIX_USE_LIBPNG OFF)
 if(WINUAE_UNIX_WITH_LIBPNG AND PNG_FOUND)
@@ -197,6 +199,11 @@ if(WINUAE_UNIX_WITH_ARCHIVES)
         archivers/dms/u_rle.cpp
         archivers/wrp/warp.cpp
     )
+endif()
+
+if(WINUAE_UNIX_WITH_NATIVE_HARDDRIVES)
+    set(WINUAE_UNIX_ENABLE_NATIVE_HARDDRIVES ON)
+    target_compile_definitions(winuae_core PRIVATE WINUAE_UNIX_WITH_NATIVE_HARDDRIVES=1)
 endif()
 
 if(WINUAE_UNIX_WITH_SLIRP)
@@ -719,6 +726,7 @@ if(WINUAE_UNIX_WITH_QT_UI OR WINUAE_UNIX_WITH_INTEGRATED_QT_UI)
             UAE_UNIX_WITH_ARCHIVES=$<BOOL:${WINUAE_UNIX_ENABLE_ARCHIVES}>
             UAE_UNIX_WITH_UAESERIAL=$<BOOL:${WINUAE_UNIX_ENABLE_UAESERIAL}>
             UAE_UNIX_WITH_SAMPLER=$<BOOL:${WINUAE_UNIX_ENABLE_SAMPLER}>
+            UAE_UNIX_WITH_NATIVE_HARDDRIVES=$<BOOL:${WINUAE_UNIX_ENABLE_NATIVE_HARDDRIVES}>
             UAE_UNIX_WITH_SERIAL_DIRECT=1
         )
         target_link_libraries(winuae_unix_qt_frontend PUBLIC ${WINUAE_UNIX_QT_WIDGETS_TARGET})
