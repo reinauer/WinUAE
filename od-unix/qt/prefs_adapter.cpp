@@ -28,14 +28,19 @@ static bool settingToBool(const WinUaeQtConfig::Settings &settings, const QStrin
     if (!settings.contains(key)) {
         return false;
     }
-    const QString value = settings.value(key).trimmed().toLower();
-    if (value == QStringLiteral("true") || value == QStringLiteral("yes") || value == QStringLiteral("1")) {
+    const QString value = settings.value(key);
+    const QString normalized = value.trimmed().toLower();
+    if (normalized == QStringLiteral("true") || normalized == QStringLiteral("t") ||
+        normalized == QStringLiteral("yes") || normalized == QStringLiteral("y") ||
+        normalized == QStringLiteral("1")) {
         if (out) {
             *out = true;
         }
         return true;
     }
-    if (value == QStringLiteral("false") || value == QStringLiteral("no") || value == QStringLiteral("0")) {
+    if (normalized == QStringLiteral("false") || normalized == QStringLiteral("f") ||
+        normalized == QStringLiteral("no") || normalized == QStringLiteral("n") ||
+        normalized == QStringLiteral("0")) {
         if (out) {
             *out = false;
         }
@@ -52,6 +57,24 @@ static void parseSettingOption(struct uae_prefs *prefs, const QString &key, cons
     QByteArray option = key.toLocal8Bit();
     QByteArray optionValue = value.toLocal8Bit();
     cfgfile_parse_option(prefs, option.constData(), optionValue.data(), 0);
+}
+
+static bool applyTypedSetting(const WinUaeQtConfig::Settings &settings,
+    const WinUaeQtConfig::Setting &setting, struct uae_prefs *prefs)
+{
+    for (int drive = 0; drive < 4; drive++) {
+        const QString key = QStringLiteral("floppy%1wp").arg(drive);
+        if (setting.key != key) {
+            continue;
+        }
+        bool value = false;
+        if (settingToBool(settings, key, &value)) {
+            prefs->floppyslots[drive].forcedwriteprotect = value;
+            return true;
+        }
+        return false;
+    }
+    return false;
 }
 
 static void applyWindowSize(const WinUaeQtConfig::Settings &settings, struct uae_prefs *prefs)
@@ -119,6 +142,9 @@ bool applyWinUaeQtConfigToPrefs(const WinUaeQtConfig &config, struct uae_prefs *
 
     const WinUaeQtConfig::Settings &settings = config.settings();
     for (const WinUaeQtConfig::Setting &setting : config.orderedSettings()) {
+        if (applyTypedSetting(settings, setting, prefs)) {
+            continue;
+        }
         parseSettingOption(prefs, setting.key, setting.value);
     }
     applyDirectSettings(settings, prefs);
