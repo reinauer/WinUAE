@@ -64,6 +64,10 @@
 #define UAE_UNIX_WITH_PRINTER 0
 #endif
 
+#ifndef UAE_UNIX_WITH_PARALLEL_PORT
+#define UAE_UNIX_WITH_PARALLEL_PORT 0
+#endif
+
 #ifndef UAE_UNIX_WITH_TABLET
 #define UAE_UNIX_WITH_TABLET 0
 #endif
@@ -96,6 +100,15 @@ static constexpr int InputFlagSetOnOffVal2 = 512;
 static bool unixPrinterBackendAvailable()
 {
 #if UAE_UNIX_WITH_PRINTER
+    return true;
+#else
+    return false;
+#endif
+}
+
+static bool unixParallelPortBackendAvailable()
+{
+#if UAE_UNIX_WITH_PARALLEL_PORT
     return true;
 #else
     return false;
@@ -9116,6 +9129,13 @@ private:
         wireRemapButton(port1Remap, 1);
         wireRemapButton(port2Remap, 2);
         wireRemapButton(port3Remap, 3);
+        if (!unixParallelPortBackendAvailable()) {
+            const QString reason = QStringLiteral("Parallel port joystick adapter is not connected to a Unix backend yet.");
+            disableUnavailable(portDevice[2], reason);
+            disableUnavailable(portDevice[3], reason);
+            disableUnavailable(port2Remap, reason);
+            disableUnavailable(port3Remap, reason);
+        }
 
         QGridLayout *ports = new QGridLayout;
         ports->setColumnStretch(1, 1);
@@ -13929,7 +13949,10 @@ private:
         settings.insert(QStringLiteral("state_replay_buffers"), QString::number(qMax(1, stateReplayBuffers->currentText().toInt())));
         settings.insert(QStringLiteral("state_replay_autoplay"), stateReplayAutoplay->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
         for (int i = 0; i < 4; i++) {
-            settings.insert(QStringLiteral("joyport%1").arg(i), joyportDeviceConfigValue(portDevice[i]->currentText()));
+            const QString value = i >= 2 && !unixParallelPortBackendAvailable()
+                ? QStringLiteral("none")
+                : joyportDeviceConfigValue(portDevice[i]->currentText());
+            settings.insert(QStringLiteral("joyport%1").arg(i), value);
         }
         for (int i = 0; i < MaxJoyportCustomSlots; i++) {
             if (!joyportCustom[i].trimmed().isEmpty()) {
@@ -15301,7 +15324,11 @@ private:
             bool ok = false;
             const int port = key.mid(7, 1).toInt(&ok);
             if (ok && port >= 0 && port < 4) {
-                portDevice[port]->setCurrentText(joyportDeviceText(value, port < 2));
+                if (port >= 2 && !unixParallelPortBackendAvailable()) {
+                    portDevice[port]->setCurrentText(QStringLiteral("<None>"));
+                } else {
+                    portDevice[port]->setCurrentText(joyportDeviceText(value, port < 2));
+                }
             }
         } else if (key.startsWith(QStringLiteral("joyportcustom"))) {
             bool ok = false;
