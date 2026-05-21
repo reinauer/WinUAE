@@ -274,9 +274,9 @@ The Qt Sound page lists SDL playback devices and writes both `unix.soundcard` an
 
 ## Clipboard
 
-Host clipboard text can be pasted into the emulated keyboard through `SPC_PASTE`. The default keyboard mapping follows Windows: the special qualifier plus Insert triggers paste. On macOS the Unix backend reads text with `pbpaste`; on Linux it tries `wl-paste`, `xclip`, then `xsel` if available.
+Host clipboard text can be pasted into the emulated keyboard through `SPC_PASTE`. The default keyboard mapping follows Windows: the special qualifier plus Insert triggers paste. SDL3 builds use the native SDL clipboard text API and clipboard-change events; non-SDL/fallback paths use `pbpaste` on macOS or `wl-paste`, `xclip`, then `xsel` on Linux.
 
-Transparent Amiga clipboard-device sharing can also be enabled with `clipboard_sharing=true`. The first Unix backend supports text in both directions using `pbpaste`/`pbcopy` on macOS or `wl-paste`/`wl-copy`, `xclip`, or `xsel` on Linux. Bitmap/image clipboard sharing remains deferred.
+Transparent Amiga clipboard-device sharing can also be enabled with `clipboard_sharing=true`. The first Unix backend supports text in both directions using SDL3 where available, with `pbpaste`/`pbcopy` on macOS or `wl-paste`/`wl-copy`, `xclip`, or `xsel` on Linux as fallbacks. Bitmap/image clipboard sharing remains deferred.
 
 ## Serial
 
