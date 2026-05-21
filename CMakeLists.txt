@@ -39,6 +39,7 @@ endfunction()
 option(WINUAE_UNIX_BUILD_EXECUTABLE "Link the initial Unix command-line executable" ON)
 option(WINUAE_UNIX_WITH_SDL3 "Build the Unix SDL3 video/audio backend" ON)
 option(WINUAE_UNIX_WITH_SLIRP "Build built-in SLIRP user-mode networking and A2065 Ethernet support" ON)
+option(WINUAE_UNIX_WITH_SANA2 "Build uaenet.device SANA-II networking on top of the Unix Ethernet backend" ON)
 option(WINUAE_UNIX_WITH_NCR_SCSI "Build NCR/NCR9x SCSI controller emulation" ON)
 option(WINUAE_UNIX_WITH_PROWIZARD "Build Pro-Wizard module ripper support" ON)
 option(WINUAE_UNIX_WITH_QT_UI "Build the optional Unix Qt launcher/config UI" ON)
@@ -108,6 +109,7 @@ target_compile_options(winuae_core PRIVATE
 set(WINUAE_UNIX_EXTRA_SOURCES)
 set(WINUAE_UNIX_EXTRA_LIBRARIES)
 set(WINUAE_UNIX_EXTRA_LIBRARY_DIRS)
+set(WINUAE_UNIX_ENABLE_SANA2 OFF)
 
 set(WINUAE_UNIX_USE_LIBPNG OFF)
 if(WINUAE_UNIX_WITH_LIBPNG AND PNG_FOUND)
@@ -177,6 +179,16 @@ if(WINUAE_UNIX_WITH_SLIRP)
         slirp/tftp.cpp
         slirp/udp.cpp
     )
+endif()
+
+if(WINUAE_UNIX_WITH_SANA2)
+    if(WINUAE_UNIX_WITH_SLIRP)
+        set(WINUAE_UNIX_ENABLE_SANA2 ON)
+        target_compile_definitions(winuae_core PRIVATE SANA2=1)
+        list(APPEND WINUAE_UNIX_EXTRA_SOURCES sana2.cpp)
+    else()
+        message(STATUS "uaenet.device requires the Unix Ethernet backend; disabling WINUAE_UNIX_WITH_SANA2")
+    endif()
 endif()
 
 if(WINUAE_UNIX_WITH_NCR_SCSI)
@@ -560,6 +572,7 @@ if(WINUAE_UNIX_BUILD_EXECUTABLE)
 
     add_winuae_unix_smoke_target(winuae_unix_smoke_a1200 unix-smoke-a1200.sh)
     add_winuae_unix_smoke_target(winuae_unix_smoke_a2065 unix-smoke-a2065.sh)
+    add_winuae_unix_smoke_target(winuae_unix_smoke_sana2 unix-smoke-sana2.sh)
     add_winuae_unix_smoke_target(winuae_unix_smoke_driveclick unix-smoke-driveclick.sh)
     add_winuae_unix_smoke_target(winuae_unix_smoke_rtg_z3 unix-smoke-rtg-z3.sh)
     add_winuae_unix_smoke_target(winuae_unix_smoke_uaegfx unix-smoke-uaegfx.sh)
@@ -639,6 +652,7 @@ if(WINUAE_UNIX_WITH_QT_UI OR WINUAE_UNIX_WITH_INTEGRATED_QT_UI)
             WINUAE_UNIX_VERSION_MAJOR=${WINUAE_UNIX_VERSION_MAJOR}
             WINUAE_UNIX_VERSION_MINOR=${WINUAE_UNIX_VERSION_MINOR}
             WINUAE_UNIX_VERSION_REVISION=${WINUAE_UNIX_VERSION_REVISION}
+            UAE_UNIX_WITH_SANA2=$<BOOL:${WINUAE_UNIX_ENABLE_SANA2}>
         )
         target_link_libraries(winuae_unix_qt_frontend PUBLIC ${WINUAE_UNIX_QT_WIDGETS_TARGET})
         if(WINUAE_UNIX_SDL3_TARGET)
