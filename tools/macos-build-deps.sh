@@ -9,7 +9,7 @@ Build macOS dependencies into a private prefix with a fixed deployment target.
 Use the resulting prefix as CMAKE_PREFIX_PATH when configuring WinUAE.
 
 Arguments:
-  prefix  Install prefix for SDL3, Qt, and optional libpng. Defaults to
+  prefix  Install prefix for SDL3, Qt, and optional libpng/libFLAC. Defaults to
           WINUAE_DEPS_PREFIX or <repo>/../winuae-macos-deps.
 
 Environment:
@@ -22,15 +22,20 @@ Environment:
                                   tree. Required unless WINUAE_SKIP_QT=1.
   WINUAE_LIBPNG_SOURCE            libpng source tree. Optional unless
                                   WINUAE_REQUIRE_LIBPNG=1.
+  WINUAE_FLAC_SOURCE              FLAC source tree. Optional unless
+                                  WINUAE_REQUIRE_FLAC=1.
   WINUAE_SKIP_SDL3=1              Do not build SDL3.
   WINUAE_SKIP_QT=1                Do not build Qt.
   WINUAE_SKIP_LIBPNG=1            Do not build libpng.
+  WINUAE_SKIP_FLAC=1              Do not build libFLAC.
   WINUAE_REQUIRE_LIBPNG=1         Fail if WINUAE_LIBPNG_SOURCE is missing.
+  WINUAE_REQUIRE_FLAC=1           Fail if WINUAE_FLAC_SOURCE is missing.
   WINUAE_SDL3_CMAKE_ARGS          Extra arguments passed to SDL3 CMake.
   WINUAE_QT_CONFIGURE_ARGS        Extra arguments passed to Qt configure,
                                   in addition to the release-safe defaults.
   WINUAE_QT_CMAKE_ARGS            Extra arguments passed to Qt CMake.
   WINUAE_LIBPNG_CMAKE_ARGS        Extra arguments passed to libpng CMake.
+  WINUAE_FLAC_CMAKE_ARGS          Extra arguments passed to FLAC CMake.
 EOF
 }
 
@@ -47,6 +52,7 @@ build_dir="${WINUAE_DEPS_BUILD_DIR:-${prefix}/build}"
 sdl_source="${WINUAE_SDL3_SOURCE:-}"
 qt_source="${WINUAE_QT_SOURCE:-}"
 libpng_source="${WINUAE_LIBPNG_SOURCE:-}"
+flac_source="${WINUAE_FLAC_SOURCE:-}"
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
     echo "error: macOS dependency builds require Darwin/macOS" >&2
@@ -119,6 +125,32 @@ if [[ "${WINUAE_SKIP_LIBPNG:-0}" != "1" ]]; then
         exit 1
     else
         echo "note: WINUAE_LIBPNG_SOURCE not set; skipping private libpng build" >&2
+    fi
+fi
+
+if [[ "${WINUAE_SKIP_FLAC:-0}" != "1" ]]; then
+    if [[ -n "${flac_source}" ]]; then
+        require_source "FLAC" "${flac_source}"
+        run_cmake_build "${flac_source}" "${build_dir}/flac" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="${prefix}" \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET="${target}" \
+            -DBUILD_SHARED_LIBS=ON \
+            -DBUILD_CXXLIBS=OFF \
+            -DBUILD_PROGRAMS=OFF \
+            -DBUILD_EXAMPLES=OFF \
+            -DBUILD_DOCS=OFF \
+            -DBUILD_TESTING=OFF \
+            -DINSTALL_MANPAGES=OFF \
+            -DINSTALL_PKGCONFIG_MODULES=ON \
+            -DWITH_OGG=OFF \
+            ${WINUAE_FLAC_CMAKE_ARGS:-}
+    elif [[ "${WINUAE_REQUIRE_FLAC:-0}" == "1" ]]; then
+        echo "error: FLAC source path is required when WINUAE_REQUIRE_FLAC=1" >&2
+        usage >&2
+        exit 1
+    else
+        echo "note: WINUAE_FLAC_SOURCE not set; skipping private libFLAC build" >&2
     fi
 fi
 
