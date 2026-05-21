@@ -17,7 +17,6 @@
 
 extern bool filesys_heartbeat(void);
 
-static constexpr size_t MAX_CLIPBOARD_PASTE = 32 * 1024;
 static constexpr size_t CLIP_SIZE_LIMIT = 10000000;
 static constexpr size_t CLIP_SIZE_LIMIT_INIT = 30000;
 
@@ -39,8 +38,9 @@ static bool read_command_output(const char *command, std::string *out, size_t ma
 	}
 
 	char buffer[4096];
-	while (out->size() < max_bytes) {
-		const size_t remaining = max_bytes - out->size();
+	const size_t read_limit = max_bytes + 1;
+	while (out->size() < read_limit) {
+		const size_t remaining = read_limit - out->size();
 		const size_t wanted = remaining < sizeof buffer ? remaining : sizeof buffer;
 		const size_t got = fread(buffer, 1, wanted, pipe);
 		if (got > 0) {
@@ -53,9 +53,13 @@ static bool read_command_output(const char *command, std::string *out, size_t ma
 		}
 	}
 
-	const bool truncated = out->size() >= max_bytes;
+	const bool too_large = out->size() > max_bytes;
 	const int status = pclose(pipe);
-	return status == 0 || truncated;
+	if (too_large) {
+		out->clear();
+		return false;
+	}
+	return status == 0;
 }
 
 static bool write_command_input(const char *command, const std::string &text)
@@ -80,7 +84,8 @@ static bool read_host_clipboard_text(std::string *text, size_t max_bytes)
 			text->assign(clipboard);
 			SDL_free(clipboard);
 			if (text->size() > max_bytes) {
-				text->resize(max_bytes);
+				text->clear();
+				return false;
 			}
 			return true;
 		}
