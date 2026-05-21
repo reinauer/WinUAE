@@ -49,7 +49,8 @@ option(WINUAE_UNIX_WITH_ARCHIVES "Build bundled ZIP/LHA/LZX/DMS/WRP archive supp
 option(WINUAE_UNIX_WITH_UAESERIAL "Build uaeserial.device on top of the Unix serial backend" ON)
 option(WINUAE_UNIX_WITH_SAMPLER "Build SDL3 recording support for the parallel-port sampler" ON)
 option(WINUAE_UNIX_WITH_NATIVE_HARDDRIVES "Build Unix raw hard-drive enumeration and read-only open support" ON)
-option(WINUAE_UNIX_WITH_MIDI "Build native Unix MIDI output support" ON)
+option(WINUAE_UNIX_WITH_MIDI "Build native Unix MIDI support" ON)
+option(WINUAE_UNIX_WITH_CPUBOARD "Build shared non-PPC CPU accelerator board support" ON)
 
 set(WINUAE_UNIX_VERSION_MAJOR 0)
 set(WINUAE_UNIX_VERSION_MINOR 0)
@@ -120,6 +121,7 @@ set(WINUAE_UNIX_ENABLE_UAESERIAL OFF)
 set(WINUAE_UNIX_ENABLE_SAMPLER OFF)
 set(WINUAE_UNIX_ENABLE_NATIVE_HARDDRIVES OFF)
 set(WINUAE_UNIX_ENABLE_MIDI OFF)
+set(WINUAE_UNIX_ENABLE_CPUBOARD OFF)
 set(WINUAE_UNIX_MIDI_LIBRARIES)
 set(WINUAE_UNIX_MIDI_INCLUDE_DIRS)
 set(WINUAE_UNIX_MIDI_LIBRARY_DIRS)
@@ -242,6 +244,12 @@ if(WINUAE_UNIX_WITH_MIDI)
     else()
         message(STATUS "pkg-config not available; native Unix MIDI disabled")
     endif()
+endif()
+
+if(WINUAE_UNIX_WITH_CPUBOARD)
+    set(WINUAE_UNIX_ENABLE_CPUBOARD ON)
+    target_compile_definitions(winuae_core PRIVATE WITH_CPUBOARD=1)
+    list(APPEND WINUAE_UNIX_EXTRA_SOURCES cpuboard.cpp)
 endif()
 
 if(WINUAE_UNIX_WITH_SLIRP)
@@ -766,6 +774,7 @@ if(WINUAE_UNIX_WITH_QT_UI OR WINUAE_UNIX_WITH_INTEGRATED_QT_UI)
             UAE_UNIX_WITH_SAMPLER=$<BOOL:${WINUAE_UNIX_ENABLE_SAMPLER}>
             UAE_UNIX_WITH_NATIVE_HARDDRIVES=$<BOOL:${WINUAE_UNIX_ENABLE_NATIVE_HARDDRIVES}>
             UAE_UNIX_WITH_MIDI=$<BOOL:${WINUAE_UNIX_ENABLE_MIDI}>
+            UAE_UNIX_WITH_CPUBOARD=$<BOOL:${WINUAE_UNIX_ENABLE_CPUBOARD}>
             UAE_UNIX_WITH_SERIAL_DIRECT=1
             ${WINUAE_UNIX_MIDI_QT_DEFINITIONS}
         )
