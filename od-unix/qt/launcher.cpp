@@ -2,6 +2,7 @@
 
 #include <QDesktopServices>
 #include <QFileOpenEvent>
+#include <QStandardItemModel>
 #include <QUrl>
 
 #include <algorithm>
@@ -60,12 +61,48 @@
 #define UAE_UNIX_WITH_SANA2 0
 #endif
 
+#ifndef UAE_UNIX_WITH_JIT
+#define UAE_UNIX_WITH_JIT 0
+#endif
+
 #ifndef UAE_UNIX_WITH_PRINTER
 #define UAE_UNIX_WITH_PRINTER 0
 #endif
 
 #ifndef UAE_UNIX_WITH_PARALLEL_PORT
 #define UAE_UNIX_WITH_PARALLEL_PORT 0
+#endif
+
+#ifndef UAE_UNIX_WITH_SAMPLER
+#define UAE_UNIX_WITH_SAMPLER 0
+#endif
+
+#ifndef UAE_UNIX_WITH_MIDI
+#define UAE_UNIX_WITH_MIDI 0
+#endif
+
+#ifndef UAE_UNIX_WITH_UAESERIAL
+#define UAE_UNIX_WITH_UAESERIAL 0
+#endif
+
+#ifndef UAE_UNIX_WITH_SERIAL_DIRECT
+#define UAE_UNIX_WITH_SERIAL_DIRECT 0
+#endif
+
+#ifndef UAE_UNIX_WITH_SHADER_PIPELINE
+#define UAE_UNIX_WITH_SHADER_PIPELINE 0
+#endif
+
+#ifndef UAE_UNIX_WITH_ARCHIVES
+#define UAE_UNIX_WITH_ARCHIVES 0
+#endif
+
+#ifndef UAE_UNIX_WITH_NATIVE_MEDIA
+#define UAE_UNIX_WITH_NATIVE_MEDIA 0
+#endif
+
+#ifndef UAE_UNIX_WITH_CPUBOARD
+#define UAE_UNIX_WITH_CPUBOARD 0
 #endif
 
 #ifndef UAE_UNIX_WITH_TABLET
@@ -106,9 +143,90 @@ static bool unixPrinterBackendAvailable()
 #endif
 }
 
+static bool unixJitBackendAvailable()
+{
+#if UAE_UNIX_WITH_JIT
+    return true;
+#else
+    return false;
+#endif
+}
+
 static bool unixParallelPortBackendAvailable()
 {
 #if UAE_UNIX_WITH_PARALLEL_PORT
+    return true;
+#else
+    return false;
+#endif
+}
+
+static bool unixSamplerBackendAvailable()
+{
+#if UAE_UNIX_WITH_SAMPLER
+    return true;
+#else
+    return false;
+#endif
+}
+
+static bool unixMidiBackendAvailable()
+{
+#if UAE_UNIX_WITH_MIDI
+    return true;
+#else
+    return false;
+#endif
+}
+
+static bool unixUaeSerialBackendAvailable()
+{
+#if UAE_UNIX_WITH_UAESERIAL
+    return true;
+#else
+    return false;
+#endif
+}
+
+static bool unixSerialDirectBackendAvailable()
+{
+#if UAE_UNIX_WITH_SERIAL_DIRECT
+    return true;
+#else
+    return false;
+#endif
+}
+
+static bool unixShaderPipelineAvailable()
+{
+#if UAE_UNIX_WITH_SHADER_PIPELINE
+    return true;
+#else
+    return false;
+#endif
+}
+
+static bool unixArchiveBackendAvailable()
+{
+#if UAE_UNIX_WITH_ARCHIVES
+    return true;
+#else
+    return false;
+#endif
+}
+
+static bool unixNativeMediaBackendAvailable()
+{
+#if UAE_UNIX_WITH_NATIVE_MEDIA
+    return true;
+#else
+    return false;
+#endif
+}
+
+static bool unixCpuBoardBackendAvailable()
+{
+#if UAE_UNIX_WITH_CPUBOARD
     return true;
 #else
     return false;
@@ -2904,6 +3022,23 @@ static const WinUaeQtExpansionBoardChoice expansionBoardChoices[] = {
     { "uaeboard_z3", "UAEBOARD Z3", "Other expansions", false, false }
 };
 
+static bool unixExpansionBoardBackendAvailable(const QString &boardKey)
+{
+    static const char *available[] = {
+        "a2091",
+        "a4091",
+        "alfapower",
+        "ripple",
+        "a2065"
+    };
+    for (const char *key : available) {
+        if (boardKey.compare(QString::fromLatin1(key), Qt::CaseInsensitive) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static const WinUaeQtExpansionSubtypeChoice expansionSubtypeChoices[] = {
     { "a2091", "DMAC-01", "dmac01" },
     { "a2091", "DMAC-02", "dmac02" },
@@ -3460,6 +3595,34 @@ static QString configBoolText(bool value)
     return value ? QStringLiteral("true") : QStringLiteral("false");
 }
 
+static QString amigaDiskImageFilter()
+{
+    return unixArchiveBackendAvailable()
+        ? QStringLiteral("Amiga disk images (*.adf *.adz *.dms *.ipf *.fdi *.scp *.hdf *.zip *.7z *.lha *.lzx);;All files (*)")
+        : QStringLiteral("Amiga disk images (*.adf *.adz *.ipf *.fdi *.scp *.hdf);;All files (*)");
+}
+
+static QString floppyDiskImageFilter()
+{
+    return unixArchiveBackendAvailable()
+        ? QStringLiteral("Amiga disk images (*.adf *.adz *.ipf *.dms);;All files (*)")
+        : QStringLiteral("Amiga disk images (*.adf *.adz *.ipf);;All files (*)");
+}
+
+static QString cdImageFilter()
+{
+    return unixArchiveBackendAvailable()
+        ? QStringLiteral("CD images (*.cue *.iso *.ccd *.chd *.mds *.nrg);;All files (*)")
+        : QStringLiteral("CD images (*.cue *.iso *.ccd *.mds *.nrg);;All files (*)");
+}
+
+static QString hardfileImageFilter()
+{
+    return unixArchiveBackendAvailable()
+        ? QStringLiteral("Hardfiles (*.hdf *.vhd *.chd);;All files (*)")
+        : QStringLiteral("Hardfiles (*.hdf *.vhd);;All files (*)");
+}
+
 static bool genlockModeUsesImageFile(const QString &mode)
 {
     return mode == QStringLiteral("image");
@@ -3516,6 +3679,19 @@ static void disableUnavailable(QWidget *widget, const QString &reason)
 {
     widget->setEnabled(false);
     widget->setToolTip(reason);
+}
+
+static void setComboItemEnabled(QComboBox *combo, int index, bool enabled, const QString &reason = QString())
+{
+    if (!combo || index < 0 || index >= combo->count()) {
+        return;
+    }
+    if (QStandardItemModel *model = qobject_cast<QStandardItemModel *>(combo->model())) {
+        if (QStandardItem *item = model->item(index)) {
+            item->setEnabled(enabled);
+            item->setToolTip(enabled ? QString() : reason);
+        }
+    }
 }
 
 static QString winUaeQtInputEventDisplayName(const QString &configName)
@@ -5153,6 +5329,7 @@ private:
     QCheckBox *expansionRomAutobootDisabled = nullptr;
     QCheckBox *expansionRomPcmciaInserted = nullptr;
     QCheckBox *expansionBoardOptionCheck = nullptr;
+    QPushButton *expansionRomBrowse = nullptr;
     QMap<QString, WinUaeQtExpansionBoardState> expansionBoardStates;
     QString currentExpansionBoardConfigName;
     bool expansionBoardUpdating = false;
@@ -5794,7 +5971,7 @@ private:
             showFloppyInfo(quickDfPath[drive] ? quickDfPath[drive]->currentText() : QString(), drive);
         });
         connect(select, &QPushButton::clicked, this, [this, drive]() {
-            addBrowse(quickDfPath[drive], this, QStringLiteral("Select floppy image"), QStringLiteral("Amiga disk images (*.adf *.adz *.ipf *.dms);;All files (*)"));
+            addBrowse(quickDfPath[drive], this, QStringLiteral("Select floppy image"), floppyDiskImageFilter());
         });
         connect(eject, &QPushButton::clicked, this, [this, drive]() {
             quickDfPath[drive]->setCurrentText(QString());
@@ -5834,6 +6011,9 @@ private:
         moreCompatible = new QCheckBox(QStringLiteral("More compatible"));
         cpuDataCache = new QCheckBox(QStringLiteral("Data cache emulation"));
         jit = new QCheckBox(QStringLiteral("JIT"));
+        if (!unixJitBackendAvailable()) {
+            jit->setToolTip(QStringLiteral("JIT is not enabled in this Unix build yet."));
+        }
         cpuUnimplemented = new QCheckBox(QStringLiteral("Unimplemented CPU emu"));
         cpu->addWidget(cpu24Bit, 3, 0, 1, 2);
         cpu->addWidget(moreCompatible, 4, 0, 1, 2);
@@ -6583,7 +6763,7 @@ private:
             showFloppyInfo(dfPath[drive] ? dfPath[drive]->currentText() : QString(), drive);
         });
         connect(browse, &QPushButton::clicked, this, [this, drive]() {
-            addBrowse(dfPath[drive], this, QStringLiteral("Select floppy image"), QStringLiteral("Amiga disk images (*.adf *.adz *.ipf *.dms);;All files (*)"));
+            addBrowse(dfPath[drive], this, QStringLiteral("Select floppy image"), floppyDiskImageFilter());
         });
         connect(eject, &QPushButton::clicked, this, [this, drive]() {
             dfPath[drive]->setCurrentText(QString());
@@ -6870,7 +7050,7 @@ private:
 
     void browseDiskSwapperImage(int slot)
     {
-        const QString selected = QFileDialog::getOpenFileName(this, QStringLiteral("Select floppy image"), expandedPathText(diskSwapperPathAt(slot)), QStringLiteral("Amiga disk images (*.adf *.adz *.ipf *.dms);;All files (*)"));
+        const QString selected = QFileDialog::getOpenFileName(this, QStringLiteral("Select floppy image"), expandedPathText(diskSwapperPathAt(slot)), floppyDiskImageFilter());
         if (!selected.isEmpty()) {
             setPathComboText(diskSwapperPath, selected);
             setDiskSwapperPath(slot, selected);
@@ -6905,7 +7085,9 @@ private:
         volumeLayout->addWidget(mountedDrives);
         root->addWidget(groupBox(QStringLiteral("Mounted drives"), volumeLayout), 1);
         QGridLayout *buttons = new QGridLayout;
-        addDirectoryMountButton = new QPushButton(QStringLiteral("Add Directory or Archive..."));
+        addDirectoryMountButton = new QPushButton(unixArchiveBackendAvailable()
+            ? QStringLiteral("Add Directory or Archive...")
+            : QStringLiteral("Add Directory..."));
         addHardfileMountButton = new QPushButton(QStringLiteral("Add Hardfile..."));
         addHardDriveMountButton = new QPushButton(QStringLiteral("Add Hard Drive..."));
         addCdMountButton = new QPushButton(QStringLiteral("Add SCSI/IDE CD Drive"));
@@ -6921,6 +7103,9 @@ private:
         buttons->addWidget(propertiesMountButton, 1, 2);
         buttons->addWidget(removeMountButton, 1, 3);
         root->addLayout(buttons);
+        if (!unixNativeMediaBackendAvailable()) {
+            disableUnavailable(addHardDriveMountButton, QStringLiteral("Native Unix hard drive enumeration is not implemented yet; use image-backed hardfiles or directory mounts."));
+        }
 
         hostDriveAutomount = new QCheckBox(QStringLiteral("Add PC drives at startup"));
         hostRemovableDrives = new QCheckBox(QStringLiteral("Include removable drives.."));
@@ -7001,7 +7186,7 @@ private:
         });
         connect(selectCdImage, &QPushButton::clicked, this, [this]() {
             const QString initialPath = cdSlotPath->currentText().isEmpty() ? QDir::homePath() : expandedPathText(cdSlotPath->currentText());
-            const QString selected = QFileDialog::getOpenFileName(this, QStringLiteral("Select CD image"), initialPath, QStringLiteral("CD images (*.iso *.cue *.ccd *.mds *.chd);;All files (*)"));
+            const QString selected = QFileDialog::getOpenFileName(this, QStringLiteral("Select CD image"), initialPath, cdImageFilter());
             if (!selected.isEmpty()) {
                 setPathComboText(cdSlotPath, selected);
                 setComboTextIfChanged(cdSlotType, QStringLiteral("Image file"));
@@ -7040,6 +7225,7 @@ private:
         rtgMem = combo({ QStringLiteral("None"), QStringLiteral("1 MB"), QStringLiteral("2 MB"), QStringLiteral("4 MB"), QStringLiteral("8 MB"), QStringLiteral("16 MB"), QStringLiteral("32 MB"), QStringLiteral("64 MB"), QStringLiteral("128 MB"), QStringLiteral("256 MB") }, QStringLiteral("None"));
         rtgType = combo({ QStringLiteral("ZorroII"), QStringLiteral("ZorroIII") }, QStringLiteral("ZorroIII"));
         rtgMonitor = combo({ QStringLiteral("1"), QStringLiteral("2"), QStringLiteral("3"), QStringLiteral("4") }, QStringLiteral("1"));
+        disableUnavailable(rtgMonitor, QStringLiteral("The Unix uaegfx.card backend currently exposes a single RTG monitor."));
         rtgScale = new QCheckBox(QStringLiteral("Scale if smaller than display size setting"));
         rtgScaleAllow = new QCheckBox(QStringLiteral("Always scale in windowed mode"));
         rtgScaleAllow->setEnabled(false);
@@ -7057,6 +7243,7 @@ private:
         rtgHardwareVBlank->setToolTip(QStringLiteral("Windows registers a Picasso96 hardware-interrupt callback; the Unix uaegfx.card layer does not implement it yet."));
         rtgAutoswitch = new QCheckBox(QStringLiteral("Native/RTG autoswitch"));
         rtgInitialMonitor = new QCheckBox(QStringLiteral("Override initial native chipset display"));
+        disableUnavailable(rtgInitialMonitor, QStringLiteral("Initial RTG monitor override needs multi-monitor RTG support in the Unix backend."));
         rtg8Bit = combo({ QStringLiteral("(8bit)"), QStringLiteral("8-bit (*)") }, QStringLiteral("8-bit (*)"));
         rtg16Bit = combo({ QStringLiteral("(15/16bit)"), QStringLiteral("All 15/16-bit"), QStringLiteral("R5G6B5PC (*)"), QStringLiteral("R5G5B5PC"), QStringLiteral("R5G6B5"), QStringLiteral("R5G5B5"), QStringLiteral("B5G6R5PC"), QStringLiteral("B5G5R5PC") }, QStringLiteral("R5G6B5PC (*)"));
         rtg24Bit = combo({ QStringLiteral("(24bit)"), QStringLiteral("All 24-bit"), QStringLiteral("R8G8B8"), QStringLiteral("B8G8R8") }, QStringLiteral("(24bit)"));
@@ -7067,6 +7254,7 @@ private:
         rtgRefreshRate = combo({ QStringLiteral("Chipset"), QStringLiteral("Default"), QStringLiteral("50"), QStringLiteral("60"), QStringLiteral("70"), QStringLiteral("75") }, QStringLiteral("Chipset"));
         rtgRefreshRate->setEditable(true);
         rtgBuffers = combo({ QStringLiteral("Double"), QStringLiteral("Triple") }, QStringLiteral("Double"));
+        disableUnavailable(rtgBuffers, QStringLiteral("RTG backbuffer selection is not implemented by the Unix SDL renderer yet."));
         rtgAspectRatio = combo(configChoiceDisplays(rtgAspectRatioChoices, int(sizeof(rtgAspectRatioChoices) / sizeof(rtgAspectRatioChoices[0]))), QStringLiteral("Automatic"));
 
         QGridLayout *rtg = new QGridLayout;
@@ -7152,7 +7340,7 @@ private:
         expansionBoardOptionCheck = new QCheckBox(QStringLiteral("Enable option"));
         expansionBoardOptionCheck->setToolTip(QStringLiteral("Applies the selected board option."));
         expansionBoardOptionCheck->setEnabled(false);
-        QPushButton *romBrowse = smallButton(QStringLiteral("..."));
+        expansionRomBrowse = smallButton(QStringLiteral("..."));
         board->setColumnStretch(2, 1);
         board->addWidget(expansionRomCategory, 0, 0, 1, 2);
         board->addWidget(expansionRom24BitDma, 0, 2);
@@ -7161,7 +7349,7 @@ private:
         board->addWidget(expansionRomBoard, 1, 0);
         board->addWidget(expansionRomSlot, 1, 1);
         board->addWidget(expansionRomFile, 1, 2, 1, 2);
-        board->addWidget(romBrowse, 1, 4);
+        board->addWidget(expansionRomBrowse, 1, 4);
         board->addWidget(expansionRomSubtype, 2, 0, 1, 2);
         board->addWidget(expansionRomAutobootDisabled, 2, 2);
         board->addWidget(expansionRomPcmciaInserted, 2, 3, 1, 2);
@@ -7203,7 +7391,7 @@ private:
             updateExpansionBoardOptionCheck();
         });
         connect(expansionBoardOptionCheck, &QCheckBox::toggled, this, [this]() { storeCurrentExpansionBoardUiState(); });
-        connect(romBrowse, &QPushButton::clicked, this, [this]() {
+        connect(expansionRomBrowse, &QPushButton::clicked, this, [this]() {
             addBrowse(expansionRomFile, this, QStringLiteral("Expansion board ROM file"), QStringLiteral("ROM images (*.rom *.bin);;All files (*)"));
             if (!expansionRomFile->currentText().trimmed().isEmpty()) {
                 expansionRomEnabled->setChecked(true);
@@ -7419,7 +7607,12 @@ private:
             return;
         }
         const QString option = expansionBoardOption->currentData().toString();
-        const bool enabled = !expansionBoardUpdating && !currentExpansionBoardConfigName.isEmpty() && !option.isEmpty();
+        int slot = 0;
+        const QString boardKey = expansionBoardBaseKey(currentExpansionBoardConfigName, &slot);
+        const bool enabled = !expansionBoardUpdating
+            && !currentExpansionBoardConfigName.isEmpty()
+            && unixExpansionBoardBackendAvailable(boardKey)
+            && !option.isEmpty();
         const WinUaeQtExpansionBoardState state = expansionBoardStates.value(currentExpansionBoardConfigName);
         const QSignalBlocker blocker(expansionBoardOptionCheck);
         expansionBoardOptionCheck->setEnabled(enabled);
@@ -7437,12 +7630,14 @@ private:
         currentExpansionBoardConfigName = configName;
         const WinUaeQtExpansionBoardState state = expansionBoardStates.value(configName);
         const bool hasBoard = !boardKey.isEmpty();
+        const bool supported = hasBoard && unixExpansionBoardBackendAvailable(boardKey);
         const WinUaeQtExpansionBoardChoice *choice = expansionBoardChoiceByKey(boardKey);
 
         const QList<QWidget*> controls {
             expansionRomSlot,
             expansionRomId,
             expansionRomFile,
+            expansionRomBrowse,
             expansionRom24BitDma,
             expansionRomEnabled,
             expansionRomAutobootDisabled,
@@ -7450,19 +7645,22 @@ private:
         };
         for (QWidget *control : controls) {
             if (control) {
-                control->setEnabled(hasBoard);
+                control->setEnabled(supported);
+                control->setToolTip(!hasBoard || supported
+                    ? QString()
+                    : QStringLiteral("This expansion board is not connected to a Unix backend yet."));
             }
         }
         if (expansionRom24BitDma) {
-            expansionRom24BitDma->setEnabled(hasBoard && (!choice || choice->dma24Bit));
+            expansionRom24BitDma->setEnabled(supported && (!choice || choice->dma24Bit));
         }
         if (expansionRomPcmciaInserted) {
-            expansionRomPcmciaInserted->setEnabled(hasBoard && (!choice || choice->pcmcia));
+            expansionRomPcmciaInserted->setEnabled(supported && (!choice || choice->pcmcia));
         }
         populateExpansionSubtypeChoices(hasBoard ? boardKey : QString(), state.subtype);
-        expansionRomSubtype->setEnabled(hasBoard && expansionRomSubtype->count() > 1);
+        expansionRomSubtype->setEnabled(supported && expansionRomSubtype->count() > 1);
         populateExpansionOptionChoices(hasBoard ? boardKey : QString());
-        expansionBoardOption->setEnabled(hasBoard && expansionBoardOption->count() > 1);
+        expansionBoardOption->setEnabled(supported && expansionBoardOption->count() > 1);
 
         setPathComboText(expansionRomFile, state.romFile == QStringLiteral(":ENABLED") ? QString() : state.romFile);
         expansionRomEnabled->setChecked(hasBoard && state.present);
@@ -7590,6 +7788,10 @@ private:
         for (auto it = expansionBoardStates.constBegin(); it != expansionBoardStates.constEnd(); ++it) {
             const WinUaeQtExpansionBoardState &state = it.value();
             if (!state.present) {
+                continue;
+            }
+            int slot = 0;
+            if (!unixExpansionBoardBackendAvailable(expansionBoardBaseKey(it.key(), &slot))) {
                 continue;
             }
             const QString romFile = state.romFile.trimmed().isEmpty() ? QStringLiteral(":ENABLED") : state.romFile.trimmed();
@@ -7799,6 +8001,16 @@ private:
     void updateCpuBoardControls()
     {
         if (!cpuBoardSubtype || !cpuBoardRom || !cpuBoardMem || !cpuBoardBrowse) {
+            return;
+        }
+        if (!unixCpuBoardBackendAvailable()) {
+            const QString reason = QStringLiteral("Accelerator/CPU board emulation is not enabled in this Unix build yet.");
+            for (QWidget *widget : { static_cast<QWidget *>(cpuBoardType), static_cast<QWidget *>(cpuBoardSubtype), static_cast<QWidget *>(cpuBoardRom), static_cast<QWidget *>(cpuBoardBrowse), static_cast<QWidget *>(cpuBoardMem), static_cast<QWidget *>(acceleratorOption), static_cast<QWidget *>(acceleratorSelector), static_cast<QWidget *>(acceleratorOptionCheck) }) {
+                if (widget) {
+                    widget->setEnabled(false);
+                    widget->setToolTip(reason);
+                }
+            }
             return;
         }
         const WinUaeQtCpuBoardSubtypeChoice *choice = selectedCpuBoardChoice();
@@ -8371,6 +8583,11 @@ private:
         disableUnavailable(filterMode, QStringLiteral("Native Unix shader/filter backend support is not implemented yet."));
         filterModeH = combo(configChoiceDisplays(filterModeHChoices, int(sizeof(filterModeHChoices) / sizeof(filterModeHChoices[0]))), QStringLiteral("1x"));
         filterModeV = combo(configChoiceDisplays(filterModeVChoices, int(sizeof(filterModeVChoices) / sizeof(filterModeVChoices[0]))), QStringLiteral("-"));
+        if (!unixShaderPipelineAvailable()) {
+            const QString reason = QStringLiteral("Host shader/filter mode selection is not implemented by the Unix graphics backend yet.");
+            disableUnavailable(filterModeH, reason);
+            disableUnavailable(filterModeV, reason);
+        }
         filterAutoscale = combo({});
         filterIntegerLimit = combo(configChoiceDisplays(filterIntegerLimitChoices, int(sizeof(filterIntegerLimitChoices) / sizeof(filterIntegerLimitChoices[0]))), QStringLiteral("1/1"));
         QPushButton *reset = new QPushButton(QStringLiteral("Reset to defaults"));
@@ -8439,6 +8656,12 @@ private:
         filterGamma = intSpin(-1000, 1000);
         filterBlur = intSpin(0, 1000);
         filterNoise = intSpin(0, 1000);
+        if (!unixShaderPipelineAvailable()) {
+            const QString reason = QStringLiteral("This color/noise filter control is not implemented by the Unix graphics backend yet.");
+            for (QWidget *widget : { static_cast<QWidget *>(filterLuminance), static_cast<QWidget *>(filterContrast), static_cast<QWidget *>(filterSaturation), static_cast<QWidget *>(filterGamma), static_cast<QWidget *>(filterBlur), static_cast<QWidget *>(filterNoise) }) {
+                disableUnavailable(widget, reason);
+            }
+        }
         QGridLayout *extra = new QGridLayout;
         extra->setColumnStretch(1, 1);
         extra->setColumnStretch(3, 1);
@@ -8763,6 +8986,9 @@ private:
         soundMasterVolumeValue = new QLabel;
         soundMasterVolumeValue->setMinimumWidth(44);
         soundVolumeSelect = combo({ QStringLiteral("Paula"), QStringLiteral("CD"), QStringLiteral("AHI"), QStringLiteral("MIDI"), QStringLiteral("Genlock") }, QStringLiteral("Paula"));
+        if (!unixMidiBackendAvailable()) {
+            setComboItemEnabled(soundVolumeSelect, 3, false, QStringLiteral("Native MIDI is not connected to a Unix backend yet."));
+        }
         soundSelectedVolume = new QSlider(Qt::Horizontal);
         soundSelectedVolume->setRange(0, 100);
         soundSelectedVolumeValue = new QLabel;
@@ -9334,6 +9560,11 @@ private:
         }
         samplerDevice = combo({ QStringLiteral("<None>") });
         samplerStereo = new QCheckBox(QStringLiteral("Stereo sampler"));
+        if (!unixSamplerBackendAvailable()) {
+            const QString reason = QStringLiteral("Parallel sampler input is not connected to a Unix backend yet.");
+            disableUnavailable(samplerDevice, reason);
+            disableUnavailable(samplerStereo, reason);
+        }
         parallel->addWidget(label(QStringLiteral("Printer:")), 0, 0);
         parallel->addWidget(printerPort, 0, 1, 1, 3);
         parallel->addWidget(label(QStringLiteral("Type:")), 1, 0);
@@ -9366,6 +9597,12 @@ private:
         uaeSerial = new QCheckBox(QStringLiteral("uaeserial.device"));
         serialStatus = new QCheckBox(QStringLiteral("Serial status (RTS/CTS/DTR/DTE/CD)"));
         serialRingIndicator = new QCheckBox(QStringLiteral("Serial status: Ring Indicator"));
+        if (!unixSerialDirectBackendAvailable()) {
+            disableUnavailable(serialDirect, QStringLiteral("Direct serial mode is not implemented by the Unix serial backend yet; normal device and TCP serial are available."));
+        }
+        if (!unixUaeSerialBackendAvailable()) {
+            disableUnavailable(uaeSerial, QStringLiteral("uaeserial.device is not enabled in this Unix build yet."));
+        }
         serial->addWidget(serialPort, 0, 0, 1, 4);
         serial->addWidget(serialShared, 1, 0);
         serial->addWidget(serialCtsRts, 1, 1);
@@ -9384,6 +9621,12 @@ private:
         midiOut = combo({ QStringLiteral("<None>") });
         midiIn = combo({ QStringLiteral("<None>") });
         midiRouter = new QCheckBox(QStringLiteral("Route MIDI In to MIDI Out"));
+        if (!unixMidiBackendAvailable()) {
+            const QString reason = QStringLiteral("Native MIDI is not connected to a Unix backend yet.");
+            disableUnavailable(midiOut, reason);
+            disableUnavailable(midiIn, reason);
+            disableUnavailable(midiRouter, reason);
+        }
         midi->addWidget(label(QStringLiteral("Out:")), 0, 0);
         midi->addWidget(midiOut, 0, 1);
         midi->addWidget(label(QStringLiteral("In:")), 0, 2);
@@ -9422,7 +9665,7 @@ private:
             serialCtsRts->setEnabled(serialEnabled);
         }
         if (serialDirect) {
-            serialDirect->setEnabled(serialEnabled);
+            serialDirect->setEnabled(serialEnabled && unixSerialDirectBackendAvailable());
         }
         if (serialStatus) {
             serialStatus->setEnabled(serialEnabled);
@@ -9431,9 +9674,10 @@ private:
             serialRingIndicator->setEnabled(serialEnabled);
         }
         if (samplerStereo) {
-            samplerStereo->setEnabled(samplerDevice && samplerDevice->currentText() != QStringLiteral("<None>"));
+            samplerStereo->setEnabled(unixSamplerBackendAvailable() && samplerDevice && samplerDevice->currentText() != QStringLiteral("<None>"));
         }
         const bool midiActive = midiOut && midiIn
+            && unixMidiBackendAvailable()
             && midiOut->currentText() != QStringLiteral("<None>")
             && midiIn->currentText() != QStringLiteral("<None>");
         if (midiRouter) {
@@ -11467,7 +11711,7 @@ private:
             cpu24Bit->setEnabled(cpu <= 68030);
         }
         if (jit) {
-            jit->setEnabled(cpu >= 68020 && !cpu24Bit->isChecked());
+            jit->setEnabled(unixJitBackendAvailable() && cpu >= 68020 && !cpu24Bit->isChecked());
             if (!jit->isEnabled() && jit->isChecked()) {
                 jit->setChecked(false);
             }
@@ -12594,14 +12838,14 @@ private:
         WinUaeQtMountEntry entry;
         entry.kind = QStringLiteral("dir");
         entry.device = nextMountDeviceName();
-        if (showDirectoryMountDialog(&entry, QStringLiteral("Add Directory or Archive"))) {
+        if (showDirectoryMountDialog(&entry, unixArchiveBackendAvailable() ? QStringLiteral("Add Directory or Archive") : QStringLiteral("Add Directory"))) {
             addMountEntry(entry);
         }
     }
 
     void addHardfileMountDialog()
     {
-        const QString path = QFileDialog::getOpenFileName(this, QStringLiteral("Add hardfile"), QDir::homePath(), QStringLiteral("Hardfiles (*.hdf *.vhd *.chd);;All files (*)"));
+        const QString path = QFileDialog::getOpenFileName(this, QStringLiteral("Add hardfile"), QDir::homePath(), hardfileImageFilter());
         if (path.isEmpty()) {
             return;
         }
@@ -12801,7 +13045,7 @@ private:
             addHardfileMountButton->setEnabled(canAdd);
         }
         if (addHardDriveMountButton) {
-            addHardDriveMountButton->setEnabled(canAdd);
+            addHardDriveMountButton->setEnabled(canAdd && unixNativeMediaBackendAvailable());
         }
         if (addCdMountButton) {
             addCdMountButton->setEnabled(canAdd);
@@ -12933,6 +13177,9 @@ private:
             }
             int slot = 0;
             const QString boardKey = expansionBoardBaseKey(it.key(), &slot);
+            if (!unixExpansionBoardBackendAvailable(boardKey)) {
+                continue;
+            }
             for (const WinUaeQtMountControllerChoice *choice = mountControllerChoices; choice->display; choice++) {
                 if (choice->bus != bus || boardKey.compare(QString::fromLatin1(choice->boardKey), Qt::CaseInsensitive) != 0) {
                     continue;
@@ -13119,7 +13366,7 @@ private:
 
         connect(browse, &QPushButton::clicked, this, [this, path]() {
             const QString initialPath = path->text().isEmpty() ? QDir::homePath() : expandedPathText(path->text());
-            const QString selected = QFileDialog::getOpenFileName(this, QStringLiteral("Select hardfile"), initialPath, QStringLiteral("Hardfiles (*.hdf *.vhd *.chd);;All files (*)"));
+            const QString selected = QFileDialog::getOpenFileName(this, QStringLiteral("Select hardfile"), initialPath, hardfileImageFilter());
             if (!selected.isEmpty()) {
                 path->setText(selected);
             }
@@ -13423,15 +13670,8 @@ private:
     QString rtgOptionsValue() const
     {
         QStringList parts;
-        const int monitorIndex = rtgMonitor->currentText().toInt() - 1;
-        if (monitorIndex > 0) {
-            parts.append(QStringLiteral("monitor=%1").arg(monitorIndex));
-        }
         if (!rtgAutoswitch->isChecked()) {
             parts.append(QStringLiteral("noautoswitch"));
-        }
-        if (rtgInitialMonitor->isChecked()) {
-            parts.append(QStringLiteral("initial"));
         }
         return parts.join(QLatin1Char(','));
     }
@@ -13447,23 +13687,17 @@ private:
     void applyRtgOptionsValue(const QString &value)
     {
         bool autoswitch = true;
-        bool initial = false;
-        int monitor = 0;
         for (const QString &field : winUaeQtConfigFieldList(value)) {
             const QString trimmed = field.trimmed();
             if (trimmed.compare(QStringLiteral("noautoswitch"), Qt::CaseInsensitive) == 0) {
                 autoswitch = false;
             } else if (trimmed.compare(QStringLiteral("autoswitch"), Qt::CaseInsensitive) == 0) {
                 autoswitch = true;
-            } else if (trimmed.compare(QStringLiteral("initial"), Qt::CaseInsensitive) == 0) {
-                initial = true;
-            } else if (trimmed.startsWith(QStringLiteral("monitor="), Qt::CaseInsensitive)) {
-                monitor = qBound(0, trimmed.mid(8).toInt(), 3);
             }
         }
         rtgAutoswitch->setChecked(autoswitch);
-        rtgInitialMonitor->setChecked(initial);
-        rtgMonitor->setCurrentText(QString::number(monitor + 1));
+        rtgInitialMonitor->setChecked(false);
+        rtgMonitor->setCurrentText(QStringLiteral("1"));
     }
 
     WinUaeQtConfig::Settings currentSettings() const
@@ -13716,7 +13950,7 @@ private:
         settings.insert(QStringLiteral("sound_volume_paula"), QString::number(soundVolumeAttenuationValue(0)));
         settings.insert(QStringLiteral("sound_volume_cd"), QString::number(soundVolumeAttenuationValue(1)));
         settings.insert(QStringLiteral("sound_volume_ahi"), QString::number(soundVolumeAttenuationValue(2)));
-        settings.insert(QStringLiteral("sound_volume_midi"), QString::number(soundVolumeAttenuationValue(3)));
+        settings.insert(QStringLiteral("sound_volume_midi"), QString::number(unixMidiBackendAvailable() ? soundVolumeAttenuationValue(3) : 0));
         settings.insert(QStringLiteral("sound_volume_genlock"), QString::number(soundVolumeAttenuationValue(4)));
         settings.insert(QStringLiteral("sound_max_buff"), QString::number(soundBufferSizeFromIndex(soundBufferSize->value())));
         settings.insert(QStringLiteral("sound_channels"), soundChannelConfigValue(soundChannels->currentText()));
@@ -13757,7 +13991,7 @@ private:
             settings.insert(QStringLiteral("parallel_postscript_emulation"), QStringLiteral("false"));
             settings.insert(QStringLiteral("parallel_autoflush"), QStringLiteral("5"));
         }
-        settings.insert(QStringLiteral("sampler_stereo"), samplerStereo->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
+        settings.insert(QStringLiteral("sampler_stereo"), unixSamplerBackendAvailable() && samplerStereo->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
         const QString serial = serialPort->currentText().trimmed();
         if (!serial.isEmpty()
             && serial != QStringLiteral("<None>")
@@ -13768,9 +14002,9 @@ private:
         settings.insert(QStringLiteral("serial_hardware_ctsrts"), serialCtsRts->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
         settings.insert(QStringLiteral("serial_status"), serialStatus->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
         settings.insert(QStringLiteral("serial_ri"), serialRingIndicator->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
-        settings.insert(QStringLiteral("serial_direct"), serialDirect->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
+        settings.insert(QStringLiteral("serial_direct"), unixSerialDirectBackendAvailable() && serialDirect->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
         settings.insert(QStringLiteral("serial_translate"), serialCrlf->isChecked() ? QStringLiteral("crlf_cr") : QStringLiteral("disabled"));
-        settings.insert(QStringLiteral("uaeserial"), uaeSerial->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
+        settings.insert(QStringLiteral("uaeserial"), unixUaeSerialBackendAvailable() && uaeSerial->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
         const QString dongle = configChoiceValue(dongleChoices, int(sizeof(dongleChoices) / sizeof(dongleChoices[0])), protectionDongle->currentText());
         if (!dongle.isEmpty() && dongle != QStringLiteral("none")) {
             settings.insert(QStringLiteral("dongle"), dongle);
@@ -13820,17 +14054,13 @@ private:
         settings.insert(QStringLiteral("gfx_filter_autoscale_rtg"), rtgScaleConfigValue(rtgScale->isChecked(), rtgCenter->isChecked(), rtgIntegerScale->isChecked()));
         settings.insert(QStringLiteral("gfx_filter_aspect_ratio_rtg"),
             configChoiceValue(rtgAspectRatioChoices, int(sizeof(rtgAspectRatioChoices) / sizeof(rtgAspectRatioChoices[0])), rtgAspectRatio->currentText()));
-        settings.insert(QStringLiteral("gfx_backbuffers_rtg"), rtgBufferConfigValue(rtgBuffers->currentText()));
         if (rtgRefreshRate->currentText() == QStringLiteral("Chipset")) {
             settings.insert(QStringLiteral("gfx_refreshrate_rtg"), QStringLiteral("0"));
         } else if (rtgRefreshRate->currentText() != QStringLiteral("Default")) {
             settings.insert(QStringLiteral("gfx_refreshrate_rtg"), rtgRefreshRate->currentText());
         }
-        settings.insert(QStringLiteral("gfxcard_hardware_vblank"), rtgHardwareVBlank->isEnabled() && rtgHardwareVBlank->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
-        settings.insert(QStringLiteral("gfxcard_hardware_sprite"), rtgHardwareSprite->isEnabled() && rtgHardwareSprite->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
-        settings.insert(QStringLiteral("gfxcard_multithread"), rtgMultithread->isEnabled() && rtgMultithread->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
         settings.insert(QStringLiteral("rtg_modes"), QStringLiteral("0x%1").arg(rtgModeMask(), 0, 16));
-        const QString cpuBoardConfig = selectedCpuBoardConfigValue();
+        const QString cpuBoardConfig = unixCpuBoardBackendAvailable() ? selectedCpuBoardConfigValue() : QString();
         if (cpuBoardConfig.isEmpty()) {
             settings.insert(QStringLiteral("cpuboard_type"), QStringLiteral("none"));
             settings.insert(QStringLiteral("cpuboardmem1_size"), QStringLiteral("0"));
@@ -13909,10 +14139,11 @@ private:
         settings.insert(QStringLiteral("gfx_monitorblankdelay"), displayResyncBlank->isChecked() ? QStringLiteral("1000") : QStringLiteral("0"));
         settings.insert(QStringLiteral("gfx_keep_aspect"), displayKeepAspect->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
         settings.insert(QStringLiteral("gfx_ntscpixels"), filterNtscPixels->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
+        const bool shaderPipeline = unixShaderPipelineAvailable();
         for (int i = 0; i < 3; i++) {
             const WinUaeQtFilterState state = filterStateFromUi(i);
-            settings.insert(filterKey(QStringLiteral("gfx_filter_mode"), i), state.modeH);
-            settings.insert(filterKey(QStringLiteral("gfx_filter_mode2"), i), state.modeV);
+            settings.insert(filterKey(QStringLiteral("gfx_filter_mode"), i), shaderPipeline ? state.modeH : QStringLiteral("1x"));
+            settings.insert(filterKey(QStringLiteral("gfx_filter_mode2"), i), shaderPipeline ? state.modeV : QStringLiteral("-"));
             settings.insert(filterKey(QStringLiteral("gfx_filter_horiz_zoomf"), i), QString::number(state.horizZoom, 'f', 1));
             settings.insert(filterKey(QStringLiteral("gfx_filter_vert_zoomf"), i), QString::number(state.vertZoom, 'f', 1));
             settings.insert(filterKey(QStringLiteral("gfx_filter_horiz_zoom_multf"), i), QString::number(state.horizZoomMult, 'f', 2));
@@ -13923,12 +14154,12 @@ private:
             settings.insert(filterKey(QStringLiteral("gfx_filter_keep_autoscale_aspect"), i), state.keepAutoscaleAspect ? QStringLiteral("1") : QStringLiteral("0"));
             settings.insert(filterKey(QStringLiteral("gfx_filter_autoscale"), i), i == 1 && !isRtgAutoscaleValue(state.autoscale) ? QStringLiteral("resize") : state.autoscale);
             settings.insert(filterKey(QStringLiteral("gfx_filter_autoscale_limit"), i), state.integerLimit);
-            settings.insert(filterKey(QStringLiteral("gfx_filter_luminance"), i), QString::number(state.luminance));
-            settings.insert(filterKey(QStringLiteral("gfx_filter_contrast"), i), QString::number(state.contrast));
-            settings.insert(filterKey(QStringLiteral("gfx_filter_saturation"), i), QString::number(state.saturation));
-            settings.insert(filterKey(QStringLiteral("gfx_filter_gamma"), i), QString::number(state.gamma));
-            settings.insert(filterKey(QStringLiteral("gfx_filter_blur"), i), QString::number(state.blur));
-            settings.insert(filterKey(QStringLiteral("gfx_filter_noise"), i), QString::number(state.noise));
+            settings.insert(filterKey(QStringLiteral("gfx_filter_luminance"), i), QString::number(shaderPipeline ? state.luminance : 0));
+            settings.insert(filterKey(QStringLiteral("gfx_filter_contrast"), i), QString::number(shaderPipeline ? state.contrast : 0));
+            settings.insert(filterKey(QStringLiteral("gfx_filter_saturation"), i), QString::number(shaderPipeline ? state.saturation : 0));
+            settings.insert(filterKey(QStringLiteral("gfx_filter_gamma"), i), QString::number(shaderPipeline ? state.gamma : 0));
+            settings.insert(filterKey(QStringLiteral("gfx_filter_blur"), i), QString::number(shaderPipeline ? state.blur : 0));
+            settings.insert(filterKey(QStringLiteral("gfx_filter_noise"), i), QString::number(shaderPipeline ? state.noise : 0));
             settings.insert(filterKey(QStringLiteral("gfx_filter_bilinear"), i), state.bilinear ? QStringLiteral("1") : QStringLiteral("0"));
             settings.insert(filterKey(QStringLiteral("gfx_filter_scanlines"), i), QString::number(state.scanlines));
             settings.insert(filterKey(QStringLiteral("gfx_filter_scanlinelevel"), i), QString::number(state.scanlineLevel));
@@ -15023,7 +15254,7 @@ private:
             cpuFrequencyCustom->setText(QString::number(value.toDouble() / 1000000.0, 'f', 6));
         } else if (key == QStringLiteral("cachesize")) {
             const int size = value.toInt();
-            jit->setChecked(size > 0);
+            jit->setChecked(unixJitBackendAvailable() && size > 0);
             jitCache->setValue(jitCachePositionFromSize(size));
             updateCpuControlState();
         } else if (key == QStringLiteral("compfpu")) {
@@ -15233,7 +15464,7 @@ private:
                 ghostscriptParams->setText(value);
             }
         } else if (key == QStringLiteral("sampler_stereo")) {
-            samplerStereo->setChecked(configBoolValue(value));
+            samplerStereo->setChecked(unixSamplerBackendAvailable() && configBoolValue(value));
             updateIoPortsState();
         } else if (key == QStringLiteral("unix.serial_port") || key == QStringLiteral("serial_port")) {
             serialPort->setCurrentText(value.isEmpty() ? QStringLiteral("<None>") : value);
@@ -15247,11 +15478,11 @@ private:
         } else if (key == QStringLiteral("serial_ri")) {
             serialRingIndicator->setChecked(configBoolValue(value));
         } else if (key == QStringLiteral("serial_direct")) {
-            serialDirect->setChecked(configBoolValue(value));
+            serialDirect->setChecked(unixSerialDirectBackendAvailable() && configBoolValue(value));
         } else if (key == QStringLiteral("serial_translate")) {
             serialCrlf->setChecked(value.compare(QStringLiteral("crlf_cr"), Qt::CaseInsensitive) == 0 || configBoolValue(value));
         } else if (key == QStringLiteral("uaeserial")) {
-            uaeSerial->setChecked(configBoolValue(value));
+            uaeSerial->setChecked(unixUaeSerialBackendAvailable() && configBoolValue(value));
         } else if (key == QStringLiteral("dongle")) {
             bool ok = false;
             const int index = value.toInt(&ok);
@@ -15759,7 +15990,7 @@ WinUaeQtRuntimeFileDialogResult runWinUaeQtRuntimeFileDialog(QApplication &app, 
             nullptr,
             QStringLiteral("Select disk image for DF%1:").arg(shortcut),
             runtimeDialogDirectory(initialPath),
-            QStringLiteral("Amiga disk images (*.adf *.adz *.dms *.ipf *.fdi *.scp *.hdf *.zip *.7z *.lha *.lzx);;All files (*)"));
+            amigaDiskImageFilter());
     } else if (shortcut == 4) {
         selected = QFileDialog::getOpenFileName(
             nullptr,
@@ -15780,7 +16011,7 @@ WinUaeQtRuntimeFileDialogResult runWinUaeQtRuntimeFileDialog(QApplication &app, 
             nullptr,
             QStringLiteral("Select CD image"),
             runtimeDialogDirectory(initialPath),
-            QStringLiteral("CD images (*.cue *.iso *.ccd *.chd *.mds *.nrg);;All files (*)"));
+            cdImageFilter());
     }
 
     WinUaeQtRuntimeFileDialogResult result;
