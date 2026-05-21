@@ -15,8 +15,15 @@
 #endif
 #if defined(__APPLE__)
 #include <sys/disk.h>
+#if defined(UAE_UNIX_WITH_COREMIDI)
+#include <CoreFoundation/CoreFoundation.h>
+#include <CoreMIDI/CoreMIDI.h>
+#endif
 #elif defined(__linux__)
 #include <linux/fs.h>
+#if defined(UAE_UNIX_WITH_ALSA_MIDI)
+#include <alsa/asoundlib.h>
+#endif
 #endif
 
 #ifdef UAE_UNIX_WITH_SDL3
@@ -199,6 +206,16 @@ static bool unixMidiBackendAvailable()
 #else
     return false;
 #endif
+}
+
+static bool unixMidiInputBackendAvailable()
+{
+    return false;
+}
+
+static bool unixMidiVolumeBackendAvailable()
+{
+    return false;
 }
 
 static bool unixUaeSerialBackendAvailable()
@@ -1743,6 +1760,107 @@ static QVector<QPair<QString, QString>> soundDeviceChoices()
     }
 #endif
 
+    return choices;
+}
+
+struct WinUaeQtMidiChoice {
+    QString display;
+    QString configName;
+    int deviceId = -2;
+};
+
+#if defined(__APPLE__) && defined(UAE_UNIX_WITH_COREMIDI)
+static QString coreMidiObjectString(MIDIObjectRef object, CFStringRef property)
+{
+    CFStringRef str = nullptr;
+    if (MIDIObjectGetStringProperty(object, property, &str) != noErr || !str) {
+        return QString();
+    }
+    char buffer[512];
+    const bool ok = CFStringGetCString(str, buffer, sizeof buffer, kCFStringEncodingUTF8);
+    CFRelease(str);
+    return ok ? QString::fromUtf8(buffer) : QString();
+}
+#endif
+
+static QVector<WinUaeQtMidiChoice> midiOutputChoices()
+{
+    QVector<WinUaeQtMidiChoice> choices;
+#if UAE_UNIX_WITH_MIDI
+#if defined(__APPLE__) && defined(UAE_UNIX_WITH_COREMIDI)
+    const ItemCount count = MIDIGetNumberOfDestinations();
+    if (count > 0) {
+        WinUaeQtMidiChoice def;
+        def.display = QStringLiteral("Default MIDI-Out Device");
+        def.configName = QStringLiteral("default");
+        def.deviceId = -1;
+        choices.append(def);
+    }
+    for (ItemCount i = 0; i < count; i++) {
+        MIDIEndpointRef endpoint = MIDIGetDestination(i);
+        if (!endpoint) {
+            continue;
+        }
+        QString name = coreMidiObjectString(endpoint, kMIDIPropertyDisplayName);
+        if (name.isEmpty()) {
+            name = coreMidiObjectString(endpoint, kMIDIPropertyName);
+        }
+        if (name.isEmpty()) {
+            name = QStringLiteral("CoreMIDI destination %1").arg(i + 1);
+        }
+        WinUaeQtMidiChoice choice;
+        choice.display = name;
+        choice.configName = name;
+        choice.deviceId = int(i);
+        choices.append(choice);
+    }
+#elif defined(__linux__) && defined(UAE_UNIX_WITH_ALSA_MIDI)
+    snd_seq_t *seq = nullptr;
+    if (snd_seq_open(&seq, "default", SND_SEQ_OPEN_OUTPUT, 0) >= 0) {
+        QVector<WinUaeQtMidiChoice> alsaChoices;
+        snd_seq_client_info_t *clientInfo;
+        snd_seq_port_info_t *portInfo;
+        snd_seq_client_info_alloca(&clientInfo);
+        snd_seq_port_info_alloca(&portInfo);
+        snd_seq_client_info_set_client(clientInfo, -1);
+        int deviceId = 0;
+        while (snd_seq_query_next_client(seq, clientInfo) >= 0) {
+            const int client = snd_seq_client_info_get_client(clientInfo);
+            snd_seq_port_info_set_client(portInfo, client);
+            snd_seq_port_info_set_port(portInfo, -1);
+            while (snd_seq_query_next_port(seq, portInfo) >= 0) {
+                const unsigned int caps = snd_seq_port_info_get_capability(portInfo);
+                if ((caps & SND_SEQ_PORT_CAP_WRITE) == 0 || (caps & SND_SEQ_PORT_CAP_SUBS_WRITE) == 0) {
+                    continue;
+                }
+                const int port = snd_seq_port_info_get_port(portInfo);
+                const char *clientName = snd_seq_client_info_get_name(clientInfo);
+                const char *portName = snd_seq_port_info_get_name(portInfo);
+                const QString name = QStringLiteral("%1:%2 %3%4%5")
+                    .arg(client)
+                    .arg(port)
+                    .arg(QString::fromUtf8(clientName ? clientName : "ALSA"))
+                    .arg(portName && portName[0] ? QStringLiteral(" ") : QString())
+                    .arg(QString::fromUtf8(portName ? portName : ""));
+                WinUaeQtMidiChoice choice;
+                choice.display = name;
+                choice.configName = name;
+                choice.deviceId = deviceId++;
+                alsaChoices.append(choice);
+            }
+        }
+        snd_seq_close(seq);
+        if (!alsaChoices.isEmpty()) {
+            WinUaeQtMidiChoice def;
+            def.display = QStringLiteral("Default MIDI-Out Device");
+            def.configName = QStringLiteral("default");
+            def.deviceId = -1;
+            choices.append(def);
+            choices += alsaChoices;
+        }
+    }
+#endif
+#endif
     return choices;
 }
 
@@ -9176,8 +9294,8 @@ private:
         soundMasterVolumeValue = new QLabel;
         soundMasterVolumeValue->setMinimumWidth(44);
         soundVolumeSelect = combo({ QStringLiteral("Paula"), QStringLiteral("CD"), QStringLiteral("AHI"), QStringLiteral("MIDI"), QStringLiteral("Genlock") }, QStringLiteral("Paula"));
-        if (!unixMidiBackendAvailable()) {
-            setComboItemEnabled(soundVolumeSelect, 3, false, QStringLiteral("Native MIDI is not connected to a Unix backend yet."));
+        if (!unixMidiVolumeBackendAvailable()) {
+            setComboItemEnabled(soundVolumeSelect, 3, false, QStringLiteral("Native MIDI output volume is not connected to a Unix backend yet."));
         }
         soundSelectedVolume = new QSlider(Qt::Horizontal);
         soundSelectedVolume->setRange(0, 100);
@@ -9499,6 +9617,46 @@ private:
                 || displayName.compare(wanted, Qt::CaseInsensitive) == 0
                 || configName.mid(4).compare(wanted, Qt::CaseInsensitive) == 0) {
                 samplerDevice->setCurrentIndex(i);
+                updateIoPortsState();
+                return;
+            }
+        }
+    }
+
+    void selectMidiOutByDeviceId(int deviceId)
+    {
+        if (!midiOut) {
+            return;
+        }
+        for (int i = 0; i < midiOut->count(); i++) {
+            if (midiOut->itemData(i).toInt() == deviceId) {
+                midiOut->setCurrentIndex(i);
+                updateIoPortsState();
+                return;
+            }
+        }
+        if (deviceId < -1) {
+            midiOut->setCurrentIndex(0);
+            updateIoPortsState();
+        }
+    }
+
+    void selectMidiOutByConfigName(const QString &value)
+    {
+        if (!midiOut || value.trimmed().isEmpty()) {
+            return;
+        }
+        const QString wanted = value.trimmed();
+        if (wanted.compare(QStringLiteral("none"), Qt::CaseInsensitive) == 0) {
+            selectMidiOutByDeviceId(-2);
+            return;
+        }
+        for (int i = 0; i < midiOut->count(); i++) {
+            const QString configName = midiOut->itemData(i, Qt::UserRole + 1).toString();
+            const QString displayName = midiOut->itemText(i);
+            if (configName.compare(wanted, Qt::CaseInsensitive) == 0
+                || displayName.compare(wanted, Qt::CaseInsensitive) == 0) {
+                midiOut->setCurrentIndex(i);
                 updateIoPortsState();
                 return;
             }
@@ -9828,7 +9986,12 @@ private:
         midi->setVerticalSpacing(4);
         midi->setColumnStretch(1, 1);
         midi->setColumnStretch(3, 1);
-        midiOut = combo({ QStringLiteral("<None>") });
+        midiOut = new QComboBox;
+        midiOut->addItem(QStringLiteral("<None>"), -2);
+        for (const WinUaeQtMidiChoice &choice : midiOutputChoices()) {
+            midiOut->addItem(choice.display, choice.deviceId);
+            midiOut->setItemData(midiOut->count() - 1, choice.configName, Qt::UserRole + 1);
+        }
         midiIn = combo({ QStringLiteral("<None>") });
         midiRouter = new QCheckBox(QStringLiteral("Route MIDI In to MIDI Out"));
         if (!unixMidiBackendAvailable()) {
@@ -9836,6 +9999,9 @@ private:
             disableUnavailable(midiOut, reason);
             disableUnavailable(midiIn, reason);
             disableUnavailable(midiRouter, reason);
+        } else {
+            disableUnavailable(midiIn, QStringLiteral("Native MIDI input is not connected to a Unix backend yet."));
+            disableUnavailable(midiRouter, QStringLiteral("MIDI routing requires a native MIDI input backend."));
         }
         midi->addWidget(label(QStringLiteral("Out:")), 0, 0);
         midi->addWidget(midiOut, 0, 1);
@@ -9888,6 +10054,7 @@ private:
         }
         const bool midiActive = midiOut && midiIn
             && unixMidiBackendAvailable()
+            && unixMidiInputBackendAvailable()
             && midiOut->currentText() != QStringLiteral("<None>")
             && midiIn->currentText() != QStringLiteral("<None>");
         if (midiRouter) {
@@ -14279,7 +14446,7 @@ private:
         settings.insert(QStringLiteral("sound_volume_paula"), QString::number(soundVolumeAttenuationValue(0)));
         settings.insert(QStringLiteral("sound_volume_cd"), QString::number(soundVolumeAttenuationValue(1)));
         settings.insert(QStringLiteral("sound_volume_ahi"), QString::number(soundVolumeAttenuationValue(2)));
-        settings.insert(QStringLiteral("sound_volume_midi"), QString::number(unixMidiBackendAvailable() ? soundVolumeAttenuationValue(3) : 0));
+        settings.insert(QStringLiteral("sound_volume_midi"), QString::number(unixMidiVolumeBackendAvailable() ? soundVolumeAttenuationValue(3) : 0));
         settings.insert(QStringLiteral("sound_volume_genlock"), QString::number(soundVolumeAttenuationValue(4)));
         settings.insert(QStringLiteral("sound_max_buff"), QString::number(soundBufferSizeFromIndex(soundBufferSize->value())));
         settings.insert(QStringLiteral("sound_channels"), soundChannelConfigValue(soundChannels->currentText()));
@@ -14327,6 +14494,21 @@ private:
             settings.insert(QStringLiteral("unix.samplersoundcardname"), samplerDeviceConfigName);
         }
         settings.insert(QStringLiteral("sampler_stereo"), unixSamplerBackendAvailable() && samplerIndex >= 0 && samplerStereo->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
+        const int midiOutDevice = unixMidiBackendAvailable() && midiOut ? midiOut->currentData().toInt() : -2;
+        settings.insert(QStringLiteral("midiout_device"), QString::number(midiOutDevice));
+        settings.insert(QStringLiteral("midiin_device"), QStringLiteral("-1"));
+        QString midiOutName = QStringLiteral("none");
+        if (midiOutDevice == -1) {
+            midiOutName = QStringLiteral("default");
+        } else if (midiOutDevice >= 0 && midiOut) {
+            midiOutName = midiOut->currentData(Qt::UserRole + 1).toString();
+            if (midiOutName.isEmpty()) {
+                midiOutName = midiOut->currentText();
+            }
+        }
+        settings.insert(QStringLiteral("midiout_device_name"), midiOutName);
+        settings.insert(QStringLiteral("midiin_device_name"), QStringLiteral("none"));
+        settings.insert(QStringLiteral("midirouter"), QStringLiteral("false"));
         const QString serial = serialPort->currentText().trimmed();
         if (!serial.isEmpty()
             && serial != QStringLiteral("<None>")
@@ -14793,6 +14975,12 @@ private:
             QStringLiteral("unix.sampler_soundcard"),
             QStringLiteral("unix.sampler_soundcardname"),
             QStringLiteral("sampler_stereo"),
+            QStringLiteral("midi_device"),
+            QStringLiteral("midiout_device"),
+            QStringLiteral("midiin_device"),
+            QStringLiteral("midiout_device_name"),
+            QStringLiteral("midiin_device_name"),
+            QStringLiteral("midirouter"),
             QStringLiteral("serial_port"),
             QStringLiteral("unix.serial_port"),
             QStringLiteral("serial_on_demand"),
@@ -15828,6 +16016,22 @@ private:
                 && samplerDevice->currentText() != QStringLiteral("<None>")
                 && configBoolValue(value));
             updateIoPortsState();
+        } else if (key == QStringLiteral("midi_device") || key == QStringLiteral("midiout_device")) {
+            bool ok = false;
+            const int deviceId = value.toInt(&ok);
+            if (ok) {
+                selectMidiOutByDeviceId(unixMidiBackendAvailable() ? deviceId : -2);
+            }
+        } else if (key == QStringLiteral("midiout_device_name")) {
+            if (unixMidiBackendAvailable()) {
+                selectMidiOutByConfigName(value);
+            }
+        } else if (key == QStringLiteral("midiin_device") || key == QStringLiteral("midiin_device_name")) {
+            if (midiIn) {
+                midiIn->setCurrentIndex(0);
+            }
+        } else if (key == QStringLiteral("midirouter")) {
+            midiRouter->setChecked(unixMidiInputBackendAvailable() && configBoolValue(value));
         } else if (key == QStringLiteral("unix.serial_port") || key == QStringLiteral("serial_port")) {
             serialPort->setCurrentText(value.isEmpty() ? QStringLiteral("<None>") : value);
             updateIoPortsState();

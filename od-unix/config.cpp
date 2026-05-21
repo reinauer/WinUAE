@@ -12,6 +12,9 @@
 #include "path_expand.h"
 #include "savestate.h"
 #include "sound_unix.h"
+#ifdef WITH_MIDI
+#include "midi.h"
+#endif
 #include "uae/string.h"
 #include "uae.h"
 #include "zfile.h"
@@ -534,6 +537,31 @@ int target_parse_option(struct uae_prefs *p, const TCHAR *option, const TCHAR *v
         }
         return 1;
     }
+    if (cfgfile_intval(option, value, _T("midi_device"), &p->win32_midioutdev, 1)
+        || cfgfile_intval(option, value, _T("midiout_device"), &p->win32_midioutdev, 1)) {
+        return 1;
+    }
+    if (cfgfile_intval(option, value, _T("midiin_device"), &p->win32_midiindev, 1)) {
+        p->win32_midiindev = -1;
+        return 1;
+    }
+    if (cfgfile_yesno(option, value, _T("midirouter"), &p->win32_midirouter)) {
+        p->win32_midirouter = false;
+        return 1;
+    }
+    TCHAR tmpbuf[256];
+    if (cfgfile_string_escape(option, value, _T("midiout_device_name"), tmpbuf, sizeof tmpbuf / sizeof(TCHAR))) {
+#ifdef WITH_MIDI
+        p->win32_midioutdev = unix_midi_output_device_id_from_config_name(tmpbuf);
+#else
+        p->win32_midioutdev = !_tcsicmp(tmpbuf, _T("default")) ? -1 : -2;
+#endif
+        return 1;
+    }
+    if (cfgfile_string_escape(option, value, _T("midiin_device_name"), tmpbuf, sizeof tmpbuf / sizeof(TCHAR))) {
+        p->win32_midiindev = -1;
+        return 1;
+    }
     if (parse_path_option(option, value, _T("config_path"), path_configuration, sizeof path_configuration / sizeof(TCHAR))
         || parse_path_option(option, value, _T("ui.config_path"), path_configuration, sizeof path_configuration / sizeof(TCHAR))
         || parse_path_option(option, value, _T("nvram_path"), path_nvram, sizeof path_nvram / sizeof(TCHAR))
@@ -575,6 +603,15 @@ void target_save_options(struct zfile *f, struct uae_prefs *p)
             cfgfile_target_write_str(f, _T("samplersoundcardname"), sampler_name);
         }
     }
+    cfgfile_target_dwrite(f, _T("midiout_device"), _T("%d"), p->win32_midioutdev);
+    cfgfile_target_dwrite(f, _T("midiin_device"), _T("%d"), -1);
+#ifdef WITH_MIDI
+    cfgfile_target_dwrite_str_escape(f, _T("midiout_device_name"), unix_midi_output_device_config_name_for_id(p->win32_midioutdev));
+#else
+    cfgfile_target_dwrite_str_escape(f, _T("midiout_device_name"), p->win32_midioutdev == -1 ? _T("default") : _T("none"));
+#endif
+    cfgfile_target_dwrite_str_escape(f, _T("midiin_device_name"), _T("none"));
+    cfgfile_target_dwrite_bool(f, _T("midirouter"), false);
     cfgfile_target_dwrite(f, _T("recording_width"), _T("%d"), p->aviout_width);
     cfgfile_target_dwrite(f, _T("recording_height"), _T("%d"), p->aviout_height);
     cfgfile_target_dwrite(f, _T("recording_x"), _T("%d"), p->aviout_xoffset);
@@ -629,10 +666,15 @@ void target_default_options(struct uae_prefs *p, int)
     path_rom[0] = 0;
     p->rtg_dacswitch = true;
     p->win32_samplersoundcard = -1;
+    p->win32_midioutdev = -2;
+    p->win32_midiindev = -1;
+    p->win32_midirouter = false;
 }
 
-void target_fixup_options(struct uae_prefs*)
+void target_fixup_options(struct uae_prefs *p)
 {
+    p->win32_midiindev = -1;
+    p->win32_midirouter = false;
 }
 
 void target_multipath_modified(struct uae_prefs*)
