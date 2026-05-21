@@ -110,10 +110,6 @@
 #define UAE_UNIX_WITH_SHADER_PIPELINE 0
 #endif
 
-#ifndef UAE_UNIX_WITH_ARCHIVES
-#define UAE_UNIX_WITH_ARCHIVES 0
-#endif
-
 #ifndef UAE_UNIX_WITH_NATIVE_MEDIA
 #define UAE_UNIX_WITH_NATIVE_MEDIA 0
 #endif
@@ -247,15 +243,6 @@ static bool unixSerialDirectBackendAvailable()
 static bool unixShaderPipelineAvailable()
 {
 #if UAE_UNIX_WITH_SHADER_PIPELINE
-    return true;
-#else
-    return false;
-#endif
-}
-
-static bool unixArchiveBackendAvailable()
-{
-#if UAE_UNIX_WITH_ARCHIVES
     return true;
 #else
     return false;
@@ -3875,31 +3862,27 @@ static QString configBoolText(bool value)
 
 static QString amigaDiskImageFilter()
 {
-    return unixArchiveBackendAvailable()
-        ? QStringLiteral("Amiga disk images (*.adf *.adz *.dms *.wrp *.ipf *.fdi *.scp *.hdf *.zip *.lha *.lzx);;All files (*)")
-        : QStringLiteral("Amiga disk images (*.adf *.adz *.ipf *.fdi *.scp *.hdf);;All files (*)");
+    return QStringLiteral("Amiga disk images (*.adf *.adz *.dms *.wrp *.ipf *.fdi *.scp *.hdf *.chd *.zip *.7z *.rar *.lha *.lzh *.lzx);;All files (*)");
 }
 
 static QString floppyDiskImageFilter()
 {
-    return unixArchiveBackendAvailable()
-        ? QStringLiteral("Amiga disk images (*.adf *.adz *.dms *.wrp *.ipf);;All files (*)")
-        : QStringLiteral("Amiga disk images (*.adf *.adz *.ipf);;All files (*)");
+    return QStringLiteral("Amiga disk images (*.adf *.adz *.dms *.wrp *.ipf *.zip *.7z *.rar *.lha *.lzh *.lzx);;All files (*)");
 }
 
 static QString cdImageFilter()
 {
-    return QStringLiteral("CD images (*.cue *.iso *.ccd *.mds *.nrg);;All files (*)");
+    return QStringLiteral("CD images (*.cue *.ccd *.mds *.iso *.chd *.nrg *.zip *.7z *.rar *.lha *.lzh *.lzx);;All files (*)");
 }
 
 static QString hardfileImageFilter()
 {
-    return QStringLiteral("Hardfiles (*.hdf *.vhd);;All files (*)");
+    return QStringLiteral("Hardfiles (*.hdf *.hda *.vhd *.rdf *.hdz *.rdz *.chd);;All files (*)");
 }
 
 static QString directoryArchiveFilter()
 {
-    return QStringLiteral("Directory archives (*.zip *.lha *.lzx);;All files (*)");
+    return QStringLiteral("Directory archives (*.zip *.7z *.rar *.lha *.lzh *.lzx);;All files (*)");
 }
 
 struct WinUaeQtNativeDriveChoice {
@@ -7474,9 +7457,7 @@ private:
         volumeLayout->addWidget(mountedDrives);
         root->addWidget(groupBox(QStringLiteral("Mounted drives"), volumeLayout), 1);
         QGridLayout *buttons = new QGridLayout;
-        addDirectoryMountButton = new QPushButton(unixArchiveBackendAvailable()
-            ? QStringLiteral("Add Directory or Archive...")
-            : QStringLiteral("Add Directory..."));
+        addDirectoryMountButton = new QPushButton(QStringLiteral("Add Directory or Archive..."));
         addHardfileMountButton = new QPushButton(QStringLiteral("Add Hardfile..."));
         addHardDriveMountButton = new QPushButton(QStringLiteral("Add Hard Drive..."));
         addCdMountButton = new QPushButton(QStringLiteral("Add SCSI/IDE CD Drive"));
@@ -13344,7 +13325,7 @@ private:
         WinUaeQtMountEntry entry;
         entry.kind = QStringLiteral("dir");
         entry.device = nextMountDeviceName();
-        if (showDirectoryMountDialog(&entry, unixArchiveBackendAvailable() ? QStringLiteral("Add Directory or Archive") : QStringLiteral("Add Directory"))) {
+        if (showDirectoryMountDialog(&entry, QStringLiteral("Add Directory or Archive"))) {
             addMountEntry(entry);
         }
     }
@@ -13694,9 +13675,9 @@ private:
         bootPri->setValue(entry->bootPri);
         QCheckBox *readOnly = new QCheckBox(QStringLiteral("Read-only"));
         readOnly->setChecked(entry->readOnly);
-        QPushButton *selectDirectory = new QPushButton(unixArchiveBackendAvailable() ? QStringLiteral("Directory...") : QStringLiteral("..."));
-        QPushButton *selectArchive = unixArchiveBackendAvailable() ? new QPushButton(QStringLiteral("Archive...")) : nullptr;
-        QPushButton *eject = unixArchiveBackendAvailable() ? new QPushButton(QStringLiteral("Eject")) : nullptr;
+        QPushButton *selectDirectory = new QPushButton(QStringLiteral("Directory..."));
+        QPushButton *selectArchive = new QPushButton(QStringLiteral("Archive..."));
+        QPushButton *eject = new QPushButton(QStringLiteral("Eject"));
 
         QGridLayout *fields = new QGridLayout;
         fields->setColumnStretch(1, 1);

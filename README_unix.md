@@ -451,6 +451,7 @@ export WINUAE_SMOKE_LOG=/tmp/winuae_unix_smoke.log
 - Non-gamepad SDL joysticks expose their native axes, hats, and buttons; hats also map to joystick directions by default.
 - Press `F12` to open the integrated Qt settings UI during emulation.
 - The screenshot file input event and integrated runtime Qt Output-page button save under the configured Screenshots directory. Unix uses PNG when libpng is found at configure time and falls back to BMP otherwise. On macOS, libpng must also pass the configured deployment-target check; a newer Homebrew libpng is skipped so release builds stay compatible with the selected minimum macOS. SDL3 builds can also copy the screenshot event output to the host clipboard as BMP data. The standalone Qt launcher keeps runtime-only buttons disabled. Palette options, autoclip, and continuous screenshots are still pending Unix parity work.
+- CHD hardfile and CD image support is built by default. CHD FLAC codecs require libFLAC that is compatible with the configured macOS deployment target; otherwise CHD remains enabled without FLAC-compressed CD codecs.
 - Hold `End` and press `F1`-`F4` to change DF0:-DF3:, `F5` to change the CD image, and `F6` to restore a state. Hold `Shift` with those shortcuts to eject the matching floppy/CD image or save state, matching the Windows key map.
 - On MacBook or compact Apple keyboards, `End` is usually `Fn`/Globe + `Right Arrow`. Depending on macOS keyboard settings, function keys may also need `Fn`/Globe, so the MacBook form is `Fn`/Globe + `Right Arrow`, then `F1`-`F6` or `Shift` + `F1`-`F6`. Enabling "Use F1, F2, etc. keys as standard function keys" in macOS makes these closer to the Windows chords.
 - The SDL status strip at the bottom of the emulation window mirrors the Windows basics: left-click DF0:-DF3: or CD to choose media, right-click them to eject, left-click the power area for settings, right-click it for soft reset, and left-click the paused FPS area to resume.
@@ -463,6 +464,8 @@ export WINUAE_SMOKE_LOG=/tmp/winuae_unix_smoke.log
 -DWINUAE_UNIX_WITH_SLIRP=ON
 -DWINUAE_UNIX_WITH_SANA2=ON
 -DWINUAE_UNIX_WITH_NCR_SCSI=ON
+-DWINUAE_UNIX_WITH_CHD=ON
+-DWINUAE_UNIX_WITH_CHD_FLAC=ON
 -DWINUAE_UNIX_WITH_PROWIZARD=ON
 -DWINUAE_UNIX_WITH_QT_UI=ON
 -DWINUAE_UNIX_WITH_INTEGRATED_QT_UI=ON
@@ -472,6 +475,7 @@ export WINUAE_SMOKE_LOG=/tmp/winuae_unix_smoke.log
 `WINUAE_UNIX_WITH_SLIRP` is enabled by default and builds the bundled SLIRP backend plus A2065 emulation.
 `WINUAE_UNIX_WITH_SANA2` is enabled by default and builds `uaenet.device` on top of the Unix Ethernet backend when SLIRP is also enabled.
 `WINUAE_UNIX_WITH_NCR_SCSI` is enabled by default and builds the NCR/NCR9x SCSI controller emulation used by boards such as A4091. ROM-backed controller boards still need a valid board ROM path in the config.
+`WINUAE_UNIX_WITH_CHD` is enabled by default and builds CHD hardfile/CD image support. `WINUAE_UNIX_WITH_CHD_FLAC` is also enabled by default, but macOS builds skip FLAC codecs if the available libFLAC was built for a newer deployment target.
 `WINUAE_UNIX_WITH_PROWIZARD` is enabled by default and builds the same Pro Wizard source set used by the Windows project.
 `WINUAE_UNIX_WITH_QT_UI` is enabled by default, but the `winuae_unix_qt` target is skipped when Qt Widgets is not installed.
 `WINUAE_UNIX_WITH_INTEGRATED_QT_UI` is enabled by default. When Qt Widgets is not installed, the build continues without the integrated UI.
