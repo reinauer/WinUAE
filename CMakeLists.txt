@@ -47,6 +47,7 @@ option(WINUAE_UNIX_WITH_INTEGRATED_QT_UI "Allow winuae_unix to host the Unix Qt 
 option(WINUAE_UNIX_WITH_LIBPNG "Build optional PNG screenshot support when libpng is available" ON)
 option(WINUAE_UNIX_WITH_ARCHIVES "Build bundled ZIP/LHA/LZX/DMS/WRP archive support" ON)
 option(WINUAE_UNIX_WITH_UAESERIAL "Build uaeserial.device on top of the Unix serial backend" ON)
+option(WINUAE_UNIX_WITH_SAMPLER "Build SDL3 recording support for the parallel-port sampler" ON)
 
 set(WINUAE_UNIX_VERSION_MAJOR 0)
 set(WINUAE_UNIX_VERSION_MINOR 0)
@@ -114,6 +115,7 @@ set(WINUAE_UNIX_EXTRA_LIBRARY_DIRS)
 set(WINUAE_UNIX_ENABLE_SANA2 OFF)
 set(WINUAE_UNIX_ENABLE_ARCHIVES OFF)
 set(WINUAE_UNIX_ENABLE_UAESERIAL OFF)
+set(WINUAE_UNIX_ENABLE_SAMPLER OFF)
 
 set(WINUAE_UNIX_USE_LIBPNG OFF)
 if(WINUAE_UNIX_WITH_LIBPNG AND PNG_FOUND)
@@ -462,6 +464,12 @@ else()
     list(APPEND WINUAE_UNIX_EXTRA_SOURCES od-unix/video_null.cpp)
 endif()
 
+if(WINUAE_UNIX_WITH_SAMPLER AND (WINUAE_UNIX_SDL3_TARGET OR SDL3_FOUND))
+    set(WINUAE_UNIX_ENABLE_SAMPLER ON)
+    target_compile_definitions(winuae_core PRIVATE WINUAE_UNIX_WITH_SAMPLER=1)
+    list(APPEND WINUAE_UNIX_EXTRA_SOURCES od-unix/sampler_sdl.cpp)
+endif()
+
 set(WINUAE_CORE_SOURCES
     a2091.cpp
     akiko.cpp
@@ -710,6 +718,7 @@ if(WINUAE_UNIX_WITH_QT_UI OR WINUAE_UNIX_WITH_INTEGRATED_QT_UI)
             UAE_UNIX_WITH_SANA2=$<BOOL:${WINUAE_UNIX_ENABLE_SANA2}>
             UAE_UNIX_WITH_ARCHIVES=$<BOOL:${WINUAE_UNIX_ENABLE_ARCHIVES}>
             UAE_UNIX_WITH_UAESERIAL=$<BOOL:${WINUAE_UNIX_ENABLE_UAESERIAL}>
+            UAE_UNIX_WITH_SAMPLER=$<BOOL:${WINUAE_UNIX_ENABLE_SAMPLER}>
             UAE_UNIX_WITH_SERIAL_DIRECT=1
         )
         target_link_libraries(winuae_unix_qt_frontend PUBLIC ${WINUAE_UNIX_QT_WIDGETS_TARGET})

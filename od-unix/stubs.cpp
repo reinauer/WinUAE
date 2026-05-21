@@ -47,11 +47,17 @@ void debugger_change(int) {}
 void pausevideograb(int) {}
 bool getpausevideograb(void) { return false; }
 uae_s64 getsetpositionvideograb(uae_s64) { return -1; }
+#ifndef WINUAE_UNIX_WITH_SAMPLER
 int sampler_init(void) { return 0; }
 void sampler_free(void) {}
 void sampler_vsync(void) {}
 uae_u8 sampler_getsample(int) { return 0; }
 float sampler_evtime;
+int unix_sampler_device_count(void) { return 0; }
+const TCHAR *unix_sampler_device_name(int) { return _T(""); }
+const TCHAR *unix_sampler_device_config_name(int) { return _T(""); }
+int unix_sampler_device_index_from_config_name(const TCHAR *) { return -1; }
+#endif
 int audio_is_pull(void) { return 0; }
 bool audio_is_pull_event(void) { return false; }
 int audio_pull_buffer(void) { return 0; }
