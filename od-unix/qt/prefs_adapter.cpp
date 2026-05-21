@@ -44,13 +44,14 @@ static bool settingToBool(const WinUaeQtConfig::Settings &settings, const QStrin
     return false;
 }
 
-static void parseSettingLine(struct uae_prefs *prefs, const QString &key, const QString &value)
+static void parseSettingOption(struct uae_prefs *prefs, const QString &key, const QString &value)
 {
     if (value.isEmpty() || key.startsWith(QStringLiteral("unix.ui."))) {
         return;
     }
-    QByteArray line = QStringLiteral("%1=%2").arg(key, value).toLocal8Bit();
-    cfgfile_parse_line(prefs, line.data(), 0);
+    QByteArray option = key.toLocal8Bit();
+    QByteArray optionValue = value.toLocal8Bit();
+    cfgfile_parse_option(prefs, option.constData(), optionValue.data(), 0);
 }
 
 static void applyWindowSize(const WinUaeQtConfig::Settings &settings, struct uae_prefs *prefs)
@@ -118,7 +119,7 @@ bool applyWinUaeQtConfigToPrefs(const WinUaeQtConfig &config, struct uae_prefs *
 
     const WinUaeQtConfig::Settings &settings = config.settings();
     for (const WinUaeQtConfig::Setting &setting : config.orderedSettings()) {
-        parseSettingLine(prefs, setting.key, setting.value);
+        parseSettingOption(prefs, setting.key, setting.value);
     }
     applyDirectSettings(settings, prefs);
     return true;
