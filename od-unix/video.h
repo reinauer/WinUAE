@@ -10,6 +10,7 @@ struct unix_video_frame
     int height;
     int rowbytes;
     int pixbytes;
+    int filter_index;
 };
 
 struct unix_video_display_mode

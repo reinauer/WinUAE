@@ -378,6 +378,7 @@ void show_screen(int monid, int)
     frame.height = vb->outheight;
     frame.rowbytes = vb->rowbytes;
     frame.pixbytes = vb->pixbytes;
+    frame.filter_index = adisplays[monid].gf_index;
     unix_log_video_frame(vb);
     unix_video_present(&frame);
 }
