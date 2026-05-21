@@ -691,9 +691,9 @@ static void unix_picasso_store_pen(uae_u8 *dst, uae_u32 pen, int bytes_per_pixel
         do_put_mem_word((uae_u16 *)dst, (uae_u16)pen);
         break;
     case 3:
-        dst[0] = (uae_u8)(pen >> 16);
+        dst[0] = (uae_u8)pen;
         dst[1] = (uae_u8)(pen >> 8);
-        dst[2] = (uae_u8)pen;
+        dst[2] = (uae_u8)(pen >> 16);
         break;
     case 4:
         do_put_mem_long((uae_u32 *)dst, pen);
@@ -807,7 +807,7 @@ static uae_u32 unix_picasso_load_pen(const uae_u8 *src, int bytes_per_pixel)
     case 2:
         return do_get_mem_word((uae_u16 *)src);
     case 3:
-        return ((uae_u32)src[0] << 16) | ((uae_u32)src[1] << 8) | src[2];
+        return src[0] | ((uae_u32)src[1] << 8) | ((uae_u32)src[2] << 16);
     case 4:
         return do_get_mem_long((uae_u32 *)src);
     }
