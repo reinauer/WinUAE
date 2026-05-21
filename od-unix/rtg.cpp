@@ -8,6 +8,7 @@
 #include "picasso96.h"
 #include "savestate.h"
 #include "gfxboard.h"
+#include "video.h"
 #include "xwin.h"
 
 static uae_u32 REGPARAM3 gfxmem_lget(uaecptr) REGPARAM;
@@ -440,9 +441,16 @@ enum {
 #define UNIX_PSSO_BoardInfo_GetCompatibleDACFormats (UNIX_PSSO_ReInitMemory + 4)
 #define UNIX_PSSO_BoardInfo_CoerceMode (UNIX_PSSO_BoardInfo_GetCompatibleDACFormats + 4)
 
-static const int unix_rtg_mode_sizes[][2] = {
+struct unix_rtg_mode_size {
+    int width;
+    int height;
+};
+
+static const unix_rtg_mode_size unix_rtg_standard_mode_sizes[] = {
+    { 320, 200 },
     { 320, 240 },
     { 320, 256 },
+    { 640, 400 },
     { 640, 480 },
     { 640, 512 },
     { 800, 600 },
@@ -451,6 +459,10 @@ static const int unix_rtg_mode_sizes[][2] = {
     { 1280, 1024 },
     { 0, 0 }
 };
+static const int unix_rtg_max_mode_sizes = 128;
+static unix_rtg_mode_size unix_rtg_mode_sizes[unix_rtg_max_mode_sizes];
+static int unix_rtg_mode_count;
+static bool unix_rtg_mode_sizes_ready;
 
 static uaecptr unix_picasso_amem;
 static uaecptr unix_picasso_amemend;
@@ -498,6 +510,60 @@ static void unix_rtg_trace_blit(uae_u32 bit, const TCHAR *name)
 static uae_u32 unix_rtg_modeflags(void)
 {
     return currprefs.picasso96_modeflags ? currprefs.picasso96_modeflags : UNIX_RTG_DEFAULT_MODEFLAGS;
+}
+
+static void unix_rtg_add_mode_size(int width, int height)
+{
+    if (width <= 0 || height <= 0) {
+        return;
+    }
+
+    int insert = 0;
+    while (insert < unix_rtg_mode_count) {
+        unix_rtg_mode_size *mode = &unix_rtg_mode_sizes[insert];
+        if (mode->width == width && mode->height == height) {
+            return;
+        }
+        if (mode->width > width || (mode->width == width && mode->height > height)) {
+            break;
+        }
+        insert++;
+    }
+    if (unix_rtg_mode_count >= unix_rtg_max_mode_sizes) {
+        return;
+    }
+    for (int i = unix_rtg_mode_count; i > insert; i--) {
+        unix_rtg_mode_sizes[i] = unix_rtg_mode_sizes[i - 1];
+    }
+    unix_rtg_mode_sizes[insert].width = width;
+    unix_rtg_mode_sizes[insert].height = height;
+    unix_rtg_mode_count++;
+}
+
+static void unix_rtg_rebuild_mode_sizes(void)
+{
+    unix_rtg_mode_count = 0;
+    unix_rtg_mode_sizes_ready = true;
+
+    for (int i = 0; unix_rtg_standard_mode_sizes[i].width; i++) {
+        unix_rtg_add_mode_size(unix_rtg_standard_mode_sizes[i].width, unix_rtg_standard_mode_sizes[i].height);
+    }
+
+    struct unix_video_display_mode modes[unix_rtg_max_mode_sizes];
+    int count = unix_video_get_display_modes(currprefs.gfx_apmode[APMODE_RTG].gfx_display,
+        modes, unix_rtg_max_mode_sizes);
+    for (int i = 0; i < count; i++) {
+        unix_rtg_add_mode_size(modes[i].width, modes[i].height);
+    }
+
+    write_log(_T("Unix RTG host mode list: %d modes\n"), unix_rtg_mode_count);
+}
+
+static void unix_rtg_ensure_mode_sizes(void)
+{
+    if (!unix_rtg_mode_sizes_ready) {
+        unix_rtg_rebuild_mode_sizes();
+    }
 }
 
 static int unix_picasso_bytes_per_pixel(uae_u32 rgbfmt)
@@ -842,9 +908,10 @@ static void unix_picasso_max_resolution(int mode, int *max_width, int *max_heigh
         return;
     }
 
-    for (int i = 0; unix_rtg_mode_sizes[i][0]; i++) {
-        int width = unix_rtg_mode_sizes[i][0];
-        int height = unix_rtg_mode_sizes[i][1];
+    unix_rtg_ensure_mode_sizes();
+    for (int i = 0; i < unix_rtg_mode_count; i++) {
+        int width = unix_rtg_mode_sizes[i].width;
+        int height = unix_rtg_mode_sizes[i].height;
         for (int depth_index = 0; mode_depths[mode][depth_index]; depth_index++) {
             int depth = mode_depths[mode][depth_index];
             if (!unix_picasso_depth_supported(depth) ||
@@ -864,9 +931,10 @@ static void unix_picasso_max_resolution(int mode, int *max_width, int *max_heigh
 static int unix_picasso_resolution_count(void)
 {
     int count = 0;
-    for (int i = 0; unix_rtg_mode_sizes[i][0]; i++) {
-        int width = unix_rtg_mode_sizes[i][0];
-        int height = unix_rtg_mode_sizes[i][1];
+    unix_rtg_ensure_mode_sizes();
+    for (int i = 0; i < unix_rtg_mode_count; i++) {
+        int width = unix_rtg_mode_sizes[i].width;
+        int height = unix_rtg_mode_sizes[i].height;
         if ((uae_u32)width * (uae_u32)height <= gfxmem_bank.allocated_size - 256) {
             count++;
         }
@@ -2134,9 +2202,10 @@ static uae_u32 REGPARAM2 unix_picasso_init_card(TrapContext *ctx)
     unix_picasso_init_board(ctx, board_info);
     unix_init_uaegfx_funcs(ctx, unix_uaegfx_rom, board_info);
 
-    for (int i = 0; unix_rtg_mode_sizes[i][0]; i++) {
-        int width = unix_rtg_mode_sizes[i][0];
-        int height = unix_rtg_mode_sizes[i][1];
+    unix_rtg_ensure_mode_sizes();
+    for (int i = 0; i < unix_rtg_mode_count; i++) {
+        int width = unix_rtg_mode_sizes[i].width;
+        int height = unix_rtg_mode_sizes[i].height;
         if ((uae_u32)width * (uae_u32)height > gfxmem_bank.allocated_size - 256) {
             continue;
         }
@@ -2246,6 +2315,7 @@ static void unix_picasso_alloc2(TrapContext *ctx)
     if (!gfxmem_bank.allocated_size) {
         return;
     }
+    unix_rtg_rebuild_mode_sizes();
     if (!currprefs.picasso96_noautomodes) {
         size = unix_picasso_resolution_memory_size();
     }

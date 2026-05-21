@@ -12,6 +12,13 @@ struct unix_video_frame
     int pixbytes;
 };
 
+struct unix_video_display_mode
+{
+    int width;
+    int height;
+    int refresh_rate;
+};
+
 enum unix_video_window_mode
 {
     UNIX_VIDEO_WINDOWED = 0,
@@ -28,6 +35,7 @@ void unix_video_set_title(const TCHAR *title);
 bool unix_video_set_window_mode(enum unix_video_window_mode mode, int display_index, int width, int height, int refresh_rate);
 enum unix_video_window_mode unix_video_get_window_mode(void);
 float unix_video_get_display_refresh_rate(int display_index);
+int unix_video_get_display_modes(int display_index, struct unix_video_display_mode *modes, int max_modes);
 void unix_video_get_desktop(int *dw, int *dh, int *x, int *y, int *w, int *h);
 void unix_video_set_mouse_grab(bool grab);
 bool unix_video_get_mouse_grab(void);
