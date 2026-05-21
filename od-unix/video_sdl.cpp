@@ -122,6 +122,66 @@ static float refresh_rate_from_mode(const SDL_DisplayMode *mode)
     return mode->refresh_rate;
 }
 
+static int rounded_refresh_rate_from_mode(const SDL_DisplayMode *mode)
+{
+    float refresh = refresh_rate_from_mode(mode);
+    return refresh > 0.0f ? (int)(refresh + 0.5f) : 0;
+}
+
+static void add_display_mode(struct unix_video_display_mode *modes, int max_modes, int *count,
+    int width, int height, int refresh_rate)
+{
+    if (!modes || !count || width <= 0 || height <= 0) {
+        return;
+    }
+
+    for (int i = 0; i < *count; i++) {
+        if (modes[i].width == width && modes[i].height == height) {
+            if (!modes[i].refresh_rate && refresh_rate) {
+                modes[i].refresh_rate = refresh_rate;
+            }
+            return;
+        }
+    }
+    if (*count >= max_modes) {
+        return;
+    }
+
+    modes[*count].width = width;
+    modes[*count].height = height;
+    modes[*count].refresh_rate = refresh_rate;
+    (*count)++;
+}
+
+static void add_sdl_display_modes(SDL_DisplayID display, struct unix_video_display_mode *modes, int max_modes, int *count)
+{
+    if (!display) {
+        return;
+    }
+
+    int mode_count = 0;
+    SDL_DisplayMode **fullscreen_modes = SDL_GetFullscreenDisplayModes(display, &mode_count);
+    if (fullscreen_modes) {
+        for (int i = 0; i < mode_count; i++) {
+            const SDL_DisplayMode *mode = fullscreen_modes[i];
+            if (mode) {
+                add_display_mode(modes, max_modes, count, mode->w, mode->h, rounded_refresh_rate_from_mode(mode));
+            }
+        }
+        SDL_free(fullscreen_modes);
+    }
+
+    const SDL_DisplayMode *desktop = SDL_GetDesktopDisplayMode(display);
+    if (desktop) {
+        add_display_mode(modes, max_modes, count, desktop->w, desktop->h, rounded_refresh_rate_from_mode(desktop));
+    }
+
+    const SDL_DisplayMode *current = SDL_GetCurrentDisplayMode(display);
+    if (current) {
+        add_display_mode(modes, max_modes, count, current->w, current->h, rounded_refresh_rate_from_mode(current));
+    }
+}
+
 static bool copy_sdl_display_name(int index, bool friendlyname, TCHAR *dst, size_t dstsize)
 {
     int count = 0;
@@ -754,6 +814,33 @@ float unix_video_get_display_refresh_rate(int display_index)
         refresh = refresh_rate_from_mode(SDL_GetDesktopDisplayMode(display));
     }
     return refresh;
+}
+
+int unix_video_get_display_modes(int display_index, struct unix_video_display_mode *modes, int max_modes)
+{
+    if (!modes || max_modes <= 0 || !unix_video_setup()) {
+        return 0;
+    }
+
+    int count = 0;
+    int display_count = 0;
+    SDL_DisplayID *displays = get_sdl_displays(&display_count);
+    if (displays && display_count > 0) {
+        if (display_index > 0 && display_index <= display_count) {
+            add_sdl_display_modes(displays[display_index - 1], modes, max_modes, &count);
+        } else {
+            for (int i = 0; i < display_count; i++) {
+                add_sdl_display_modes(displays[i], modes, max_modes, &count);
+            }
+        }
+    }
+    if (displays) {
+        SDL_free(displays);
+    }
+    if (!count) {
+        add_sdl_display_modes(SDL_GetPrimaryDisplay(), modes, max_modes, &count);
+    }
+    return count;
 }
 
 void unix_video_set_mouse_grab(bool grab)
