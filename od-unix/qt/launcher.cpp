@@ -3166,7 +3166,16 @@ static QStringList expansionBoardCategoryItems()
 {
     QStringList items;
     for (const char *category : expansionBoardCategoryNames) {
-        items.append(QString::fromLatin1(category));
+        bool hasSupportedBoard = false;
+        for (const WinUaeQtExpansionBoardChoice &choice : expansionBoardChoices) {
+            if (!strcmp(choice.category, category) && unixExpansionBoardBackendAvailable(QString::fromLatin1(choice.key))) {
+                hasSupportedBoard = true;
+                break;
+            }
+        }
+        if (hasSupportedBoard) {
+            items.append(QString::fromLatin1(category));
+        }
     }
     return items;
 }
@@ -3642,6 +3651,11 @@ static QString cdImageFilter()
 static QString hardfileImageFilter()
 {
     return QStringLiteral("Hardfiles (*.hdf *.vhd);;All files (*)");
+}
+
+static QString directoryArchiveFilter()
+{
+    return QStringLiteral("Directory archives (*.zip *.lha *.lzx);;All files (*)");
 }
 
 static bool genlockModeUsesImageFile(const QString &mode)
@@ -7126,6 +7140,8 @@ private:
         root->addLayout(buttons);
         if (!unixNativeMediaBackendAvailable()) {
             disableUnavailable(addHardDriveMountButton, QStringLiteral("Native Unix hard drive enumeration is not implemented yet; use image-backed hardfiles or directory mounts."));
+            disableUnavailable(addCdMountButton, QStringLiteral("Native Unix CD/DVD drive enumeration is not implemented yet; use the image-backed optical media selector below."));
+            disableUnavailable(addTapeMountButton, QStringLiteral("Native Unix tape drive enumeration is not implemented yet."));
         }
 
         hostDriveAutomount = new QCheckBox(QStringLiteral("Add PC drives at startup"));
@@ -7343,9 +7359,8 @@ private:
         QGridLayout *board = new QGridLayout;
         expansionRomCategory = combo(expansionBoardCategoryItems());
         expansionRomBoard = combo({});
-        expansionRomBoard->setEditable(true);
+        expansionRomBoard->setEditable(false);
         expansionRomBoard->setInsertPolicy(QComboBox::NoInsert);
-        expansionRomBoard->lineEdit()->setClearButtonEnabled(true);
         expansionRomSubtype = combo({ QStringLiteral("Default") });
         expansionRomSubtype->setEnabled(false);
         expansionRomSlot = combo({ QStringLiteral("1"), QStringLiteral("2"), QStringLiteral("3"), QStringLiteral("4") });
@@ -7541,7 +7556,8 @@ private:
         expansionRomBoard->clear();
         expansionRomBoard->addItem(QStringLiteral("None"), QString());
         for (const WinUaeQtExpansionBoardChoice &choice : expansionBoardChoices) {
-            if (category == QString::fromLatin1(choice.category)) {
+            if (category == QString::fromLatin1(choice.category)
+                && unixExpansionBoardBackendAvailable(QString::fromLatin1(choice.key))) {
                 expansionRomBoard->addItem(QString::fromLatin1(choice.display), QString::fromLatin1(choice.key));
             }
         }
@@ -7552,10 +7568,6 @@ private:
                 selectedIndex = i;
                 break;
             }
-        }
-        if (selectedIndex == 0 && !oldKey.isEmpty() && !expansionBoardChoiceByKey(oldKey)) {
-            expansionRomBoard->addItem(oldKey, oldKey);
-            selectedIndex = expansionRomBoard->count() - 1;
         }
         expansionRomBoard->setCurrentIndex(selectedIndex);
     }
@@ -7741,6 +7753,9 @@ private:
         const QString boardKey = expansionBoardBaseKey(configName, &slot);
         const WinUaeQtExpansionBoardChoice *choice = expansionBoardChoiceByKey(boardKey);
         if (!choice || !expansionRomCategory || !expansionRomBoard || !expansionRomSlot) {
+            return false;
+        }
+        if (!unixExpansionBoardBackendAvailable(boardKey)) {
             return false;
         }
 
@@ -12933,6 +12948,14 @@ private:
 
     void addCdDriveMountDialog()
     {
+        if (!unixNativeMediaBackendAvailable()) {
+            QMessageBox::information(
+                this,
+                QStringLiteral("Add CD Drive"),
+                QStringLiteral("Native Unix CD/DVD drive enumeration is not implemented yet. Use the image-backed optical media selector instead."));
+            return;
+        }
+
         WinUaeQtMountEntry entry;
         entry.kind = QStringLiteral("cd");
         entry.emuUnit = nextMountEmuUnit(QStringLiteral("cd"));
@@ -12947,6 +12970,14 @@ private:
 
     void addTapeDriveMountDialog()
     {
+        if (!unixNativeMediaBackendAvailable()) {
+            QMessageBox::information(
+                this,
+                QStringLiteral("Add Tape Drive"),
+                QStringLiteral("Native Unix tape drive enumeration is not implemented yet."));
+            return;
+        }
+
         WinUaeQtMountEntry entry;
         entry.kind = QStringLiteral("tape");
         entry.emuUnit = nextMountEmuUnit(QStringLiteral("tape"));
@@ -13089,10 +13120,10 @@ private:
             addHardDriveMountButton->setEnabled(canAdd && unixNativeMediaBackendAvailable());
         }
         if (addCdMountButton) {
-            addCdMountButton->setEnabled(canAdd);
+            addCdMountButton->setEnabled(canAdd && unixNativeMediaBackendAvailable());
         }
         if (addTapeMountButton) {
-            addTapeMountButton->setEnabled(canAdd);
+            addTapeMountButton->setEnabled(canAdd && unixNativeMediaBackendAvailable());
         }
         if (propertiesMountButton) {
             propertiesMountButton->setEnabled(!mountedDrives->selectedItems().isEmpty());
@@ -13161,27 +13192,44 @@ private:
         bootPri->setValue(entry->bootPri);
         QCheckBox *readOnly = new QCheckBox(QStringLiteral("Read-only"));
         readOnly->setChecked(entry->readOnly);
-        QPushButton *browse = smallButton(QStringLiteral("..."));
+        QPushButton *selectDirectory = new QPushButton(unixArchiveBackendAvailable() ? QStringLiteral("Directory...") : QStringLiteral("..."));
+        QPushButton *selectArchive = unixArchiveBackendAvailable() ? new QPushButton(QStringLiteral("Archive...")) : nullptr;
+        QPushButton *eject = unixArchiveBackendAvailable() ? new QPushButton(QStringLiteral("Eject")) : nullptr;
 
         QGridLayout *fields = new QGridLayout;
         fields->setColumnStretch(1, 1);
         fields->addWidget(label(QStringLiteral("Path:")), 0, 0);
-        fields->addWidget(path, 0, 1);
-        fields->addWidget(browse, 0, 2);
-        fields->addWidget(label(QStringLiteral("Device:")), 1, 0);
-        fields->addWidget(device, 1, 1, 1, 2);
-        fields->addWidget(label(QStringLiteral("Volume:")), 2, 0);
-        fields->addWidget(volume, 2, 1, 1, 2);
-        fields->addWidget(label(QStringLiteral("Boot priority:")), 3, 0);
-        fields->addWidget(bootPri, 3, 1);
-        fields->addWidget(readOnly, 4, 1, 1, 2);
+        fields->addWidget(path, 0, 1, 1, 3);
+        fields->addWidget(selectDirectory, 1, 1);
+        if (selectArchive) {
+            fields->addWidget(selectArchive, 1, 2);
+        }
+        if (eject) {
+            fields->addWidget(eject, 1, 3);
+        }
+        fields->addWidget(label(QStringLiteral("Device:")), 2, 0);
+        fields->addWidget(device, 2, 1, 1, 3);
+        fields->addWidget(label(QStringLiteral("Volume:")), 3, 0);
+        fields->addWidget(volume, 3, 1, 1, 3);
+        fields->addWidget(label(QStringLiteral("Boot priority:")), 4, 0);
+        fields->addWidget(bootPri, 4, 1);
+        fields->addWidget(readOnly, 5, 1, 1, 3);
 
         QDialogButtonBox *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
         QVBoxLayout *root = new QVBoxLayout(&dialog);
         root->addLayout(fields);
         root->addWidget(buttons);
 
-        connect(browse, &QPushButton::clicked, this, [this, path, volume]() {
+        auto updateReadOnlyForPath = [this, path, readOnly]() {
+            const QString text = path->text().trimmed();
+            const bool archiveFile = !text.isEmpty() && QFileInfo(expandedPathText(text)).isFile();
+            if (archiveFile) {
+                readOnly->setChecked(true);
+            }
+            readOnly->setEnabled(!archiveFile);
+        };
+
+        connect(selectDirectory, &QPushButton::clicked, this, [this, path, volume, readOnly, updateReadOnlyForPath]() {
             const QString initialPath = path->text().isEmpty() ? QDir::homePath() : expandedPathText(path->text());
             const QString selected = QFileDialog::getExistingDirectory(this, QStringLiteral("Select directory"), initialPath);
             if (!selected.isEmpty()) {
@@ -13189,8 +13237,32 @@ private:
                 if (volume->text().isEmpty()) {
                     volume->setText(winUaeQtDefaultVolumeName(selected));
                 }
+                readOnly->setChecked(false);
+                updateReadOnlyForPath();
             }
         });
+        if (selectArchive) {
+            connect(selectArchive, &QPushButton::clicked, this, [this, path, volume, updateReadOnlyForPath]() {
+                const QString initialPath = path->text().isEmpty() ? QDir::homePath() : expandedPathText(path->text());
+                const QString selected = QFileDialog::getOpenFileName(this, QStringLiteral("Select directory archive"), initialPath, directoryArchiveFilter());
+                if (!selected.isEmpty()) {
+                    path->setText(selected);
+                    if (volume->text().isEmpty()) {
+                        volume->setText(winUaeQtDefaultVolumeName(selected));
+                    }
+                    updateReadOnlyForPath();
+                }
+            });
+        }
+        if (eject) {
+            connect(eject, &QPushButton::clicked, this, [path, volume, readOnly]() {
+                path->clear();
+                volume->clear();
+                readOnly->setEnabled(true);
+            });
+        }
+        connect(path, &QLineEdit::editingFinished, this, updateReadOnlyForPath);
+        updateReadOnlyForPath();
         connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
         connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
 
@@ -13203,7 +13275,7 @@ private:
         entry->volume = winUaeQtSanitizedAmigaName(volume->text(), winUaeQtDefaultVolumeName(path->text()), false);
         entry->path = path->text().trimmed();
         entry->bootPri = bootPri->value();
-        entry->readOnly = readOnly->isChecked();
+        entry->readOnly = readOnly->isChecked() || QFileInfo(expandedPathText(entry->path)).isFile();
         return true;
     }
 
