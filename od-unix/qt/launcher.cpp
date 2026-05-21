@@ -86,7 +86,7 @@
 #endif
 
 #ifndef UAE_UNIX_WITH_SERIAL_DIRECT
-#define UAE_UNIX_WITH_SERIAL_DIRECT 0
+#define UAE_UNIX_WITH_SERIAL_DIRECT 1
 #endif
 
 #ifndef UAE_UNIX_WITH_SHADER_PIPELINE
@@ -3598,29 +3598,25 @@ static QString configBoolText(bool value)
 static QString amigaDiskImageFilter()
 {
     return unixArchiveBackendAvailable()
-        ? QStringLiteral("Amiga disk images (*.adf *.adz *.dms *.ipf *.fdi *.scp *.hdf *.zip *.7z *.lha *.lzx);;All files (*)")
+        ? QStringLiteral("Amiga disk images (*.adf *.adz *.dms *.wrp *.ipf *.fdi *.scp *.hdf *.zip *.lha *.lzx);;All files (*)")
         : QStringLiteral("Amiga disk images (*.adf *.adz *.ipf *.fdi *.scp *.hdf);;All files (*)");
 }
 
 static QString floppyDiskImageFilter()
 {
     return unixArchiveBackendAvailable()
-        ? QStringLiteral("Amiga disk images (*.adf *.adz *.ipf *.dms);;All files (*)")
+        ? QStringLiteral("Amiga disk images (*.adf *.adz *.dms *.wrp *.ipf);;All files (*)")
         : QStringLiteral("Amiga disk images (*.adf *.adz *.ipf);;All files (*)");
 }
 
 static QString cdImageFilter()
 {
-    return unixArchiveBackendAvailable()
-        ? QStringLiteral("CD images (*.cue *.iso *.ccd *.chd *.mds *.nrg);;All files (*)")
-        : QStringLiteral("CD images (*.cue *.iso *.ccd *.mds *.nrg);;All files (*)");
+    return QStringLiteral("CD images (*.cue *.iso *.ccd *.mds *.nrg);;All files (*)");
 }
 
 static QString hardfileImageFilter()
 {
-    return unixArchiveBackendAvailable()
-        ? QStringLiteral("Hardfiles (*.hdf *.vhd *.chd);;All files (*)")
-        : QStringLiteral("Hardfiles (*.hdf *.vhd);;All files (*)");
+    return QStringLiteral("Hardfiles (*.hdf *.vhd);;All files (*)");
 }
 
 static bool genlockModeUsesImageFile(const QString &mode)
@@ -9597,9 +9593,7 @@ private:
         uaeSerial = new QCheckBox(QStringLiteral("uaeserial.device"));
         serialStatus = new QCheckBox(QStringLiteral("Serial status (RTS/CTS/DTR/DTE/CD)"));
         serialRingIndicator = new QCheckBox(QStringLiteral("Serial status: Ring Indicator"));
-        if (!unixSerialDirectBackendAvailable()) {
-            disableUnavailable(serialDirect, QStringLiteral("Direct serial mode is not implemented by the Unix serial backend yet; normal device and TCP serial are available."));
-        }
+        serialDirect->setToolTip(QStringLiteral("Unix serial uses direct host device/TCP I/O; this keeps the Windows-compatible config flag enabled for that path."));
         if (!unixUaeSerialBackendAvailable()) {
             disableUnavailable(uaeSerial, QStringLiteral("uaeserial.device is not enabled in this Unix build yet."));
         }

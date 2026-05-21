@@ -45,6 +45,7 @@ option(WINUAE_UNIX_WITH_PROWIZARD "Build Pro-Wizard module ripper support" ON)
 option(WINUAE_UNIX_WITH_QT_UI "Build the optional Unix Qt launcher/config UI" ON)
 option(WINUAE_UNIX_WITH_INTEGRATED_QT_UI "Allow winuae_unix to host the Unix Qt frontend" ON)
 option(WINUAE_UNIX_WITH_LIBPNG "Build optional PNG screenshot support when libpng is available" ON)
+option(WINUAE_UNIX_WITH_ARCHIVES "Build bundled ZIP/LHA/LZX/DMS/WRP archive support" ON)
 
 set(WINUAE_UNIX_VERSION_MAJOR 0)
 set(WINUAE_UNIX_VERSION_MINOR 0)
@@ -110,6 +111,7 @@ set(WINUAE_UNIX_EXTRA_SOURCES)
 set(WINUAE_UNIX_EXTRA_LIBRARIES)
 set(WINUAE_UNIX_EXTRA_LIBRARY_DIRS)
 set(WINUAE_UNIX_ENABLE_SANA2 OFF)
+set(WINUAE_UNIX_ENABLE_ARCHIVES OFF)
 
 set(WINUAE_UNIX_USE_LIBPNG OFF)
 if(WINUAE_UNIX_WITH_LIBPNG AND PNG_FOUND)
@@ -149,6 +151,48 @@ if(WINUAE_UNIX_USE_LIBPNG)
     target_compile_definitions(winuae_core PRIVATE WINUAE_UNIX_WITH_LIBPNG=1)
     target_link_libraries(winuae_core PRIVATE PNG::PNG)
     list(APPEND WINUAE_UNIX_EXTRA_LIBRARIES PNG::PNG)
+endif()
+
+if(WINUAE_UNIX_WITH_ARCHIVES)
+    set(WINUAE_UNIX_ENABLE_ARCHIVES ON)
+    target_compile_definitions(winuae_core PRIVATE
+        WINUAE_UNIX_WITH_ARCHIVES=1
+        A_ZIP=1
+        A_LHA=1
+        A_LZX=1
+        A_DMS=1
+        A_WRP=1
+    )
+    list(APPEND WINUAE_UNIX_EXTRA_SOURCES
+        zfile_archive.cpp
+        archivers/zip/ioapi.cpp
+        archivers/zip/unzip.cpp
+        archivers/zip/zip.cpp
+        archivers/lha/crcio.cpp
+        archivers/lha/dhuf.cpp
+        archivers/lha/header.cpp
+        archivers/lha/huf.cpp
+        archivers/lha/larc.cpp
+        archivers/lha/lhamaketbl.cpp
+        archivers/lha/lharc.cpp
+        archivers/lha/shuf.cpp
+        archivers/lha/slide.cpp
+        archivers/lha/uae_lha.cpp
+        archivers/lha/util.cpp
+        archivers/lzx/unlzx.cpp
+        archivers/dms/crc_csum.cpp
+        archivers/dms/getbits.cpp
+        archivers/dms/maketbl.cpp
+        archivers/dms/pfile.cpp
+        archivers/dms/tables.cpp
+        archivers/dms/u_deep.cpp
+        archivers/dms/u_heavy.cpp
+        archivers/dms/u_init.cpp
+        archivers/dms/u_medium.cpp
+        archivers/dms/u_quick.cpp
+        archivers/dms/u_rle.cpp
+        archivers/wrp/warp.cpp
+    )
 endif()
 
 if(WINUAE_UNIX_WITH_SLIRP)
@@ -653,6 +697,8 @@ if(WINUAE_UNIX_WITH_QT_UI OR WINUAE_UNIX_WITH_INTEGRATED_QT_UI)
             WINUAE_UNIX_VERSION_MINOR=${WINUAE_UNIX_VERSION_MINOR}
             WINUAE_UNIX_VERSION_REVISION=${WINUAE_UNIX_VERSION_REVISION}
             UAE_UNIX_WITH_SANA2=$<BOOL:${WINUAE_UNIX_ENABLE_SANA2}>
+            UAE_UNIX_WITH_ARCHIVES=$<BOOL:${WINUAE_UNIX_ENABLE_ARCHIVES}>
+            UAE_UNIX_WITH_SERIAL_DIRECT=1
         )
         target_link_libraries(winuae_unix_qt_frontend PUBLIC ${WINUAE_UNIX_QT_WIDGETS_TARGET})
         if(WINUAE_UNIX_SDL3_TARGET)
