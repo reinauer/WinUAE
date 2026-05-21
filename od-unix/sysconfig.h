@@ -122,6 +122,9 @@
 
 #define UAE_RAND_MAX 2147483647
 #define ZEXPORT
+#ifndef __cdecl
+#define __cdecl
+#endif
 
 #include <stdint.h>
 #include <limits.h>

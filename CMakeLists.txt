@@ -46,6 +46,8 @@ option(WINUAE_UNIX_WITH_QT_UI "Build the optional Unix Qt launcher/config UI" ON
 option(WINUAE_UNIX_WITH_INTEGRATED_QT_UI "Allow winuae_unix to host the Unix Qt frontend" ON)
 option(WINUAE_UNIX_WITH_LIBPNG "Build optional PNG screenshot support when libpng is available" ON)
 option(WINUAE_UNIX_WITH_ARCHIVES "Build bundled ZIP/LHA/LZX/DMS/WRP archive support" ON)
+option(WINUAE_UNIX_WITH_CHD "Build CHD hardfile and CD image support" ON)
+option(WINUAE_UNIX_WITH_CHD_FLAC "Build CHD FLAC codecs when a compatible libFLAC is available" ON)
 option(WINUAE_UNIX_WITH_UAESERIAL "Build uaeserial.device on top of the Unix serial backend" ON)
 option(WINUAE_UNIX_WITH_SAMPLER "Build SDL3 recording support for the parallel-port sampler" ON)
 option(WINUAE_UNIX_WITH_NATIVE_HARDDRIVES "Build Unix raw hard-drive enumeration and read-only open support" ON)
@@ -94,6 +96,7 @@ target_include_directories(winuae_core PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/od-unix/include"
     "${CMAKE_CURRENT_SOURCE_DIR}"
     "${CMAKE_CURRENT_SOURCE_DIR}/include"
+    "${CMAKE_CURRENT_SOURCE_DIR}/archivers"
     "${CMAKE_CURRENT_SOURCE_DIR}/archivers/dms"
     "${CMAKE_CURRENT_SOURCE_DIR}/archivers/lha"
     "${CMAKE_CURRENT_SOURCE_DIR}/archivers/lzx"
@@ -116,7 +119,6 @@ set(WINUAE_UNIX_EXTRA_SOURCES)
 set(WINUAE_UNIX_EXTRA_LIBRARIES)
 set(WINUAE_UNIX_EXTRA_LIBRARY_DIRS)
 set(WINUAE_UNIX_ENABLE_SANA2 OFF)
-set(WINUAE_UNIX_ENABLE_ARCHIVES OFF)
 set(WINUAE_UNIX_ENABLE_UAESERIAL OFF)
 set(WINUAE_UNIX_ENABLE_SAMPLER OFF)
 set(WINUAE_UNIX_ENABLE_NATIVE_HARDDRIVES OFF)
@@ -169,7 +171,6 @@ if(WINUAE_UNIX_USE_LIBPNG)
 endif()
 
 if(WINUAE_UNIX_WITH_ARCHIVES)
-    set(WINUAE_UNIX_ENABLE_ARCHIVES ON)
     target_compile_definitions(winuae_core PRIVATE
         WINUAE_UNIX_WITH_ARCHIVES=1
         A_ZIP=1
@@ -208,6 +209,70 @@ if(WINUAE_UNIX_WITH_ARCHIVES)
         archivers/dms/u_rle.cpp
         archivers/wrp/warp.cpp
     )
+endif()
+
+if(WINUAE_UNIX_WITH_CHD)
+    target_compile_definitions(winuae_core PRIVATE
+        WINUAE_UNIX_WITH_CHD=1
+        WITH_CHD=1
+    )
+    list(APPEND WINUAE_UNIX_EXTRA_SOURCES
+        archivers/chd/astring.cpp
+        archivers/chd/chd.cpp
+        archivers/chd/chdcdrom.cpp
+        archivers/chd/chdcodec.cpp
+        archivers/chd/chdglue.cpp
+        archivers/chd/corealloc.cpp
+        archivers/chd/harddisk.cpp
+        archivers/chd/hashing.cpp
+        archivers/chd/huffman.cpp
+        archivers/chd/md5.cpp
+        archivers/chd/sha1.cpp
+        archivers/7z/LzmaDec.c
+        archivers/7z/LzmaEnc.c
+        archivers/7z/LzFind.c
+        od-unix/chd_unix_time.cpp
+        od-unix/chd_unix_work.cpp
+    )
+
+    set(WINUAE_UNIX_CHD_FLAC_OK OFF)
+    if(WINUAE_UNIX_WITH_CHD_FLAC AND PkgConfig_FOUND)
+        pkg_check_modules(FLAC QUIET flac)
+        if(FLAC_FOUND)
+            set(WINUAE_UNIX_CHD_FLAC_OK ON)
+            if(APPLE)
+                find_library(WINUAE_UNIX_FLAC_LIBRARY NAMES FLAC PATHS ${FLAC_LIBRARY_DIRS} NO_DEFAULT_PATH)
+                if(WINUAE_UNIX_FLAC_LIBRARY)
+                    execute_process(
+                        COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tools/macos-check-deployment-target.sh" "${WINUAE_UNIX_FLAC_LIBRARY}" "${CMAKE_OSX_DEPLOYMENT_TARGET}"
+                        RESULT_VARIABLE WINUAE_UNIX_FLAC_DEPLOYMENT_RESULT
+                        OUTPUT_VARIABLE WINUAE_UNIX_FLAC_DEPLOYMENT_OUTPUT
+                        ERROR_VARIABLE WINUAE_UNIX_FLAC_DEPLOYMENT_ERROR
+                        OUTPUT_STRIP_TRAILING_WHITESPACE
+                        ERROR_STRIP_TRAILING_WHITESPACE
+                    )
+                    if(NOT WINUAE_UNIX_FLAC_DEPLOYMENT_RESULT EQUAL 0)
+                        message(STATUS "libFLAC is newer than CMAKE_OSX_DEPLOYMENT_TARGET=${CMAKE_OSX_DEPLOYMENT_TARGET}; CHD FLAC codecs disabled. ${WINUAE_UNIX_FLAC_DEPLOYMENT_ERROR}")
+                        set(WINUAE_UNIX_CHD_FLAC_OK OFF)
+                    endif()
+                else()
+                    message(STATUS "libFLAC was found by pkg-config but not as a library path; CHD FLAC codecs disabled")
+                    set(WINUAE_UNIX_CHD_FLAC_OK OFF)
+                endif()
+            endif()
+        endif()
+    endif()
+
+    if(WINUAE_UNIX_CHD_FLAC_OK)
+        target_compile_definitions(winuae_core PRIVATE WITH_CHD_FLAC=1)
+        target_include_directories(winuae_core PRIVATE ${FLAC_INCLUDE_DIRS})
+        target_compile_options(winuae_core PRIVATE ${FLAC_CFLAGS_OTHER})
+        list(APPEND WINUAE_UNIX_EXTRA_SOURCES archivers/chd/flac.cpp)
+        list(APPEND WINUAE_UNIX_EXTRA_LIBRARIES ${FLAC_LIBRARIES})
+        list(APPEND WINUAE_UNIX_EXTRA_LIBRARY_DIRS ${FLAC_LIBRARY_DIRS})
+    else()
+        target_compile_definitions(winuae_core PRIVATE WITH_CHD_FLAC=0)
+    endif()
 endif()
 
 if(WINUAE_UNIX_WITH_NATIVE_HARDDRIVES)
@@ -769,7 +834,6 @@ if(WINUAE_UNIX_WITH_QT_UI OR WINUAE_UNIX_WITH_INTEGRATED_QT_UI)
             WINUAE_UNIX_VERSION_MINOR=${WINUAE_UNIX_VERSION_MINOR}
             WINUAE_UNIX_VERSION_REVISION=${WINUAE_UNIX_VERSION_REVISION}
             UAE_UNIX_WITH_SANA2=$<BOOL:${WINUAE_UNIX_ENABLE_SANA2}>
-            UAE_UNIX_WITH_ARCHIVES=$<BOOL:${WINUAE_UNIX_ENABLE_ARCHIVES}>
             UAE_UNIX_WITH_UAESERIAL=$<BOOL:${WINUAE_UNIX_ENABLE_UAESERIAL}>
             UAE_UNIX_WITH_SAMPLER=$<BOOL:${WINUAE_UNIX_ENABLE_SAMPLER}>
             UAE_UNIX_WITH_NATIVE_HARDDRIVES=$<BOOL:${WINUAE_UNIX_ENABLE_NATIVE_HARDDRIVES}>
