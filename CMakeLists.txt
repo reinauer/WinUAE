@@ -241,6 +241,7 @@ if(WINUAE_UNIX_WITH_CHD)
         if(FLAC_FOUND)
             set(WINUAE_UNIX_CHD_FLAC_OK ON)
             if(APPLE)
+                unset(WINUAE_UNIX_FLAC_LIBRARY CACHE)
                 find_library(WINUAE_UNIX_FLAC_LIBRARY NAMES FLAC PATHS ${FLAC_LIBRARY_DIRS} NO_DEFAULT_PATH)
                 if(WINUAE_UNIX_FLAC_LIBRARY)
                     execute_process(
