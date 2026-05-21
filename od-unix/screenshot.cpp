@@ -10,6 +10,13 @@
 #include <errno.h>
 #include <vector>
 
+#ifdef UAE_UNIX_WITH_SDL3
+#include <SDL3/SDL.h>
+#if SDL_VERSION_ATLEAST(3, 2, 0)
+#define UAE_UNIX_WITH_SDL3_CLIPBOARD_DATA 1
+#endif
+#endif
+
 #ifdef WINUAE_UNIX_WITH_LIBPNG
 #include <png.h>
 #endif
@@ -26,18 +33,18 @@ static void unix_tcslcpy(TCHAR *dst, const TCHAR *src, size_t size)
     dst[size - 1] = 0;
 }
 
-static void unix_bmp_put_word(FILE *fp, uae_u16 value)
+static void unix_bmp_append_word(std::vector<uae_u8> *out, uae_u16 value)
 {
-    fputc(value & 0xff, fp);
-    fputc((value >> 8) & 0xff, fp);
+    out->push_back(value & 0xff);
+    out->push_back((value >> 8) & 0xff);
 }
 
-static void unix_bmp_put_long(FILE *fp, uae_u32 value)
+static void unix_bmp_append_long(std::vector<uae_u8> *out, uae_u32 value)
 {
-    fputc(value & 0xff, fp);
-    fputc((value >> 8) & 0xff, fp);
-    fputc((value >> 16) & 0xff, fp);
-    fputc((value >> 24) & 0xff, fp);
+    out->push_back(value & 0xff);
+    out->push_back((value >> 8) & 0xff);
+    out->push_back((value >> 16) & 0xff);
+    out->push_back((value >> 24) & 0xff);
 }
 
 static bool unix_ensure_directory(const TCHAR *path)
@@ -102,9 +109,9 @@ static void unix_screenshot_base_name(TCHAR *out, int out_size)
     }
 }
 
-static bool unix_write_bmp(const TCHAR *filename, const struct vidbuffer *vb)
+static bool unix_make_bmp(const struct vidbuffer *vb, std::vector<uae_u8> *bmp)
 {
-    if (!filename || !vb || !vb->bufmem || vb->outwidth <= 0 || vb->outheight <= 0 || vb->rowbytes <= 0) {
+    if (!bmp || !vb || !vb->bufmem || vb->outwidth <= 0 || vb->outheight <= 0 || vb->rowbytes <= 0) {
         return false;
     }
     if (vb->pixbytes != 4 && vb->pixbytes != 2) {
@@ -118,28 +125,24 @@ static bool unix_write_bmp(const TCHAR *filename, const struct vidbuffer *vb)
     const uae_u32 image_size = (uae_u32)bmp_rowbytes * (uae_u32)height;
     const uae_u32 file_size = 14 + 40 + image_size;
 
-    FILE *fp = _tfopen(filename, _T("wb"));
-    if (!fp) {
-        write_log(_T("Unix screenshot: can't open '%s'\n"), filename);
-        return false;
-    }
-
-    unix_bmp_put_word(fp, 0x4d42);
-    unix_bmp_put_long(fp, file_size);
-    unix_bmp_put_word(fp, 0);
-    unix_bmp_put_word(fp, 0);
-    unix_bmp_put_long(fp, 14 + 40);
-    unix_bmp_put_long(fp, 40);
-    unix_bmp_put_long(fp, (uae_u32)width);
-    unix_bmp_put_long(fp, (uae_u32)height);
-    unix_bmp_put_word(fp, 1);
-    unix_bmp_put_word(fp, 24);
-    unix_bmp_put_long(fp, 0);
-    unix_bmp_put_long(fp, image_size);
-    unix_bmp_put_long(fp, 0);
-    unix_bmp_put_long(fp, 0);
-    unix_bmp_put_long(fp, 0);
-    unix_bmp_put_long(fp, 0);
+    bmp->clear();
+    bmp->reserve(file_size);
+    unix_bmp_append_word(bmp, 0x4d42);
+    unix_bmp_append_long(bmp, file_size);
+    unix_bmp_append_word(bmp, 0);
+    unix_bmp_append_word(bmp, 0);
+    unix_bmp_append_long(bmp, 14 + 40);
+    unix_bmp_append_long(bmp, 40);
+    unix_bmp_append_long(bmp, (uae_u32)width);
+    unix_bmp_append_long(bmp, (uae_u32)height);
+    unix_bmp_append_word(bmp, 1);
+    unix_bmp_append_word(bmp, 24);
+    unix_bmp_append_long(bmp, 0);
+    unix_bmp_append_long(bmp, image_size);
+    unix_bmp_append_long(bmp, 0);
+    unix_bmp_append_long(bmp, 0);
+    unix_bmp_append_long(bmp, 0);
+    unix_bmp_append_long(bmp, 0);
 
     std::vector<uae_u8> row((size_t)bmp_rowbytes);
     for (int y = height - 1; y >= 0; y--) {
@@ -162,14 +165,31 @@ static bool unix_write_bmp(const TCHAR *filename, const struct vidbuffer *vb)
             row[(size_t)x * 3 + 1] = g;
             row[(size_t)x * 3 + 2] = r;
         }
-        if (fwrite(row.data(), 1, row.size(), fp) != row.size()) {
-            fclose(fp);
-            _tunlink(filename);
-            write_log(_T("Unix screenshot: failed writing '%s'\n"), filename);
-            return false;
-        }
+        bmp->insert(bmp->end(), row.begin(), row.end());
     }
 
+    return true;
+}
+
+static bool unix_write_bmp(const TCHAR *filename, const struct vidbuffer *vb)
+{
+    std::vector<uae_u8> bmp;
+    if (!filename || !unix_make_bmp(vb, &bmp)) {
+        return false;
+    }
+
+    FILE *fp = _tfopen(filename, _T("wb"));
+    if (!fp) {
+        write_log(_T("Unix screenshot: can't open '%s'\n"), filename);
+        return false;
+    }
+
+    if (fwrite(bmp.data(), 1, bmp.size(), fp) != bmp.size()) {
+        fclose(fp);
+        _tunlink(filename);
+        write_log(_T("Unix screenshot: failed writing '%s'\n"), filename);
+        return false;
+    }
     fclose(fp);
     return true;
 }
@@ -348,14 +368,8 @@ static bool unix_prepare_screenshot_buffer(const struct vidbuffer *src, struct v
     return true;
 }
 
-static bool unix_save_screenshot_file(int monid)
+static bool unix_prepare_active_screenshot(int monid, struct vidbuffer *prepared, std::vector<uae_u8> &prepared_storage)
 {
-    TCHAR path[MAX_DPATH];
-    TCHAR base[MAX_DPATH];
-    TCHAR filename[MAX_DPATH];
-    std::vector<uae_u8> prepared_storage;
-    struct vidbuffer prepared;
-
     if (monid < 0 || monid >= MAX_AMIGADISPLAYS) {
         monid = 0;
     }
@@ -365,10 +379,74 @@ static bool unix_save_screenshot_file(int monid)
         write_log(_T("Unix screenshot: no active video buffer\n"));
         return false;
     }
-    if (!unix_prepare_screenshot_buffer(vb, &prepared, prepared_storage)) {
+    if (!unix_prepare_screenshot_buffer(vb, prepared, prepared_storage)) {
+        return false;
+    }
+    return true;
+}
+
+#ifdef UAE_UNIX_WITH_SDL3_CLIPBOARD_DATA
+struct UnixScreenshotClipboardData {
+    std::vector<uae_u8> bmp;
+};
+
+static const void *SDLCALL unix_screenshot_clipboard_data(void *userdata, const char *, size_t *size)
+{
+    UnixScreenshotClipboardData *data = static_cast<UnixScreenshotClipboardData *>(userdata);
+    if (!data) {
+        if (size) {
+            *size = 0;
+        }
+        return NULL;
+    }
+    if (size) {
+        *size = data->bmp.size();
+    }
+    return data->bmp.data();
+}
+
+static void SDLCALL unix_screenshot_clipboard_cleanup(void *userdata)
+{
+    delete static_cast<UnixScreenshotClipboardData *>(userdata);
+}
+#endif
+
+static bool unix_save_screenshot_clipboard(const struct vidbuffer *prepared)
+{
+#ifdef UAE_UNIX_WITH_SDL3_CLIPBOARD_DATA
+    UnixScreenshotClipboardData *data = new UnixScreenshotClipboardData;
+    if (!unix_make_bmp(prepared, &data->bmp)) {
+        delete data;
         return false;
     }
 
+    const char *mime_types[] = { "image/bmp", "image/x-bmp" };
+    if (!SDL_SetClipboardData(unix_screenshot_clipboard_data, unix_screenshot_clipboard_cleanup,
+        data, mime_types, sizeof mime_types / sizeof mime_types[0])) {
+        write_log(_T("Unix screenshot: failed to copy BMP to clipboard: %s\n"), SDL_GetError());
+        delete data;
+        return false;
+    }
+
+    write_log(_T("Screenshot copied to clipboard\n"));
+    return true;
+#else
+    write_log(_T("Unix screenshot: clipboard screenshots require SDL3 clipboard data support\n"));
+    return false;
+#endif
+}
+
+static bool unix_save_screenshot_file(int monid)
+{
+    TCHAR path[MAX_DPATH];
+    TCHAR base[MAX_DPATH];
+    TCHAR filename[MAX_DPATH];
+    std::vector<uae_u8> prepared_storage;
+    struct vidbuffer prepared;
+
+    if (!unix_prepare_active_screenshot(monid, &prepared, prepared_storage)) {
+        return false;
+    }
     fetch_screenshotpath(path, sizeof path / sizeof(TCHAR));
     if (!unix_ensure_directory(path)) {
         write_log(_T("Unix screenshot: can't create screenshot directory '%s'\n"), path);
@@ -407,7 +485,11 @@ static bool unix_save_screenshot_file(int monid)
 void screenshot(int monid, int mode, int)
 {
     if (mode == 0) {
-        write_log(_T("Unix screenshot: clipboard screenshots are not implemented yet\n"));
+        std::vector<uae_u8> prepared_storage;
+        struct vidbuffer prepared;
+        if (unix_prepare_active_screenshot(monid, &prepared, prepared_storage)) {
+            unix_save_screenshot_clipboard(&prepared);
+        }
         return;
     }
     if (mode == 2 || mode == 3) {
