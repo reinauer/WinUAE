@@ -12,7 +12,12 @@
 #include "chd.h"
 #include "hashing.h"
 #include "avhuff.h"
+#ifndef WITH_CHD_FLAC
+#define WITH_CHD_FLAC 1
+#endif
+#if WITH_CHD_FLAC
 #include "flac.h"
+#endif
 #include "chdcdrom.h"
 #include <zlib.h>
 #include "7z/LzmaEnc.h"
@@ -193,6 +198,8 @@ private:
 	huffman_8bit_decoder    m_decoder;
 };
 
+#if WITH_CHD_FLAC
+
 // ======================> chd_flac_compressor
 
 // FLAC compressor
@@ -280,6 +287,8 @@ private:
 	chd_zlib_allocator  m_allocator;
 	dynamic_buffer      m_buffer;
 };
+
+#endif
 
 
 // ======================> chd_cd_compressor
@@ -471,7 +480,9 @@ const chd_codec_list::codec_entry chd_codec_list::s_codec_list[] =
 	// general codecs with CD frontend
 	{ CHD_CODEC_CD_ZLIB,    false,  "CD Deflate",           &chd_codec_list::construct_compressor<chd_cd_compressor<chd_zlib_compressor, chd_zlib_compressor> >,        &chd_codec_list::construct_decompressor<chd_cd_decompressor<chd_zlib_decompressor, chd_zlib_decompressor> > },
 	{ CHD_CODEC_CD_LZMA,    false,  "CD LZMA",              &chd_codec_list::construct_compressor<chd_cd_compressor<chd_lzma_compressor, chd_zlib_compressor> >,        &chd_codec_list::construct_decompressor<chd_cd_decompressor<chd_lzma_decompressor, chd_zlib_decompressor> > },
+#if WITH_CHD_FLAC
 	{ CHD_CODEC_CD_FLAC,    false,  "CD FLAC",              &chd_codec_list::construct_compressor<chd_cd_flac_compressor>,  &chd_codec_list::construct_decompressor<chd_cd_flac_decompressor> },
+#endif
 
 #if 0
 	// A/V codecs
@@ -1133,15 +1144,25 @@ chd_lzma_decompressor::chd_lzma_decompressor(chd_file &chd, UINT32 hunkbytes, bo
 	CLzmaEncProps encoder_props;
 	chd_lzma_compressor::configure_properties(encoder_props, hunkbytes);
 
-	// convert to decoder properties
-	CLzmaProps decoder_props;
-	decoder_props.lc = encoder_props.lc;
-	decoder_props.lp = encoder_props.lp;
-	decoder_props.pb = encoder_props.pb;
-	decoder_props.dicSize = encoder_props.dictSize;
+	CLzmaEncHandle encoder = LzmaEnc_Create(&m_allocator);
+	if (!encoder)
+		throw CHDERR_DECOMPRESSION_ERROR;
+	if (LzmaEnc_SetProps(encoder, &encoder_props) != SZ_OK)
+	{
+		LzmaEnc_Destroy(encoder, &m_allocator, &m_allocator);
+		throw CHDERR_DECOMPRESSION_ERROR;
+	}
+	Byte decoder_props[LZMA_PROPS_SIZE];
+	SizeT props_size = sizeof(decoder_props);
+	if (LzmaEnc_WriteProperties(encoder, decoder_props, &props_size) != SZ_OK)
+	{
+		LzmaEnc_Destroy(encoder, &m_allocator, &m_allocator);
+		throw CHDERR_DECOMPRESSION_ERROR;
+	}
+	LzmaEnc_Destroy(encoder, &m_allocator, &m_allocator);
 
 	// do memory allocations
-	SRes res = LzmaDec_Allocate_MAME(&m_decoder, &decoder_props, &m_allocator);
+	SRes res = LzmaDec_Allocate(&m_decoder, decoder_props, LZMA_PROPS_SIZE, &m_allocator);
 	if (res != SZ_OK)
 		throw CHDERR_DECOMPRESSION_ERROR;
 }
@@ -1237,6 +1258,8 @@ void chd_huffman_decompressor::decompress(const UINT8 *src, UINT32 complen, UINT
 //**************************************************************************
 //  FLAC COMPRESSOR
 //**************************************************************************
+
+#if WITH_CHD_FLAC
 
 //-------------------------------------------------
 //  chd_flac_compressor - constructor
@@ -1568,6 +1591,8 @@ void chd_cd_flac_decompressor::decompress(const UINT8 *src, UINT32 complen, UINT
 		memcpy(&dest[framenum * CD_FRAME_SIZE + CD_MAX_SECTOR_DATA], &m_buffer[frames * CD_MAX_SECTOR_DATA + framenum * CD_MAX_SUBCODE_DATA], CD_MAX_SUBCODE_DATA);
 	}
 }
+
+#endif
 
 
 #if 0
