@@ -1706,6 +1706,31 @@ static QVector<QPair<QString, QString>> soundDeviceChoices()
     return choices;
 }
 
+static QVector<QPair<QString, QString>> samplerDeviceChoices()
+{
+    QVector<QPair<QString, QString>> choices;
+    choices.append(qMakePair(QStringLiteral("<None>"), QString()));
+
+#if UAE_UNIX_WITH_SAMPLER && defined(UAE_UNIX_WITH_SDL3)
+    SDL_SetMainReady();
+    if (SDL_InitSubSystem(SDL_INIT_AUDIO)) {
+        choices.append(qMakePair(QStringLiteral("SDL: Default recording device"), QStringLiteral("SDL:Default Recording Device")));
+        int count = 0;
+        SDL_AudioDeviceID *devices = SDL_GetAudioRecordingDevices(&count);
+        if (devices) {
+            for (int i = 0; i < count; i++) {
+                const char *name = SDL_GetAudioDeviceName(devices[i]);
+                const QString display = QString::fromUtf8(name && name[0] ? name : "Unknown recording device");
+                choices.append(qMakePair(QStringLiteral("SDL: %1").arg(display), QStringLiteral("SDL:%1").arg(display)));
+            }
+            SDL_free(devices);
+        }
+    }
+#endif
+
+    return choices;
+}
+
 static QString soundOutputConfigValue(int id)
 {
     switch (id) {
@@ -9292,6 +9317,25 @@ private:
         }
     }
 
+    void selectSamplerDeviceByConfigName(const QString &value)
+    {
+        if (!samplerDevice || value.trimmed().isEmpty()) {
+            return;
+        }
+        const QString wanted = value.trimmed();
+        for (int i = 0; i < samplerDevice->count(); i++) {
+            const QString configName = samplerDevice->itemData(i).toString();
+            const QString displayName = samplerDevice->itemText(i);
+            if (configName.compare(wanted, Qt::CaseInsensitive) == 0
+                || displayName.compare(wanted, Qt::CaseInsensitive) == 0
+                || configName.mid(4).compare(wanted, Qt::CaseInsensitive) == 0) {
+                samplerDevice->setCurrentIndex(i);
+                updateIoPortsState();
+                return;
+            }
+        }
+    }
+
     void setSoundSwapBit(bool paula, bool enabled)
     {
         if (!soundSwap) {
@@ -9554,7 +9598,10 @@ private:
             disableUnavailable(printerAutoFlush, reason);
             disableUnavailable(ghostscriptParams, reason);
         }
-        samplerDevice = combo({ QStringLiteral("<None>") });
+        samplerDevice = new QComboBox;
+        for (const auto &choice : samplerDeviceChoices()) {
+            samplerDevice->addItem(choice.first, choice.second);
+        }
         samplerStereo = new QCheckBox(QStringLiteral("Stereo sampler"));
         if (!unixSamplerBackendAvailable()) {
             const QString reason = QStringLiteral("Parallel sampler input is not connected to a Unix backend yet.");
@@ -13985,7 +14032,13 @@ private:
             settings.insert(QStringLiteral("parallel_postscript_emulation"), QStringLiteral("false"));
             settings.insert(QStringLiteral("parallel_autoflush"), QStringLiteral("5"));
         }
-        settings.insert(QStringLiteral("sampler_stereo"), unixSamplerBackendAvailable() && samplerStereo->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
+        const int samplerIndex = unixSamplerBackendAvailable() && samplerDevice ? samplerDevice->currentIndex() - 1 : -1;
+        settings.insert(QStringLiteral("unix.samplersoundcard"), QString::number(samplerIndex));
+        const QString samplerDeviceConfigName = samplerDevice ? samplerDevice->currentData().toString() : QString();
+        if (samplerIndex >= 0 && !samplerDeviceConfigName.isEmpty()) {
+            settings.insert(QStringLiteral("unix.samplersoundcardname"), samplerDeviceConfigName);
+        }
+        settings.insert(QStringLiteral("sampler_stereo"), unixSamplerBackendAvailable() && samplerIndex >= 0 && samplerStereo->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
         const QString serial = serialPort->currentText().trimmed();
         if (!serial.isEmpty()
             && serial != QStringLiteral("<None>")
@@ -14443,6 +14496,14 @@ private:
             QStringLiteral("parallel_postscript_emulation"),
             QStringLiteral("parallel_autoflush"),
             QStringLiteral("ghostscript_parameters"),
+            QStringLiteral("samplersoundcard"),
+            QStringLiteral("samplersoundcardname"),
+            QStringLiteral("sampler_soundcard"),
+            QStringLiteral("sampler_soundcardname"),
+            QStringLiteral("unix.samplersoundcard"),
+            QStringLiteral("unix.samplersoundcardname"),
+            QStringLiteral("unix.sampler_soundcard"),
+            QStringLiteral("unix.sampler_soundcardname"),
             QStringLiteral("sampler_stereo"),
             QStringLiteral("serial_port"),
             QStringLiteral("unix.serial_port"),
@@ -15457,8 +15518,27 @@ private:
             if (unixPrinterBackendAvailable()) {
                 ghostscriptParams->setText(value);
             }
+        } else if (key == QStringLiteral("unix.samplersoundcard")
+            || key == QStringLiteral("samplersoundcard")
+            || key == QStringLiteral("unix.sampler_soundcard")
+            || key == QStringLiteral("sampler_soundcard")) {
+            bool ok = false;
+            const int index = value.toInt(&ok);
+            if (ok && samplerDevice && index >= -1 && index + 1 < samplerDevice->count()) {
+                samplerDevice->setCurrentIndex(index + 1);
+            }
+            updateIoPortsState();
+        } else if (key == QStringLiteral("unix.samplersoundcardname")
+            || key == QStringLiteral("samplersoundcardname")
+            || key == QStringLiteral("unix.sampler_soundcardname")
+            || key == QStringLiteral("sampler_soundcardname")) {
+            selectSamplerDeviceByConfigName(value);
+            updateIoPortsState();
         } else if (key == QStringLiteral("sampler_stereo")) {
-            samplerStereo->setChecked(unixSamplerBackendAvailable() && configBoolValue(value));
+            samplerStereo->setChecked(unixSamplerBackendAvailable()
+                && samplerDevice
+                && samplerDevice->currentText() != QStringLiteral("<None>")
+                && configBoolValue(value));
             updateIoPortsState();
         } else if (key == QStringLiteral("unix.serial_port") || key == QStringLiteral("serial_port")) {
             serialPort->setCurrentText(value.isEmpty() ? QStringLiteral("<None>") : value);
