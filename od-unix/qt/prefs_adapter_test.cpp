@@ -27,17 +27,10 @@ static void copyText(TCHAR *dst, size_t dstSize, const char *src)
     snprintf(dst, dstSize, "%s", src ? src : "");
 }
 
-void cfgfile_parse_line(struct uae_prefs *prefs, TCHAR *line, int)
+int cfgfile_parse_option(struct uae_prefs *prefs, const TCHAR *key, TCHAR *value, int)
 {
-    parsedLines.append(QString::fromLocal8Bit(line));
-
-    char *separator = strchr(line, '=');
-    if (!separator) {
-        return;
-    }
-    *separator = 0;
-    const char *key = line;
-    const char *value = separator + 1;
+    parsedLines.append(QStringLiteral("%1=%2")
+        .arg(QString::fromLocal8Bit(key), QString::fromLocal8Bit(value)));
 
     if (!strcmp(key, "kickstart_rom_file")) {
         copyText(prefs->romfile, sizeof prefs->romfile, value);
@@ -74,6 +67,7 @@ void cfgfile_parse_line(struct uae_prefs *prefs, TCHAR *line, int)
         prefs->rtgboards[0].rtg_index = 0;
         prefs->rtgboards[0].rtgmem_type = !strcmp(value, "ZorroIII") ? 1 : 0;
     }
+    return 1;
 }
 
 static bool require(bool condition, const char *message)
