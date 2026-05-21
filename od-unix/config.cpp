@@ -516,6 +516,24 @@ int target_parse_option(struct uae_prefs *p, const TCHAR *option, const TCHAR *v
         }
         return 1;
     }
+    if (!_tcsicmp(option, _T("samplersoundcard")) || !_tcsicmp(option, _T("sampler_soundcard"))) {
+        int parsed = 0;
+        if (!parse_int_value(value, &parsed)) {
+            return 0;
+        }
+        if (parsed < 0 || parsed >= unix_sampler_device_count()) {
+            parsed = -1;
+        }
+        p->win32_samplersoundcard = parsed;
+        return 1;
+    }
+    if (!_tcsicmp(option, _T("samplersoundcardname")) || !_tcsicmp(option, _T("sampler_soundcardname"))) {
+        int index = unix_sampler_device_index_from_config_name(value);
+        if (index >= 0) {
+            p->win32_samplersoundcard = index;
+        }
+        return 1;
+    }
     if (parse_path_option(option, value, _T("config_path"), path_configuration, sizeof path_configuration / sizeof(TCHAR))
         || parse_path_option(option, value, _T("ui.config_path"), path_configuration, sizeof path_configuration / sizeof(TCHAR))
         || parse_path_option(option, value, _T("nvram_path"), path_nvram, sizeof path_nvram / sizeof(TCHAR))
@@ -549,6 +567,13 @@ void target_save_options(struct zfile *f, struct uae_prefs *p)
     const TCHAR *name = unix_sound_device_config_name(index);
     if (name && name[0]) {
         cfgfile_target_write_str(f, _T("soundcardname"), name);
+    }
+    if (p->win32_samplersoundcard >= 0 && p->win32_samplersoundcard < unix_sampler_device_count()) {
+        cfgfile_target_write(f, _T("samplersoundcard"), _T("%d"), p->win32_samplersoundcard);
+        const TCHAR *sampler_name = unix_sampler_device_config_name(p->win32_samplersoundcard);
+        if (sampler_name && sampler_name[0]) {
+            cfgfile_target_write_str(f, _T("samplersoundcardname"), sampler_name);
+        }
     }
     cfgfile_target_dwrite(f, _T("recording_width"), _T("%d"), p->aviout_width);
     cfgfile_target_dwrite(f, _T("recording_height"), _T("%d"), p->aviout_height);
@@ -603,6 +628,7 @@ void target_default_options(struct uae_prefs *p, int)
     path_data[0] = 0;
     path_rom[0] = 0;
     p->rtg_dacswitch = true;
+    p->win32_samplersoundcard = -1;
 }
 
 void target_fixup_options(struct uae_prefs*)
