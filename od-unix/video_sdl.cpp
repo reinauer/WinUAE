@@ -6,6 +6,7 @@
 #include <SDL3/SDL_main.h>
 
 #include <algorithm>
+#include <cmath>
 #include <vector>
 
 #include "statusline.h"
@@ -318,6 +319,113 @@ static bool ensure_texture(int width, int height, int pixbytes)
     s_texture_height = height;
     s_texture_pixbytes = pixbytes;
     return true;
+}
+
+static const struct gfx_filterdata *filterdata_for_frame(const struct unix_video_frame *frame)
+{
+    int index = frame ? frame->filter_index : GF_NORMAL;
+    if (index < 0 || index >= MAX_FILTERDATA) {
+        index = GF_NORMAL;
+    }
+    return &currprefs.gf[index];
+}
+
+static float bounded_scale(float value)
+{
+    if (!std::isfinite(value) || value < 0.01f) {
+        return 1.0f;
+    }
+    if (value > 64.0f) {
+        return 64.0f;
+    }
+    return value;
+}
+
+static SDL_FRect filtered_frame_rect(const struct unix_video_frame *frame, const struct gfx_filterdata *filter)
+{
+    float scale_x = 1.0f;
+    float scale_y = 1.0f;
+    float offset_x = 0.0f;
+    float offset_y = 0.0f;
+
+    if (filter) {
+        if (filter->gfx_filter_horiz_zoom_mult > 0.0f) {
+            scale_x = filter->gfx_filter_horiz_zoom_mult;
+        }
+        if (filter->gfx_filter_vert_zoom_mult > 0.0f) {
+            scale_y = filter->gfx_filter_vert_zoom_mult;
+        }
+        scale_x += scale_x * (filter->gfx_filter_horiz_zoom / 1000.0f) / 2.0f;
+        scale_y += scale_y * (filter->gfx_filter_vert_zoom / 1000.0f) / 2.0f;
+        offset_x = -(filter->gfx_filter_horiz_offset / 10000.0f) * frame->width;
+        offset_y = -(filter->gfx_filter_vert_offset / 10000.0f) * frame->height;
+    }
+
+    scale_x = bounded_scale(scale_x);
+    scale_y = bounded_scale(scale_y);
+
+    SDL_FRect rect;
+    rect.w = frame->width * scale_x;
+    rect.h = frame->height * scale_y;
+    rect.x = (frame->width - rect.w) / 2.0f + offset_x;
+    rect.y = (frame->height - rect.h) / 2.0f + offset_y;
+    return rect;
+}
+
+static int clamp_filter_percent(int value)
+{
+    if (value < 0) {
+        return 0;
+    }
+    if (value > 100) {
+        return 100;
+    }
+    return value;
+}
+
+static void render_scanline_overlay(const struct gfx_filterdata *filter, const SDL_FRect *frame_dst)
+{
+    if (!filter || !frame_dst) {
+        return;
+    }
+
+    int opacity = clamp_filter_percent(filter->gfx_filter_scanlines);
+    int level = clamp_filter_percent(filter->gfx_filter_scanlinelevel);
+    if (!opacity && !level) {
+        return;
+    }
+
+    int lit_lines = filter->gfx_filter_scanlineratio & 15;
+    int shaded_lines = (filter->gfx_filter_scanlineratio >> 4) & 15;
+    int period = lit_lines + shaded_lines;
+    if (period <= 0 || shaded_lines <= 0) {
+        return;
+    }
+
+    int offset = filter->gfx_filter_scanlineoffset % (lit_lines + 1);
+    if (offset < 0) {
+        offset += lit_lines + 1;
+    }
+
+    Uint8 alpha = (Uint8)(opacity * 255 / 100);
+    Uint8 color = (Uint8)(level * 255 / 100);
+    int height = (int)(frame_dst->h + 0.5f);
+
+    SDL_SetRenderDrawBlendMode(s_renderer, SDL_BLENDMODE_BLEND);
+    SDL_SetRenderDrawColor(s_renderer, color, color, color, alpha);
+    for (int y = 0; y < height; y += period) {
+        int y2 = y + offset;
+        for (int yy = 0; yy < shaded_lines && y2 + yy < height; yy++) {
+            SDL_FRect line = {
+                frame_dst->x,
+                frame_dst->y + (float)(y2 + yy),
+                frame_dst->w,
+                1.0f
+            };
+            SDL_RenderFillRect(s_renderer, &line);
+        }
+    }
+    SDL_SetRenderDrawBlendMode(s_renderer, SDL_BLENDMODE_NONE);
 }
 
 static bool ensure_status_texture(int width)
@@ -761,11 +869,21 @@ void unix_video_present(const struct unix_video_frame *frame)
         return;
     }
 
+    const struct gfx_filterdata *filter = filterdata_for_frame(frame);
+    SDL_SetTextureScaleMode(s_texture,
+        filter && filter->gfx_filter_bilinear ? SDL_SCALEMODE_LINEAR : SDL_SCALEMODE_NEAREST);
+
     SDL_UpdateTexture(s_texture, NULL, frame->pixels, frame->rowbytes);
     SDL_SetRenderLogicalPresentation(s_renderer, frame->width, frame->height + statusbar_display_height(), SDL_LOGICAL_PRESENTATION_LETTERBOX);
     SDL_RenderClear(s_renderer);
-    SDL_FRect frame_dst = { 0.0f, 0.0f, (float)frame->width, (float)frame->height };
+
+    SDL_Rect frame_clip = { 0, 0, frame->width, frame->height };
+    SDL_SetRenderClipRect(s_renderer, &frame_clip);
+    SDL_FRect frame_dst = filtered_frame_rect(frame, filter);
     SDL_RenderTexture(s_renderer, s_texture, NULL, &frame_dst);
+    render_scanline_overlay(filter, &frame_dst);
+    SDL_SetRenderClipRect(s_renderer, NULL);
+
     if (update_status_texture(frame->width)) {
         SDL_FRect status_dst = { 0.0f, (float)frame->height, (float)frame->width, (float)statusbar_display_height() };
         SDL_RenderTexture(s_renderer, s_status_texture, NULL, &status_dst);
