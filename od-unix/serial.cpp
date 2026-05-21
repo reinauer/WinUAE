@@ -13,6 +13,9 @@
 #include "options.h"
 #include "serial.h"
 #include "uae.h"
+#ifdef WITH_MIDI
+#include "midi.h"
+#endif
 
 #define SERIALDEBUG 0
 #define SERIAL_LOOPBACK _T("LOOPBACK_SERIAL")
@@ -83,6 +86,9 @@ static int serial_period_to_baud(uae_u16 v)
 	const int standard[] = { 300, 1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200, 230400 };
 	int best = standard[0];
 	int bestdiff = abs(baud - best);
+	if (baud >= 30000 && baud <= 32500) {
+		return 31400;
+	}
 	for (int i = 1; i < (int)(sizeof standard / sizeof standard[0]); i++) {
 		int diff = abs(baud - standard[i]);
 		if (diff < bestdiff) {
@@ -309,6 +315,16 @@ static int serial_read_byte(int *out)
 		}
 		return 0;
 	}
+#ifdef WITH_MIDI
+	if (midi_ready) {
+		int value = (int)getmidibyte();
+		if (value < 0) {
+			return 0;
+		}
+		*out = value;
+		return 1;
+	}
+#endif
 	if (serial_fd < 0) {
 		return 0;
 	}
@@ -376,6 +392,11 @@ int readseravail(bool *breakcond)
 		}
 		return ret > 0 ? 1 : 0;
 	}
+#ifdef WITH_MIDI
+	if (midi_ready) {
+		return ismidibyte();
+	}
+#endif
 	if (serial_fd < 0 || !currprefs.use_serial) {
 		return 0;
 	}
@@ -388,6 +409,11 @@ int readseravail(bool *breakcond)
 
 void writeser_flush(void)
 {
+#ifdef WITH_MIDI
+	if (midi_ready) {
+		return;
+	}
+#endif
 	if (serial_fd >= 0) {
 		tcdrain(serial_fd);
 	}
@@ -402,6 +428,13 @@ void writeser(int c)
 		}
 		return;
 	}
+#ifdef WITH_MIDI
+	if (midi_ready) {
+		BYTE outchar = (BYTE)c;
+		Midi_Parse(midi_output, &outchar);
+		return;
+	}
+#endif
 	if (serial_fd >= 0) {
 		write(serial_fd, &b, 1);
 	}
@@ -444,8 +477,22 @@ void setserstat(int mask, int onoff)
 	ioctl(serial_fd, TIOCMSET, &status);
 }
 
-int setbaud(int baud, int)
+int setbaud(int baud, int org_baud)
 {
+#ifdef WITH_MIDI
+	if (org_baud == 31400 && currprefs.win32_midioutdev >= -1) {
+		if (!midi_ready && Midi_Open()) {
+			write_log(_T("Midi enabled\n"));
+		}
+		return 1;
+	}
+	if (midi_ready) {
+		Midi_Close();
+	}
+#endif
+	if (serial_fd < 0) {
+		return currprefs.use_serial ? 0 : 1;
+	}
 	return configure_serial_fd(baud) ? 1 : 0;
 }
 
@@ -483,11 +530,9 @@ void SERPER(uae_u16 w)
 		return;
 	}
 	serper = w;
-	if (serial_fd >= 0) {
-		const int baud = serial_period_to_baud(w);
-		if (baud > 0) {
-			setbaud(baud, baud);
-		}
+	const int baud = serial_period_to_baud(w);
+	if (baud > 0) {
+		setbaud(baud == 31400 ? 38400 : baud, baud);
 	}
 }
 
