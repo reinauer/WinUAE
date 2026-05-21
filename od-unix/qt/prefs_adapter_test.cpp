@@ -123,6 +123,7 @@ static bool testRepresentativeConfig()
     settings.insert(QStringLiteral("floppy0wp"), QStringLiteral("true"));
     settings.insert(QStringLiteral("floppy1wp"), QStringLiteral("false"));
     settings.insert(QStringLiteral("floppy2wp"), QStringLiteral("yes"));
+    settings.insert(QStringLiteral("floppy3wp"), QStringLiteral("t"));
     settings.insert(QStringLiteral("uaehf0"), QStringLiteral("dir,rw,DH0:System:/tmp/System,0"));
     settings.insert(QStringLiteral("nr_floppies"), QStringLiteral("2"));
     settings.insert(QStringLiteral("chipset"), QStringLiteral("aga"));
@@ -154,12 +155,15 @@ static bool testRepresentativeConfig()
     parsedLines.clear();
     bool ok = applyWinUaeQtConfigToPrefs(WinUaeQtConfig(settings), prefs);
     ok = require(ok, "adapter rejected representative config") && ok;
-    ok = requireInt(parsedLines.size(), settings.size() - 1, "parsed line count") && ok;
+    ok = requireInt(parsedLines.size(), settings.size() - 5, "parsed line count") && ok;
     ok = require(!parsedLines.contains(QStringLiteral("unix.ui.config_path=/configs")), "UI-only path was delegated") && ok;
+    ok = require(!parsedLines.contains(QStringLiteral("floppy0wp=true")), "floppy0wp was delegated") && ok;
+    ok = require(!parsedLines.contains(QStringLiteral("floppy1wp=false")), "floppy1wp was delegated") && ok;
+    ok = require(!parsedLines.contains(QStringLiteral("floppy2wp=yes")), "floppy2wp was delegated") && ok;
+    ok = require(!parsedLines.contains(QStringLiteral("floppy3wp=t")), "floppy3wp was delegated") && ok;
     ok = require(parsedLines.contains(QStringLiteral("unix.screenshot_path=/screenshots")), "runtime path was not delegated") && ok;
     ok = require(parsedLines.contains(QStringLiteral("chipset_compatible=A1200")), "chipset compatibility was not delegated") && ok;
     ok = require(parsedLines.contains(QStringLiteral("floppy1type=1")), "floppy drive type was not delegated") && ok;
-    ok = require(parsedLines.contains(QStringLiteral("floppy0wp=true")), "floppy write protect was not delegated") && ok;
     ok = require(parsedLines.contains(QStringLiteral("uaehf0=dir,rw,DH0:System:/tmp/System,0")), "hard drive mount was not delegated") && ok;
     ok = require(parsedLines.contains(QStringLiteral("fpu_model=68882")), "fpu model was not delegated") && ok;
     ok = require(parsedLines.contains(QStringLiteral("sound_output=normal")), "sound output was not delegated") && ok;
@@ -174,6 +178,7 @@ static bool testRepresentativeConfig()
     ok = require(prefs->floppyslots[0].forcedwriteprotect, "floppy0wp") && ok;
     ok = require(!prefs->floppyslots[1].forcedwriteprotect, "floppy1wp") && ok;
     ok = require(prefs->floppyslots[2].forcedwriteprotect, "floppy2wp") && ok;
+    ok = require(prefs->floppyslots[3].forcedwriteprotect, "floppy3wp") && ok;
     ok = requireInt(prefs->nr_floppies, 2, "nr_floppies") && ok;
     ok = requireInt(prefs->cs_compatible, CP_A1200, "cs_compatible") && ok;
     ok = requireInt(prefs->cpu_model, 68020, "cpu_model") && ok;
