@@ -156,6 +156,15 @@ if [ -n "$OPEN_SCREEN" ]; then
         1024x768x16)
             open_screen_args='0x50051000 1024 768 16'
             ;;
+        640x480x24)
+            open_screen_args='0x50031000 640 480 24'
+            ;;
+        800x600x24)
+            open_screen_args='0x50041000 800 600 24'
+            ;;
+        1024x768x24)
+            open_screen_args='0x50051000 1024 768 24'
+            ;;
         640x480x32)
             open_screen_args='0x50031000 640 480 32'
             ;;
