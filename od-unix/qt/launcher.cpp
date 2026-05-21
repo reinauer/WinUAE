@@ -210,7 +210,11 @@ static bool unixMidiBackendAvailable()
 
 static bool unixMidiInputBackendAvailable()
 {
+#if UAE_UNIX_WITH_MIDI
+    return true;
+#else
     return false;
+#endif
 }
 
 static bool unixMidiVolumeBackendAvailable()
@@ -1858,6 +1862,71 @@ static QVector<WinUaeQtMidiChoice> midiOutputChoices()
             choices.append(def);
             choices += alsaChoices;
         }
+    }
+#endif
+#endif
+    return choices;
+}
+
+static QVector<WinUaeQtMidiChoice> midiInputChoices()
+{
+    QVector<WinUaeQtMidiChoice> choices;
+#if UAE_UNIX_WITH_MIDI
+#if defined(__APPLE__) && defined(UAE_UNIX_WITH_COREMIDI)
+    const ItemCount count = MIDIGetNumberOfSources();
+    for (ItemCount i = 0; i < count; i++) {
+        MIDIEndpointRef endpoint = MIDIGetSource(i);
+        if (!endpoint) {
+            continue;
+        }
+        QString name = coreMidiObjectString(endpoint, kMIDIPropertyDisplayName);
+        if (name.isEmpty()) {
+            name = coreMidiObjectString(endpoint, kMIDIPropertyName);
+        }
+        if (name.isEmpty()) {
+            name = QStringLiteral("CoreMIDI source %1").arg(i + 1);
+        }
+        WinUaeQtMidiChoice choice;
+        choice.display = name;
+        choice.configName = name;
+        choice.deviceId = int(i);
+        choices.append(choice);
+    }
+#elif defined(__linux__) && defined(UAE_UNIX_WITH_ALSA_MIDI)
+    snd_seq_t *seq = nullptr;
+    if (snd_seq_open(&seq, "default", SND_SEQ_OPEN_INPUT, 0) >= 0) {
+        snd_seq_client_info_t *clientInfo;
+        snd_seq_port_info_t *portInfo;
+        snd_seq_client_info_alloca(&clientInfo);
+        snd_seq_port_info_alloca(&portInfo);
+        snd_seq_client_info_set_client(clientInfo, -1);
+        int deviceId = 0;
+        while (snd_seq_query_next_client(seq, clientInfo) >= 0) {
+            const int client = snd_seq_client_info_get_client(clientInfo);
+            snd_seq_port_info_set_client(portInfo, client);
+            snd_seq_port_info_set_port(portInfo, -1);
+            while (snd_seq_query_next_port(seq, portInfo) >= 0) {
+                const unsigned int caps = snd_seq_port_info_get_capability(portInfo);
+                if ((caps & SND_SEQ_PORT_CAP_READ) == 0 || (caps & SND_SEQ_PORT_CAP_SUBS_READ) == 0) {
+                    continue;
+                }
+                const int port = snd_seq_port_info_get_port(portInfo);
+                const char *clientName = snd_seq_client_info_get_name(clientInfo);
+                const char *portName = snd_seq_port_info_get_name(portInfo);
+                const QString name = QStringLiteral("%1:%2 %3%4%5")
+                    .arg(client)
+                    .arg(port)
+                    .arg(QString::fromUtf8(clientName ? clientName : "ALSA"))
+                    .arg(portName && portName[0] ? QStringLiteral(" ") : QString())
+                    .arg(QString::fromUtf8(portName ? portName : ""));
+                WinUaeQtMidiChoice choice;
+                choice.display = name;
+                choice.configName = name;
+                choice.deviceId = deviceId++;
+                choices.append(choice);
+            }
+        }
+        snd_seq_close(seq);
     }
 #endif
 #endif
@@ -9663,6 +9732,44 @@ private:
         }
     }
 
+    void selectMidiInByDeviceId(int deviceId)
+    {
+        if (!midiIn) {
+            return;
+        }
+        for (int i = 0; i < midiIn->count(); i++) {
+            if (midiIn->itemData(i).toInt() == deviceId) {
+                midiIn->setCurrentIndex(i);
+                updateIoPortsState();
+                return;
+            }
+        }
+        midiIn->setCurrentIndex(0);
+        updateIoPortsState();
+    }
+
+    void selectMidiInByConfigName(const QString &value)
+    {
+        if (!midiIn || value.trimmed().isEmpty()) {
+            return;
+        }
+        const QString wanted = value.trimmed();
+        if (wanted.compare(QStringLiteral("none"), Qt::CaseInsensitive) == 0) {
+            selectMidiInByDeviceId(-1);
+            return;
+        }
+        for (int i = 0; i < midiIn->count(); i++) {
+            const QString configName = midiIn->itemData(i, Qt::UserRole + 1).toString();
+            const QString displayName = midiIn->itemText(i);
+            if (configName.compare(wanted, Qt::CaseInsensitive) == 0
+                || displayName.compare(wanted, Qt::CaseInsensitive) == 0) {
+                midiIn->setCurrentIndex(i);
+                updateIoPortsState();
+                return;
+            }
+        }
+    }
+
     void setSoundSwapBit(bool paula, bool enabled)
     {
         if (!soundSwap) {
@@ -9992,14 +10099,19 @@ private:
             midiOut->addItem(choice.display, choice.deviceId);
             midiOut->setItemData(midiOut->count() - 1, choice.configName, Qt::UserRole + 1);
         }
-        midiIn = combo({ QStringLiteral("<None>") });
+        midiIn = new QComboBox;
+        midiIn->addItem(QStringLiteral("<None>"), -1);
+        for (const WinUaeQtMidiChoice &choice : midiInputChoices()) {
+            midiIn->addItem(choice.display, choice.deviceId);
+            midiIn->setItemData(midiIn->count() - 1, choice.configName, Qt::UserRole + 1);
+        }
         midiRouter = new QCheckBox(QStringLiteral("Route MIDI In to MIDI Out"));
         if (!unixMidiBackendAvailable()) {
             const QString reason = QStringLiteral("Native MIDI is not connected to a Unix backend yet.");
             disableUnavailable(midiOut, reason);
             disableUnavailable(midiIn, reason);
             disableUnavailable(midiRouter, reason);
-        } else {
+        } else if (!unixMidiInputBackendAvailable()) {
             disableUnavailable(midiIn, QStringLiteral("Native MIDI input is not connected to a Unix backend yet."));
             disableUnavailable(midiRouter, QStringLiteral("MIDI routing requires a native MIDI input backend."));
         }
@@ -14496,7 +14608,8 @@ private:
         settings.insert(QStringLiteral("sampler_stereo"), unixSamplerBackendAvailable() && samplerIndex >= 0 && samplerStereo->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
         const int midiOutDevice = unixMidiBackendAvailable() && midiOut ? midiOut->currentData().toInt() : -2;
         settings.insert(QStringLiteral("midiout_device"), QString::number(midiOutDevice));
-        settings.insert(QStringLiteral("midiin_device"), QStringLiteral("-1"));
+        const int midiInDevice = unixMidiInputBackendAvailable() && midiIn ? midiIn->currentData().toInt() : -1;
+        settings.insert(QStringLiteral("midiin_device"), QString::number(midiInDevice));
         QString midiOutName = QStringLiteral("none");
         if (midiOutDevice == -1) {
             midiOutName = QStringLiteral("default");
@@ -14507,8 +14620,16 @@ private:
             }
         }
         settings.insert(QStringLiteral("midiout_device_name"), midiOutName);
-        settings.insert(QStringLiteral("midiin_device_name"), QStringLiteral("none"));
-        settings.insert(QStringLiteral("midirouter"), QStringLiteral("false"));
+        QString midiInName = QStringLiteral("none");
+        if (midiInDevice >= 0 && midiIn) {
+            midiInName = midiIn->currentData(Qt::UserRole + 1).toString();
+            if (midiInName.isEmpty()) {
+                midiInName = midiIn->currentText();
+            }
+        }
+        settings.insert(QStringLiteral("midiin_device_name"), midiInName);
+        const bool midiCanRoute = midiRouter && midiOutDevice >= -1 && midiInDevice >= 0;
+        settings.insert(QStringLiteral("midirouter"), midiCanRoute && midiRouter->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
         const QString serial = serialPort->currentText().trimmed();
         if (!serial.isEmpty()
             && serial != QStringLiteral("<None>")
@@ -16026,9 +16147,15 @@ private:
             if (unixMidiBackendAvailable()) {
                 selectMidiOutByConfigName(value);
             }
-        } else if (key == QStringLiteral("midiin_device") || key == QStringLiteral("midiin_device_name")) {
-            if (midiIn) {
-                midiIn->setCurrentIndex(0);
+        } else if (key == QStringLiteral("midiin_device")) {
+            bool ok = false;
+            const int deviceId = value.toInt(&ok);
+            if (ok) {
+                selectMidiInByDeviceId(unixMidiInputBackendAvailable() ? deviceId : -1);
+            }
+        } else if (key == QStringLiteral("midiin_device_name")) {
+            if (unixMidiInputBackendAvailable()) {
+                selectMidiInByConfigName(value);
             }
         } else if (key == QStringLiteral("midirouter")) {
             midiRouter->setChecked(unixMidiInputBackendAvailable() && configBoolValue(value));
