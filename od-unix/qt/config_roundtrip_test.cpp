@@ -106,6 +106,11 @@ int main()
         + QStringLiteral("# keep this too\n")
         + QStringLiteral("chipset=ecs\n")
         + QStringLiteral("serial_port=TCP:127.0.0.1:1234\n")
+        + QStringLiteral("midiout_device=-2\n")
+        + QStringLiteral("midiout_device_name=none\n")
+        + QStringLiteral("midiin_device=-1\n")
+        + QStringLiteral("midiin_device_name=none\n")
+        + QStringLiteral("midirouter=false\n")
         + QStringLiteral("filesystem2=rw,DH0:Old:/old/System,0\n")
         + QStringLiteral("; keep mount comment\n")
         + QStringLiteral("filesystem2=rw,DH1:Old2:/old/Work,0\n")
@@ -127,6 +132,11 @@ int main()
     edited.insert(QStringLiteral("chipset"), QStringLiteral("aga"));
     edited.insert(QStringLiteral("cpu_model"), QStringLiteral("68020"));
     edited.insert(QStringLiteral("unix.serial_port"), QStringLiteral("TCP://0.0.0.0:1234"));
+    edited.insert(QStringLiteral("midiout_device"), QStringLiteral("-1"));
+    edited.insert(QStringLiteral("midiout_device_name"), QStringLiteral("default"));
+    edited.insert(QStringLiteral("midiin_device"), QStringLiteral("0"));
+    edited.insert(QStringLiteral("midiin_device_name"), QStringLiteral("Loopback MIDI"));
+    edited.insert(QStringLiteral("midirouter"), QStringLiteral("true"));
     edited.insert(QStringLiteral("unix.ui.config_path"), QStringLiteral("/configs"));
     edited.insert(QStringLiteral("unix.screenshot_path"), QStringLiteral("/screenshots"));
     config.applySettings(edited, {
@@ -136,6 +146,11 @@ int main()
         QStringLiteral("cpu_model"),
         QStringLiteral("serial_port"),
         QStringLiteral("unix.serial_port"),
+        QStringLiteral("midiout_device"),
+        QStringLiteral("midiout_device_name"),
+        QStringLiteral("midiin_device"),
+        QStringLiteral("midiin_device_name"),
+        QStringLiteral("midirouter"),
         QStringLiteral("unix.ui.config_path"),
         QStringLiteral("unix.screenshot_path")
     });
@@ -164,6 +179,11 @@ int main()
     ok = requireContains(output, QStringLiteral("chipset=aga\n")) && ok;
     ok = requireContains(output, QStringLiteral("cpu_model=68020\n")) && ok;
     ok = requireContains(output, QStringLiteral("unix.serial_port=TCP://0.0.0.0:1234\n")) && ok;
+    ok = requireContains(output, QStringLiteral("midiout_device=-1\n")) && ok;
+    ok = requireContains(output, QStringLiteral("midiout_device_name=default\n")) && ok;
+    ok = requireContains(output, QStringLiteral("midiin_device=0\n")) && ok;
+    ok = requireContains(output, QStringLiteral("midiin_device_name=Loopback MIDI\n")) && ok;
+    ok = requireContains(output, QStringLiteral("midirouter=true\n")) && ok;
     ok = requireContains(output, QStringLiteral("unix.ui.config_path=/configs\n")) && ok;
     ok = requireContains(output, QStringLiteral("unix.screenshot_path=/screenshots\n")) && ok;
     ok = requireContains(output, QStringLiteral("filesystem2=rw,DH0:System:/new/System,0\n")) && ok;
@@ -173,6 +193,8 @@ int main()
     ok = requireNotContains(output, QStringLiteral("kickstart_ext_rom_file=")) && ok;
     ok = requireNotContains(output, QStringLiteral("/old.rom")) && ok;
     ok = requireNotContains(output, QStringLiteral("serial_port=TCP:127.0.0.1:1234\n")) && ok;
+    ok = requireNotContains(output, QStringLiteral("midiout_device=-2\n")) && ok;
+    ok = requireNotContains(output, QStringLiteral("midiout_device_name=none\n")) && ok;
     ok = requireNotContains(output, QStringLiteral("/old/System")) && ok;
     ok = requireNotContains(output, QStringLiteral("hardfile2=")) && ok;
 
@@ -180,6 +202,9 @@ int main()
     ok = args.contains(QStringLiteral("unknown_setting=keep-me")) && ok;
     ok = args.contains(QStringLiteral("kickstart_rom_file=/new.rom")) && ok;
     ok = args.contains(QStringLiteral("unix.serial_port=TCP://0.0.0.0:1234")) && ok;
+    ok = args.contains(QStringLiteral("midiout_device=-1")) && ok;
+    ok = args.contains(QStringLiteral("midiin_device=0")) && ok;
+    ok = args.contains(QStringLiteral("midirouter=true")) && ok;
     ok = !args.contains(QStringLiteral("unix.ui.config_path=/configs")) && ok;
     ok = args.contains(QStringLiteral("unix.screenshot_path=/screenshots")) && ok;
     ok = args.contains(QStringLiteral("filesystem2=rw,DH0:System:/new/System,0")) && ok;

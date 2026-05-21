@@ -542,11 +542,15 @@ int target_parse_option(struct uae_prefs *p, const TCHAR *option, const TCHAR *v
         return 1;
     }
     if (cfgfile_intval(option, value, _T("midiin_device"), &p->win32_midiindev, 1)) {
+#ifndef WITH_MIDI
         p->win32_midiindev = -1;
+#endif
         return 1;
     }
     if (cfgfile_yesno(option, value, _T("midirouter"), &p->win32_midirouter)) {
+#ifndef WITH_MIDI
         p->win32_midirouter = false;
+#endif
         return 1;
     }
     TCHAR tmpbuf[256];
@@ -559,7 +563,11 @@ int target_parse_option(struct uae_prefs *p, const TCHAR *option, const TCHAR *v
         return 1;
     }
     if (cfgfile_string_escape(option, value, _T("midiin_device_name"), tmpbuf, sizeof tmpbuf / sizeof(TCHAR))) {
+#ifdef WITH_MIDI
+        p->win32_midiindev = unix_midi_input_device_id_from_config_name(tmpbuf);
+#else
         p->win32_midiindev = -1;
+#endif
         return 1;
     }
     if (parse_path_option(option, value, _T("config_path"), path_configuration, sizeof path_configuration / sizeof(TCHAR))
@@ -604,14 +612,15 @@ void target_save_options(struct zfile *f, struct uae_prefs *p)
         }
     }
     cfgfile_target_dwrite(f, _T("midiout_device"), _T("%d"), p->win32_midioutdev);
-    cfgfile_target_dwrite(f, _T("midiin_device"), _T("%d"), -1);
+    cfgfile_target_dwrite(f, _T("midiin_device"), _T("%d"), p->win32_midiindev);
 #ifdef WITH_MIDI
     cfgfile_target_dwrite_str_escape(f, _T("midiout_device_name"), unix_midi_output_device_config_name_for_id(p->win32_midioutdev));
+    cfgfile_target_dwrite_str_escape(f, _T("midiin_device_name"), unix_midi_input_device_config_name_for_id(p->win32_midiindev));
 #else
     cfgfile_target_dwrite_str_escape(f, _T("midiout_device_name"), p->win32_midioutdev == -1 ? _T("default") : _T("none"));
-#endif
     cfgfile_target_dwrite_str_escape(f, _T("midiin_device_name"), _T("none"));
-    cfgfile_target_dwrite_bool(f, _T("midirouter"), false);
+#endif
+    cfgfile_target_dwrite_bool(f, _T("midirouter"), p->win32_midirouter);
     cfgfile_target_dwrite(f, _T("recording_width"), _T("%d"), p->aviout_width);
     cfgfile_target_dwrite(f, _T("recording_height"), _T("%d"), p->aviout_height);
     cfgfile_target_dwrite(f, _T("recording_x"), _T("%d"), p->aviout_xoffset);
@@ -673,8 +682,10 @@ void target_default_options(struct uae_prefs *p, int)
 
 void target_fixup_options(struct uae_prefs *p)
 {
+#ifndef WITH_MIDI
     p->win32_midiindev = -1;
     p->win32_midirouter = false;
+#endif
 }
 
 void target_multipath_modified(struct uae_prefs*)

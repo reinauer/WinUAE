@@ -64,5 +64,10 @@ extern int unix_midi_output_device_id(int index);
 extern const TCHAR *unix_midi_output_device_display_name(int index);
 extern const TCHAR *unix_midi_output_device_config_name_for_id(int devid);
 extern int unix_midi_output_device_id_from_config_name(const TCHAR *name);
+extern int unix_midi_input_device_count(void);
+extern int unix_midi_input_device_id(int index);
+extern const TCHAR *unix_midi_input_device_display_name(int index);
+extern const TCHAR *unix_midi_input_device_config_name_for_id(int devid);
+extern int unix_midi_input_device_id_from_config_name(const TCHAR *name);
 
 #endif
