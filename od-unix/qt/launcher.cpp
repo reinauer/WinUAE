@@ -56,6 +56,10 @@
 #define UAE_UNIX_WITH_UAESCSI 0
 #endif
 
+#ifndef UAE_UNIX_WITH_SANA2
+#define UAE_UNIX_WITH_SANA2 0
+#endif
+
 #ifndef UAE_UNIX_WITH_PRINTER
 #define UAE_UNIX_WITH_PRINTER 0
 #endif
@@ -7260,8 +7264,10 @@ private:
         expansionScsiDevice->setEnabled(false);
         expansionScsiDevice->setToolTip(QStringLiteral("Unix uaescsi.device backend is not enabled in this build yet."));
 #endif
+#if !UAE_UNIX_WITH_SANA2
         expansionSana2->setEnabled(false);
         expansionSana2->setToolTip(QStringLiteral("Unix SANA-II backend is not enabled in this build yet."));
+#endif
         misc->addWidget(expansionBsdsocket, 0, 0);
         misc->addWidget(expansionScsiDevice, 1, 0);
         misc->addWidget(expansionSana2, 0, 1);
@@ -13823,7 +13829,7 @@ private:
         }
         settings.insert(QStringLiteral("bsdsocket_emu"), expansionBsdsocket->isEnabled() && expansionBsdsocket->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
         settings.insert(QStringLiteral("scsi"), expansionScsiDevice->isEnabled() && expansionScsiDevice->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
-        settings.insert(QStringLiteral("sana2"), expansionSana2->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
+        settings.insert(QStringLiteral("sana2"), expansionSana2->isEnabled() && expansionSana2->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
         const int displayIndex = qMax(0, hostDisplay->currentIndex());
         settings.insert(QStringLiteral("gfx_display"), QString::number(displayIndex));
         settings.insert(QStringLiteral("gfx_display_rtg"), QString::number(displayIndex));
@@ -15096,7 +15102,7 @@ private:
             const QString lower = value.toLower();
             expansionScsiDevice->setChecked(expansionScsiDevice->isEnabled() && lower != QStringLiteral("false") && lower != QStringLiteral("0") && !lower.isEmpty());
         } else if (key == QStringLiteral("sana2")) {
-            expansionSana2->setChecked(configBoolValue(value));
+            expansionSana2->setChecked(expansionSana2->isEnabled() && configBoolValue(value));
         } else if (key == QStringLiteral("unix.soundcard") || key == QStringLiteral("soundcard")) {
             bool ok = false;
             const int index = value.toInt(&ok);

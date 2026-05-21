@@ -7,6 +7,7 @@ EXE=${WINUAE_EXE:-"$BUILD_DIR/winuae_unix"}
 LOG=${WINUAE_SMOKE_LOG:-/tmp/winuae_unix_smoke.log}
 RUN_SECONDS=${WINUAE_SMOKE_SECONDS:-5}
 A2065=${WINUAE_SMOKE_A2065:-0}
+SANA2=${WINUAE_SMOKE_SANA2:-0}
 RTG_Z3=${WINUAE_SMOKE_RTG_Z3:-0}
 UAEGFX=${WINUAE_SMOKE_UAEGFX:-0}
 UAEGFX_DRIVER=${WINUAE_SMOKE_UAEGFX_DRIVER:-0}
@@ -45,6 +46,9 @@ export SDL_AUDIODRIVER SDL_VIDEODRIVER
 set -- "$@"
 if [ "$A2065" = "1" ]; then
     set -- "$@" -s a2065=slirp
+fi
+if [ "$SANA2" = "1" ]; then
+    set -- "$@" -s sana2=true
 fi
 if [ "$RTG_Z3" = "1" ]; then
     set -- "$@" \
@@ -87,6 +91,10 @@ grep -q "SDL3: audio initialized" "$LOG"
 grep -q "hardreset, memory cleared" "$LOG"
 if [ "$A2065" = "1" ]; then
     grep -q "A2065" "$LOG"
+fi
+if [ "$SANA2" = "1" ]; then
+    grep -q "uaenet.device reset" "$LOG"
+    grep -q "SLIRP User Mode NAT" "$LOG"
 fi
 if [ "$RTG_Z3" = "1" ]; then
     grep -q "UAE RTG" "$LOG"
