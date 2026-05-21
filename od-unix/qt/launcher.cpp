@@ -8,6 +8,16 @@
 #include <algorithm>
 #include <cstdio>
 #include <functional>
+#if defined(__APPLE__) || defined(__linux__)
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/ioctl.h>
+#endif
+#if defined(__APPLE__)
+#include <sys/disk.h>
+#elif defined(__linux__)
+#include <linux/fs.h>
+#endif
 
 #ifdef UAE_UNIX_WITH_SDL3
 #define SDL_MAIN_HANDLED
@@ -99,6 +109,18 @@
 
 #ifndef UAE_UNIX_WITH_NATIVE_MEDIA
 #define UAE_UNIX_WITH_NATIVE_MEDIA 0
+#endif
+
+#ifndef UAE_UNIX_WITH_NATIVE_HARDDRIVES
+#define UAE_UNIX_WITH_NATIVE_HARDDRIVES UAE_UNIX_WITH_NATIVE_MEDIA
+#endif
+
+#ifndef UAE_UNIX_WITH_NATIVE_CD
+#define UAE_UNIX_WITH_NATIVE_CD 0
+#endif
+
+#ifndef UAE_UNIX_WITH_NATIVE_TAPE
+#define UAE_UNIX_WITH_NATIVE_TAPE 0
 #endif
 
 #ifndef UAE_UNIX_WITH_CPUBOARD
@@ -215,9 +237,27 @@ static bool unixArchiveBackendAvailable()
 #endif
 }
 
-static bool unixNativeMediaBackendAvailable()
+static bool unixNativeHardDriveBackendAvailable()
 {
-#if UAE_UNIX_WITH_NATIVE_MEDIA
+#if UAE_UNIX_WITH_NATIVE_HARDDRIVES
+    return true;
+#else
+    return false;
+#endif
+}
+
+static bool unixNativeCdBackendAvailable()
+{
+#if UAE_UNIX_WITH_NATIVE_CD
+    return true;
+#else
+    return false;
+#endif
+}
+
+static bool unixNativeTapeBackendAvailable()
+{
+#if UAE_UNIX_WITH_NATIVE_TAPE
     return true;
 #else
     return false;
@@ -3656,6 +3696,116 @@ static QString hardfileImageFilter()
 static QString directoryArchiveFilter()
 {
     return QStringLiteral("Directory archives (*.zip *.lha *.lzx);;All files (*)");
+}
+
+struct WinUaeQtNativeDriveChoice {
+    QString display;
+    QString configPath;
+    quint64 size = 0;
+    int blockSize = 512;
+};
+
+static QString formatNativeDriveSize(quint64 bytes)
+{
+    if (bytes >= 1024ULL * 1024ULL * 1024ULL) {
+        return QStringLiteral("%1G").arg(double(bytes) / (1024.0 * 1024.0 * 1024.0), 0, 'f', 1);
+    }
+    if (bytes >= 1024ULL * 1024ULL) {
+        return QStringLiteral("%1M").arg(double(bytes) / (1024.0 * 1024.0), 0, 'f', 1);
+    }
+    return QStringLiteral("%1K").arg(bytes / 1024ULL);
+}
+
+static bool queryNativeDriveGeometry(const QString &path, quint64 *size, int *blockSize)
+{
+    if (size) {
+        *size = 0;
+    }
+    if (blockSize) {
+        *blockSize = 512;
+    }
+#if defined(__APPLE__) || defined(__linux__)
+    const QByteArray localPath = QFile::encodeName(path);
+    const int fd = open(localPath.constData(), O_RDONLY | O_CLOEXEC);
+    if (fd < 0) {
+        return false;
+    }
+#if defined(__APPLE__)
+    uint32_t nativeBlockSize = 512;
+    uint64_t nativeBlockCount = 0;
+    if (ioctl(fd, DKIOCGETBLOCKSIZE, &nativeBlockSize) == 0 && nativeBlockSize > 0 && blockSize) {
+        *blockSize = int(nativeBlockSize);
+    }
+    if (ioctl(fd, DKIOCGETBLOCKCOUNT, &nativeBlockCount) == 0 && size) {
+        *size = nativeBlockCount * quint64(blockSize ? *blockSize : int(nativeBlockSize));
+    }
+#elif defined(__linux__)
+    unsigned long long nativeSize = 0;
+    int nativeBlockSize = 512;
+    if (ioctl(fd, BLKSSZGET, &nativeBlockSize) == 0 && nativeBlockSize > 0 && blockSize) {
+        *blockSize = nativeBlockSize;
+    }
+    if (ioctl(fd, BLKGETSIZE64, &nativeSize) == 0 && size) {
+        *size = quint64(nativeSize);
+    }
+#endif
+    close(fd);
+    return size && *size > 0;
+#else
+    Q_UNUSED(path);
+    return false;
+#endif
+}
+
+static void appendNativeDriveChoice(QVector<WinUaeQtNativeDriveChoice> *choices, QSet<QString> *seen, const QString &path, const QString &name)
+{
+    if (!choices || !seen || seen->contains(path)) {
+        return;
+    }
+    quint64 size = 0;
+    int blockSize = 512;
+    if (!queryNativeDriveGeometry(path, &size, &blockSize)) {
+        return;
+    }
+    seen->insert(path);
+    WinUaeQtNativeDriveChoice choice;
+    choice.size = size;
+    choice.blockSize = blockSize;
+    choice.configPath = QStringLiteral(":%1").arg(path);
+    choice.display = QStringLiteral("[OS] [%1,RO] %2").arg(formatNativeDriveSize(size), path);
+    if (!name.isEmpty() && name != path) {
+        choice.display += QStringLiteral(" (%1)").arg(name);
+    }
+    choices->append(choice);
+}
+
+static QVector<WinUaeQtNativeDriveChoice> nativeHardDriveChoices()
+{
+    QVector<WinUaeQtNativeDriveChoice> choices;
+    QSet<QString> seen;
+#if UAE_UNIX_WITH_NATIVE_HARDDRIVES
+#if defined(__APPLE__)
+    const QDir dev(QStringLiteral("/dev"));
+    for (const QString &name : dev.entryList({ QStringLiteral("rdisk*") }, QDir::System | QDir::Files, QDir::Name)) {
+        if (name.mid(5).contains(QLatin1Char('s'))) {
+            continue;
+        }
+        appendNativeDriveChoice(&choices, &seen, dev.absoluteFilePath(name), name);
+    }
+#elif defined(__linux__)
+    const QDir sysBlock(QStringLiteral("/sys/block"));
+    for (const QString &name : sysBlock.entryList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name)) {
+        if (name.startsWith(QStringLiteral("loop"))
+            || name.startsWith(QStringLiteral("ram"))
+            || name.startsWith(QStringLiteral("zram"))
+            || name.startsWith(QStringLiteral("dm-"))) {
+            continue;
+        }
+        appendNativeDriveChoice(&choices, &seen, QStringLiteral("/dev/%1").arg(name), name);
+    }
+#endif
+#endif
+    return choices;
 }
 
 static bool genlockModeUsesImageFile(const QString &mode)
@@ -7138,9 +7288,13 @@ private:
         buttons->addWidget(propertiesMountButton, 1, 2);
         buttons->addWidget(removeMountButton, 1, 3);
         root->addLayout(buttons);
-        if (!unixNativeMediaBackendAvailable()) {
+        if (!unixNativeHardDriveBackendAvailable()) {
             disableUnavailable(addHardDriveMountButton, QStringLiteral("Native Unix hard drive enumeration is not implemented yet; use image-backed hardfiles or directory mounts."));
+        }
+        if (!unixNativeCdBackendAvailable()) {
             disableUnavailable(addCdMountButton, QStringLiteral("Native Unix CD/DVD drive enumeration is not implemented yet; use the image-backed optical media selector below."));
+        }
+        if (!unixNativeTapeBackendAvailable()) {
             disableUnavailable(addTapeMountButton, QStringLiteral("Native Unix tape drive enumeration is not implemented yet."));
         }
 
@@ -12940,15 +13094,67 @@ private:
 
     void addHardDriveMountDialog()
     {
-        QMessageBox::information(
-            this,
-            QStringLiteral("Add Hard Drive"),
-            QStringLiteral("Native Unix hard drive enumeration is not implemented yet. The Windows dialog uses a Win32 physical-drive backend; Unix needs a separate block-device backend before this can safely add host disks."));
+        if (!unixNativeHardDriveBackendAvailable()) {
+            QMessageBox::information(
+                this,
+                QStringLiteral("Add Hard Drive"),
+                QStringLiteral("Native Unix hard drive enumeration is not implemented yet. The Windows dialog uses a Win32 physical-drive backend; Unix needs a separate block-device backend before this can safely add host disks."));
+            return;
+        }
+
+        const QVector<WinUaeQtNativeDriveChoice> choices = nativeHardDriveChoices();
+        if (choices.isEmpty()) {
+            QMessageBox::information(
+                this,
+                QStringLiteral("Add Hard Drive"),
+                QStringLiteral("No readable Unix block devices were found. On macOS and Linux, raw device access may require adjusted permissions."));
+            return;
+        }
+
+        QDialog dialog(this);
+        dialog.setWindowTitle(QStringLiteral("Add Hard Drive"));
+        QComboBox *drive = new QComboBox;
+        for (const WinUaeQtNativeDriveChoice &choice : choices) {
+            drive->addItem(choice.display, choice.configPath);
+        }
+        QLabel *notice = new QLabel(QStringLiteral("Native drives are opened read-only by the Unix backend."));
+        notice->setWordWrap(true);
+        QDialogButtonBox *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+        QVBoxLayout *root = new QVBoxLayout(&dialog);
+        QGridLayout *fields = new QGridLayout;
+        fields->setColumnStretch(1, 1);
+        fields->addWidget(label(QStringLiteral("Drive:")), 0, 0);
+        fields->addWidget(drive, 0, 1);
+        root->addLayout(fields);
+        root->addWidget(notice);
+        root->addWidget(buttons);
+        connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+        connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+        if (dialog.exec() != QDialog::Accepted) {
+            return;
+        }
+
+        const int index = drive->currentIndex();
+        if (index < 0 || index >= choices.size()) {
+            return;
+        }
+        const WinUaeQtNativeDriveChoice &choice = choices[index];
+        WinUaeQtMountEntry entry;
+        entry.kind = QStringLiteral("hdf");
+        entry.path = choice.configPath;
+        entry.device.clear();
+        entry.bootPri = 0;
+        entry.readOnly = true;
+        entry.hardfileGeometry = QStringLiteral("0,0,0,%1").arg(qMax(1, choice.blockSize));
+        entry.hardfileTail = QStringLiteral(",uae0");
+        if (showHardfileMountDialog(&entry, QStringLiteral("Hard Drive Properties"))) {
+            addMountEntry(entry);
+        }
     }
 
     void addCdDriveMountDialog()
     {
-        if (!unixNativeMediaBackendAvailable()) {
+        if (!unixNativeCdBackendAvailable()) {
             QMessageBox::information(
                 this,
                 QStringLiteral("Add CD Drive"),
@@ -12970,7 +13176,7 @@ private:
 
     void addTapeDriveMountDialog()
     {
-        if (!unixNativeMediaBackendAvailable()) {
+        if (!unixNativeTapeBackendAvailable()) {
             QMessageBox::information(
                 this,
                 QStringLiteral("Add Tape Drive"),
@@ -13117,13 +13323,13 @@ private:
             addHardfileMountButton->setEnabled(canAdd);
         }
         if (addHardDriveMountButton) {
-            addHardDriveMountButton->setEnabled(canAdd && unixNativeMediaBackendAvailable());
+            addHardDriveMountButton->setEnabled(canAdd && unixNativeHardDriveBackendAvailable());
         }
         if (addCdMountButton) {
-            addCdMountButton->setEnabled(canAdd && unixNativeMediaBackendAvailable());
+            addCdMountButton->setEnabled(canAdd && unixNativeCdBackendAvailable());
         }
         if (addTapeMountButton) {
-            addTapeMountButton->setEnabled(canAdd && unixNativeMediaBackendAvailable());
+            addTapeMountButton->setEnabled(canAdd && unixNativeTapeBackendAvailable());
         }
         if (propertiesMountButton) {
             propertiesMountButton->setEnabled(!mountedDrives->selectedItems().isEmpty());
@@ -13471,11 +13677,20 @@ private:
             featureLevel->setEnabled(bus == MountControllerBusIde || bus == MountControllerBusScsi);
             mediaType->setEnabled(bus == MountControllerBusIde);
         };
+        auto updateNativeDriveControls = [path, readWrite, browse]() {
+            const bool nativeDrive = path->text().trimmed().startsWith(QLatin1Char(':'));
+            if (nativeDrive) {
+                readWrite->setChecked(false);
+            }
+            readWrite->setEnabled(!nativeDrive);
+            browse->setEnabled(!nativeDrive);
+        };
 
         updateBootChecks();
         updatePhysicalControls();
         updateControllerUnitRange(controllerUnit, controller->currentText());
         setFeatureItems(hardfileFeatureText(*entry, controller->currentText()));
+        updateNativeDriveControls();
 
         connect(browse, &QPushButton::clicked, this, [this, path]() {
             const QString initialPath = path->text().isEmpty() ? QDir::homePath() : expandedPathText(path->text());
@@ -13538,6 +13753,7 @@ private:
             updateControllerUnitRange(controllerUnit, text);
             setFeatureItems(QStringLiteral("Default"));
         });
+        connect(path, &QLineEdit::editingFinished, this, updateNativeDriveControls);
         connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
         connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
 
@@ -13549,7 +13765,7 @@ private:
         entry->device = winUaeQtSanitizedAmigaName(device->text(), nextMountDeviceName(), true);
         entry->path = path->text().trimmed();
         entry->bootPri = bootPri->value();
-        entry->readOnly = !readWrite->isChecked();
+        entry->readOnly = !readWrite->isChecked() || entry->path.startsWith(QLatin1Char(':'));
         entry->hardfileGeometry = QStringLiteral("%1,%2,%3,%4")
             .arg(sectors->value())
             .arg(surfaces->value())
