@@ -169,12 +169,14 @@ struct zfile *archive_getzfile(struct znode *, unsigned int, int) { return NULL;
 int isfat(uae_u8 *) { return 0; }
 #endif
 
+#ifndef SCSIEMU
 int scsi_do_disk_change(int, int, int *pollmode) { if (pollmode) *pollmode = 0; return 0; }
 uae_u32 scsi_get_cd_drive_mask(void) { return 0; }
 uae_u32 scsi_get_cd_drive_media_mask(void) { return 0; }
 int scsi_add_tape(struct uaedev_config_info *) { return -1; }
 uae_u8 *save_scsidev(int, size_t *len, uae_u8 *dst) { if (len) *len = 0; return dst; }
 uae_u8 *restore_scsidev(uae_u8 *src) { return src; }
+#endif
 
 a_inode *custom_fsdb_lookup_aino_aname(a_inode *, const TCHAR *) { return NULL; }
 a_inode *custom_fsdb_lookup_aino_nname(a_inode *, const TCHAR *) { return NULL; }
