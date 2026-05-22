@@ -36,6 +36,52 @@ function(winuae_unix_imported_location target out_var)
     set("${out_var}" "" PARENT_SCOPE)
 endfunction()
 
+function(winuae_unix_macos_find_qt_frameworks out_var)
+    set(prefix_candidates ${CMAKE_PREFIX_PATH})
+    if(WINUAE_UNIX_MACOS_DEPS_PREFIX)
+        list(APPEND prefix_candidates "${WINUAE_UNIX_MACOS_DEPS_PREFIX}")
+    endif()
+    list(REMOVE_DUPLICATES prefix_candidates)
+
+    foreach(prefix IN LISTS prefix_candidates)
+        if(EXISTS "${prefix}/lib/QtWidgets.framework/QtWidgets"
+                AND EXISTS "${prefix}/lib/QtGui.framework/QtGui"
+                AND EXISTS "${prefix}/lib/QtCore.framework/QtCore")
+            if(NOT TARGET winuae_unix_qt_frameworks)
+                add_library(winuae_unix_qt_frameworks INTERFACE)
+                target_include_directories(winuae_unix_qt_frameworks INTERFACE
+                    "${prefix}/lib/QtWidgets.framework/Headers"
+                    "${prefix}/lib/QtGui.framework/Headers"
+                    "${prefix}/lib/QtCore.framework/Headers"
+                )
+                target_compile_definitions(winuae_unix_qt_frameworks INTERFACE
+                    QT_WIDGETS_LIB
+                    QT_GUI_LIB
+                    QT_CORE_LIB
+                )
+                target_compile_options(winuae_unix_qt_frameworks INTERFACE
+                    "-F${prefix}/lib"
+                )
+                target_link_options(winuae_unix_qt_frameworks INTERFACE
+                    "-F${prefix}/lib"
+                )
+                target_link_libraries(winuae_unix_qt_frameworks INTERFACE
+                    "${prefix}/lib/QtWidgets.framework"
+                    "${prefix}/lib/QtGui.framework"
+                    "${prefix}/lib/QtCore.framework"
+                )
+            endif()
+            if(EXISTS "${prefix}/bin/macdeployqt")
+                set(MACDEPLOYQT_EXECUTABLE "${prefix}/bin/macdeployqt" CACHE FILEPATH "macdeployqt executable" FORCE)
+            endif()
+            set("${out_var}" winuae_unix_qt_frameworks PARENT_SCOPE)
+            return()
+        endif()
+    endforeach()
+
+    set("${out_var}" "" PARENT_SCOPE)
+endfunction()
+
 option(WINUAE_UNIX_BUILD_EXECUTABLE "Link the initial Unix command-line executable" ON)
 option(WINUAE_UNIX_WITH_SDL3 "Build the Unix SDL3 video/audio backend" ON)
 option(WINUAE_UNIX_WITH_SLIRP "Build built-in SLIRP user-mode networking and A2065 Ethernet support" ON)
@@ -71,6 +117,12 @@ set(WINUAE_UNIX_VERSION "${WINUAE_UNIX_VERSION_MAJOR}.${WINUAE_UNIX_VERSION_MINO
 
 find_package(ZLIB REQUIRED)
 if(WINUAE_UNIX_WITH_LIBPNG)
+    if(APPLE AND CMAKE_PREFIX_PATH)
+        unset(PNG_LIBRARY CACHE)
+        unset(PNG_LIBRARY_RELEASE CACHE)
+        unset(PNG_LIBRARY_DEBUG CACHE)
+        unset(PNG_PNG_INCLUDE_DIR CACHE)
+    endif()
     find_package(PNG QUIET)
 endif()
 find_package(PkgConfig QUIET)
@@ -801,10 +853,16 @@ target_link_libraries(winuae_unix_threading_test PRIVATE pthread)
 winuae_unix_register_test(winuae_unix_threading_test)
 
 if(WINUAE_UNIX_WITH_QT_UI OR WINUAE_UNIX_WITH_INTEGRATED_QT_UI)
-    find_package(Qt6 COMPONENTS Widgets QUIET)
-    if(Qt6_FOUND)
-        set(WINUAE_UNIX_QT_WIDGETS_TARGET Qt6::Widgets)
-    else()
+    if(APPLE)
+        winuae_unix_macos_find_qt_frameworks(WINUAE_UNIX_QT_WIDGETS_TARGET)
+    endif()
+    if(NOT WINUAE_UNIX_QT_WIDGETS_TARGET)
+        find_package(Qt6 COMPONENTS Widgets QUIET)
+        if(Qt6_FOUND)
+            set(WINUAE_UNIX_QT_WIDGETS_TARGET Qt6::Widgets)
+        endif()
+    endif()
+    if(NOT WINUAE_UNIX_QT_WIDGETS_TARGET)
         find_package(Qt5 COMPONENTS Widgets QUIET)
         if(Qt5_FOUND)
             set(WINUAE_UNIX_QT_WIDGETS_TARGET Qt5::Widgets)
