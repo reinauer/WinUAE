@@ -39,7 +39,9 @@ int p96refresh_active;
 int max_uae_width = 8192;
 int max_uae_height = 8192;
 int pissoff_nojit_value = 160 * CYCLE_UNIT;
+#ifndef BSDSOCKET
 volatile int bsd_int_requested;
+#endif
 
 void machdep_free(void) {}
 void protect_roms(bool) {}
@@ -65,7 +67,9 @@ bool audio_finish_pull(void) { return false; }
 void save_log_open(void) {}
 void update_debug_info(void) {}
 void statusline_updated(int) {}
+#ifndef BSDSOCKET
 void bsdsock_fake_int_handler(void) { bsd_int_requested = 0; }
+#endif
 
 uae_u8 *save_screenshot(int, size_t *len)
 {
