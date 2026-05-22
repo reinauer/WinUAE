@@ -1,6 +1,8 @@
 #include "sysconfig.h"
 #include "sysdeps.h"
 
+#include "uae.h"
+
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
@@ -195,6 +197,21 @@ void console_flush(void) { flush_log(); }
 int console_get(TCHAR *, int) { return 0; }
 bool console_isch(void) { return false; }
 TCHAR console_getch(void) { return 0; }
+
+void jit_abort(const char *format, ...)
+{
+    char buffer[4096];
+
+    va_list ap;
+    va_start(ap, format);
+    vsnprintf(buffer, sizeof(buffer), format, ap);
+    va_end(ap);
+    buffer[sizeof(buffer) - 1] = 0;
+
+    write_log("JIT: Serious error: %s\n", buffer);
+    uae_reset(1, 0);
+}
+
 void f_out(void *, const TCHAR *format, ...)
 {
     va_list ap;
