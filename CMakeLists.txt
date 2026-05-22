@@ -86,7 +86,7 @@ option(WINUAE_UNIX_BUILD_EXECUTABLE "Link the initial Unix command-line executab
 option(WINUAE_UNIX_WITH_SDL3 "Build the Unix SDL3 video/audio backend" ON)
 option(WINUAE_UNIX_WITH_SLIRP "Build built-in SLIRP user-mode networking and A2065 Ethernet support" ON)
 option(WINUAE_UNIX_WITH_SANA2 "Build uaenet.device SANA-II networking on top of the Unix Ethernet backend" ON)
-option(WINUAE_UNIX_WITH_UAENET_PCAP "Build native libpcap packet networking for A2065 and uaenet.device" ON)
+option(WINUAE_UNIX_WITH_UAENET_PCAP "Build native libpcap and TAP/TUN packet networking for A2065 and uaenet.device" ON)
 option(WINUAE_UNIX_WITH_NCR_SCSI "Build NCR/NCR9x SCSI controller emulation" ON)
 option(WINUAE_UNIX_WITH_PROWIZARD "Build Pro-Wizard module ripper support" ON)
 option(WINUAE_UNIX_WITH_QT_UI "Build the optional Unix Qt launcher/config UI" ON)
