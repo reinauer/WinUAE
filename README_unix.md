@@ -16,8 +16,9 @@ This is an early macOS/Linux port of the WinUAE source tree. The current Unix bu
 - When opened during emulation, the integrated Qt Output page can play, start/stop, and save core input re-recordings. The standalone launcher keeps these runtime actions disabled.
 - The Qt Paths page now writes real Unix target path settings for configuration files, NVRAM, screenshots, videos, save images, rips, data, and ROMs, so runtime helpers use the configured directories. Older `unix.ui.*` path keys are still read for compatibility.
 - Native Unix serial support is available for POSIX serial devices and TCP listener endpoints.
-- A2065 Ethernet and SANA-II `uaenet.device` can use the built-in SLIRP user-mode NAT backend.
-- ARM64 Unix builds enable the first Amiberry-derived AArch64 JIT backend by default. macOS uses `MAP_JIT` plus write/execute protection switching.
+- A2065 Ethernet and SANA-II `uaenet.device` can use the built-in SLIRP user-mode NAT backend, libpcap-backed native packet adapters, and direct TAP/TUN devices where the host exposes them.
+- Unix JIT is wired for ARM64 and x86_64 hosts. macOS uses `MAP_JIT` plus write/execute protection switching where required.
+- Native CD/DVD access is available on macOS and Linux; Linux builds also include SG_IO direct SCSI/tape passthrough when `WINUAE_UNIX_WITH_NATIVE_SCSI` is enabled.
 - The shared Toccata/Prelude/UAESND sound-board backend is built by default, with SDL3 host capture hooks when SDL3 is available.
 - UAE Zorro II/Zorro III RTG RAM can be configured and autoconfigured, with an initial Unix `uaegfx.card` install path and guest Picasso96 monitor-driver smoke coverage, including 8-bit Workbench mode open and direct 15-bit/16-bit/24-bit/32-bit P96 screen-open tests. Accelerated RTG operations are still incomplete.
 - The Qt Expansions page can enable common Zorro/expansion board ROM entries, non-PPC CPU boards, and shared sound boards using the same `*_rom_file`, `*_rom_options`, and CPU-board keys as WinUAE.
@@ -467,7 +468,13 @@ export WINUAE_SMOKE_LOG=/tmp/winuae_unix_smoke.log
 -DWINUAE_UNIX_WITH_SDL3=ON
 -DWINUAE_UNIX_WITH_SLIRP=ON
 -DWINUAE_UNIX_WITH_SANA2=ON
+-DWINUAE_UNIX_WITH_UAENET_PCAP=ON
 -DWINUAE_UNIX_WITH_NCR_SCSI=ON
+-DWINUAE_UNIX_WITH_BSDSOCKET=ON
+-DWINUAE_UNIX_WITH_UAESCSI=ON
+-DWINUAE_UNIX_WITH_UAESERIAL=ON
+-DWINUAE_UNIX_WITH_NATIVE_CD=ON
+-DWINUAE_UNIX_WITH_NATIVE_SCSI=ON
 -DWINUAE_UNIX_WITH_CHD=ON
 -DWINUAE_UNIX_WITH_CHD_FLAC=ON
 -DWINUAE_UNIX_WITH_JIT=ON
@@ -480,9 +487,12 @@ export WINUAE_SMOKE_LOG=/tmp/winuae_unix_smoke.log
 `WINUAE_UNIX_WITH_SDL3` is enabled by default. If SDL3 is not found through CMake package discovery or pkg-config, the build currently falls back to the null video presenter.
 `WINUAE_UNIX_WITH_SLIRP` is enabled by default and builds the bundled SLIRP backend plus A2065 emulation.
 `WINUAE_UNIX_WITH_SANA2` is enabled by default and builds `uaenet.device` on top of the Unix Ethernet backend when SLIRP is also enabled.
+`WINUAE_UNIX_WITH_UAENET_PCAP` is enabled by default and builds native packet networking through libpcap plus direct TAP/TUN entries (`tap:<ifname>` / `tun:<ifname>`) where the host provides them.
 `WINUAE_UNIX_WITH_NCR_SCSI` is enabled by default and builds the NCR/NCR9x SCSI controller emulation used by boards such as A4091. ROM-backed controller boards still need a valid board ROM path in the config.
+`WINUAE_UNIX_WITH_BSDSOCKET`, `WINUAE_UNIX_WITH_UAESCSI`, and `WINUAE_UNIX_WITH_UAESERIAL` are enabled by default and build the shared Amiga-side devices against Unix host backends.
+`WINUAE_UNIX_WITH_NATIVE_CD` is enabled by default and builds native CD/DVD access on macOS and Linux. `WINUAE_UNIX_WITH_NATIVE_SCSI` is enabled by default on Linux and adds SG_IO direct SCSI/tape passthrough through the same device slot Windows uses for SPTI; macOS general SCSI/tape passthrough still needs a SCSITaskLib backend.
 `WINUAE_UNIX_WITH_CHD` is enabled by default and builds CHD hardfile/CD image support. `WINUAE_UNIX_WITH_CHD_FLAC` is also enabled by default, but macOS builds skip FLAC codecs if the available libFLAC was built for a newer deployment target.
-`WINUAE_UNIX_WITH_JIT` is enabled by default on ARM64 builds and currently builds the Amiberry-derived AArch64 JIT backend. It is disabled on non-ARM64 Unix targets until those backends are wired.
+`WINUAE_UNIX_WITH_JIT` is enabled by default where the Unix host backend is wired, including ARM64 and x86_64.
 `WINUAE_UNIX_WITH_SNDBOARD` is enabled by default and builds the shared Toccata/Prelude/UAESND sound-board backend. PCI sound devices remain part of the future PCI bridgeboard work.
 `WINUAE_UNIX_WITH_PROWIZARD` is enabled by default and builds the same Pro Wizard source set used by the Windows project.
 `WINUAE_UNIX_WITH_QT_UI` is enabled by default, but the `winuae_unix_qt` target is skipped when Qt Widgets is not installed.
