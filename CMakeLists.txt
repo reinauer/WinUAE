@@ -99,6 +99,13 @@ option(WINUAE_UNIX_WITH_SAMPLER "Build SDL3 recording support for the parallel-p
 option(WINUAE_UNIX_WITH_NATIVE_HARDDRIVES "Build Unix raw hard-drive enumeration and read-only open support" ON)
 option(WINUAE_UNIX_WITH_MIDI "Build native Unix MIDI support" ON)
 option(WINUAE_UNIX_WITH_CPUBOARD "Build shared non-PPC CPU accelerator board support" ON)
+option(WINUAE_UNIX_WITH_SNDBOARD "Build shared Toccata/Prelude/UAESND sound-board support" ON)
+
+set(WINUAE_UNIX_WITH_JIT_DEFAULT OFF)
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64)$")
+    set(WINUAE_UNIX_WITH_JIT_DEFAULT ON)
+endif()
+option(WINUAE_UNIX_WITH_JIT "Build JIT support for Unix targets where a backend is available" ${WINUAE_UNIX_WITH_JIT_DEFAULT})
 
 set(WINUAE_UNIX_VERSION_MAJOR 0)
 set(WINUAE_UNIX_VERSION_MINOR 0)
@@ -176,6 +183,8 @@ set(WINUAE_UNIX_ENABLE_SAMPLER OFF)
 set(WINUAE_UNIX_ENABLE_NATIVE_HARDDRIVES OFF)
 set(WINUAE_UNIX_ENABLE_MIDI OFF)
 set(WINUAE_UNIX_ENABLE_CPUBOARD OFF)
+set(WINUAE_UNIX_ENABLE_SNDBOARD OFF)
+set(WINUAE_UNIX_ENABLE_JIT OFF)
 set(WINUAE_UNIX_MIDI_LIBRARIES)
 set(WINUAE_UNIX_MIDI_INCLUDE_DIRS)
 set(WINUAE_UNIX_MIDI_LIBRARY_DIRS)
@@ -368,6 +377,35 @@ if(WINUAE_UNIX_WITH_CPUBOARD)
     set(WINUAE_UNIX_ENABLE_CPUBOARD ON)
     target_compile_definitions(winuae_core PRIVATE WITH_CPUBOARD=1)
     list(APPEND WINUAE_UNIX_EXTRA_SOURCES cpuboard.cpp)
+endif()
+
+if(WINUAE_UNIX_WITH_SNDBOARD)
+    set(WINUAE_UNIX_ENABLE_SNDBOARD ON)
+    target_compile_definitions(winuae_core PRIVATE WITH_SNDBOARD=1 WITH_TOCCATA=1)
+    list(APPEND WINUAE_UNIX_EXTRA_SOURCES
+        sndboard.cpp
+        od-unix/sndboard_host.cpp
+    )
+endif()
+
+if(WINUAE_UNIX_WITH_JIT)
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64)$")
+        set(WINUAE_UNIX_ENABLE_JIT ON)
+        target_compile_definitions(winuae_core PRIVATE
+            JIT=1
+            USE_JIT_FPU=1
+            NOFLAGS_SUPPORT_GENCOMP=1
+            CPU_AARCH64=1
+        )
+        list(APPEND WINUAE_UNIX_EXTRA_SOURCES
+            jit/compemu.cpp
+            jit/compemu_fpp.cpp
+            jit/compemu_support.cpp
+            jit/compstbl.cpp
+        )
+    else()
+        message(STATUS "JIT is currently enabled only for Unix ARM64 builds; disabling JIT for ${CMAKE_SYSTEM_PROCESSOR}")
+    endif()
 endif()
 
 if(WINUAE_UNIX_WITH_SLIRP)
@@ -898,6 +936,8 @@ if(WINUAE_UNIX_WITH_QT_UI OR WINUAE_UNIX_WITH_INTEGRATED_QT_UI)
             UAE_UNIX_WITH_NATIVE_HARDDRIVES=$<BOOL:${WINUAE_UNIX_ENABLE_NATIVE_HARDDRIVES}>
             UAE_UNIX_WITH_MIDI=$<BOOL:${WINUAE_UNIX_ENABLE_MIDI}>
             UAE_UNIX_WITH_CPUBOARD=$<BOOL:${WINUAE_UNIX_ENABLE_CPUBOARD}>
+            UAE_UNIX_WITH_SNDBOARD=$<BOOL:${WINUAE_UNIX_ENABLE_SNDBOARD}>
+            UAE_UNIX_WITH_JIT=$<BOOL:${WINUAE_UNIX_ENABLE_JIT}>
             UAE_UNIX_WITH_SERIAL_DIRECT=1
             ${WINUAE_UNIX_MIDI_QT_DEFINITIONS}
         )

@@ -98,6 +98,10 @@
 #define UAE_UNIX_WITH_MIDI 0
 #endif
 
+#ifndef UAE_UNIX_WITH_SNDBOARD
+#define UAE_UNIX_WITH_SNDBOARD 0
+#endif
+
 #ifndef UAE_UNIX_WITH_UAESERIAL
 #define UAE_UNIX_WITH_UAESERIAL 0
 #endif
@@ -3283,9 +3287,58 @@ static bool unixExpansionBoardBackendAvailable(const QString &boardKey)
     static const char *available[] = {
         "a2091",
         "a4091",
+        "a2090a",
+        "a2090b",
+        "add500",
+        "addhard",
+        "adide",
+        "adscsi2000",
         "alfapower",
+        "alfapowerplus",
+        "apollo",
+        "buddha",
+        "comspec",
+        "dataflyerplus",
+        "dataflyerscsiplus",
+        "fastata4000",
+        "fastlane",
+        "gvp",
+        "gvp1",
+        "gvpa1208",
+        "hardframe",
+        "oktagon2008",
+        "pcmciaide",
+        "rapidfire",
         "ripple",
-        "a2065"
+        "supradrive",
+        "surfsquirrel",
+        "tandem",
+        "trifecta",
+        "trumpcard",
+        "trumpcardat",
+        "trumpcardpro",
+        "picassoiv",
+        "merlin",
+        "harlequin",
+        "rainbowii",
+        "a2065",
+        "ariadne",
+        "cd32fmv",
+        "cdtvdmac",
+        "cdtvscsi",
+        "cdtvsram",
+        "cdtvcr",
+        "a1000wom512k",
+        "pcmciasram",
+#if UAE_UNIX_WITH_SNDBOARD
+        "prelude",
+        "prelude1200",
+        "toccata",
+        "uaesnd_z2",
+        "uaesnd_z3",
+        "uaeboard_z2",
+        "uaeboard_z3",
+#endif
     };
     for (const char *key : available) {
         if (boardKey.compare(QString::fromLatin1(key), Qt::CaseInsensitive) == 0) {

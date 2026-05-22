@@ -6,8 +6,8 @@
 #include "uae/mman.h"
 
 bool jit_direct_compatible_memory;
-uae_u32 max_z3fastmem = 256 * 1024 * 1024;
-uae_u32 max_physmem = 512 * 1024 * 1024;
+size_t max_z3fastmem = 256 * 1024 * 1024;
+size_t max_physmem = 512 * 1024 * 1024;
 
 bool preinit_shm(void)
 {
@@ -46,6 +46,10 @@ void mapped_free(addrbank *ab)
 }
 
 void mman_set_barriers(bool)
+{
+}
+
+void commit_natmem_gaps(void)
 {
 }
 

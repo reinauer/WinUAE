@@ -5,12 +5,51 @@
 #include "uae/types.h"
 
 struct flag_struct {
+#if defined(CPU_AARCH64)
+    union {
+        uae_u64 cznv;
+        uae_u64 nzcv;
+    };
+    uae_u64 x;
+#else
     uae_u32 cznv;
     uae_u32 x;
+#endif
 };
 
 extern struct flag_struct regflags;
 
+#if defined(CPU_AARCH64)
+#define FLAGBIT_N 31
+#define FLAGBIT_Z 30
+#define FLAGBIT_C 29
+#define FLAGBIT_V 28
+#define FLAGBIT_X 0
+
+#define FLAGVAL_N (1 << FLAGBIT_N)
+#define FLAGVAL_Z (1 << FLAGBIT_Z)
+#define FLAGVAL_C (1 << FLAGBIT_C)
+#define FLAGVAL_V (1 << FLAGBIT_V)
+#define FLAGVAL_X (1 << FLAGBIT_X)
+
+#define SET_ZFLG(y) (regflags.nzcv = (regflags.nzcv & ~FLAGVAL_Z) | (((y) ? 1 : 0) << FLAGBIT_Z))
+#define SET_CFLG(y) (regflags.nzcv = (regflags.nzcv & ~FLAGVAL_C) | (((y) ? 1 : 0) << FLAGBIT_C))
+#define SET_VFLG(y) (regflags.nzcv = (regflags.nzcv & ~FLAGVAL_V) | (((y) ? 1 : 0) << FLAGBIT_V))
+#define SET_NFLG(y) (regflags.nzcv = (regflags.nzcv & ~FLAGVAL_N) | (((y) ? 1 : 0) << FLAGBIT_N))
+#define SET_XFLG(y) (regflags.x = ((y) ? 1 : 0))
+
+#define GET_ZFLG() ((regflags.nzcv >> FLAGBIT_Z) & 1)
+#define GET_CFLG() ((regflags.nzcv >> FLAGBIT_C) & 1)
+#define GET_VFLG() ((regflags.nzcv >> FLAGBIT_V) & 1)
+#define GET_NFLG() ((regflags.nzcv >> FLAGBIT_N) & 1)
+#define GET_XFLG() (regflags.x & 1)
+
+#define CLEAR_CZNV() (regflags.nzcv = 0)
+#define GET_CZNV() (regflags.nzcv)
+#define IOR_CZNV(X) (regflags.nzcv |= (X))
+#define SET_CZNV(X) (regflags.nzcv = (X))
+#define COPY_CARRY() (regflags.x = (regflags.nzcv >> FLAGBIT_C) & 1)
+#else
 #define FLAGBIT_N 15
 #define FLAGBIT_Z 14
 #define FLAGBIT_C 8
@@ -40,10 +79,11 @@ extern struct flag_struct regflags;
 #define IOR_CZNV(X) (regflags.cznv |= (X))
 #define SET_CZNV(X) (regflags.cznv = (X))
 #define COPY_CARRY() (regflags.x = regflags.cznv)
+#endif
 
 static inline int cctrue(int cc)
 {
-    uae_u32 cznv = regflags.cznv;
+    uae_u64 cznv = GET_CZNV();
     switch (cc) {
     case 0: return 1;
     case 1: return 0;
