@@ -5,8 +5,13 @@
 
 #if defined(__APPLE__)
 #define UAE_HOST_DARWIN 1
+#define MACOSX 1
 #elif defined(__linux__)
 #define UAE_HOST_LINUX 1
+#endif
+
+#if defined(__linux__) && (defined(__x86_64__) || defined(__i386__))
+#define HAVE_STRUCT_UCONTEXT_UC_MCONTEXT_GREGS 1
 #endif
 
 #define SUPPORT_THREADS 1
@@ -168,6 +173,8 @@ typedef int boolean;
 #define Sleep sleep_millis
 #define stricmp strcasecmp
 #define strnicmp strncasecmp
+#define _stricmp strcasecmp
+#define _strnicmp strncasecmp
 #define _tzset tzset
 #define _ftime ftime
 #define _timeb timeb
