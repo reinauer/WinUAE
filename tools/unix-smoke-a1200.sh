@@ -13,6 +13,7 @@ UAEGFX=${WINUAE_SMOKE_UAEGFX:-0}
 UAEGFX_DRIVER=${WINUAE_SMOKE_UAEGFX_DRIVER:-0}
 UAEGFX_SCREEN=${WINUAE_SMOKE_UAEGFX_SCREEN:-0}
 DRIVECLICK=${WINUAE_SMOKE_DRIVECLICK:-0}
+SKIP_AUDIO_CHECK=${WINUAE_SMOKE_SKIP_AUDIO_CHECK:-0}
 
 ROM=${WINUAE_KICKSTART_ROM:-}
 ADF=${WINUAE_FLOPPY0:-}
@@ -87,7 +88,9 @@ wait "$pid" || true
 trap - INT TERM EXIT
 
 grep -q "Known ROM" "$LOG"
-grep -q "SDL3: audio initialized" "$LOG"
+if [ "$SKIP_AUDIO_CHECK" != "1" ]; then
+    grep -q "SDL3: audio initialized" "$LOG"
+fi
 grep -q "hardreset, memory cleared" "$LOG"
 if [ "$A2065" = "1" ]; then
     grep -q "A2065" "$LOG"
