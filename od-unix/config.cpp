@@ -556,6 +556,20 @@ int target_parse_option(struct uae_prefs *p, const TCHAR *option, const TCHAR *v
         p->use_serial = p->sername[0] != 0;
         return 1;
     }
+    if (!_tcsicmp(option, _T("parallel_port"))) {
+        std::string port = trim_copy(value ? value : "");
+        if (port.size() >= 2 &&
+            ((port[0] == '"' && port[port.size() - 1] == '"') || (port[0] == '\'' && port[port.size() - 1] == '\''))) {
+            port = port.substr(1, port.size() - 2);
+        }
+        if (lowercase_copy(port) == "none") {
+            port.clear();
+        } else if (lowercase_copy(port) == "default") {
+            port = DEFPRTNAME;
+        }
+        uae_tcslcpy(p->prtname, port.c_str(), sizeof p->prtname / sizeof(TCHAR));
+        return 1;
+    }
     if (parse_uaeserial_port_option(option, value)) {
         return 1;
     }
@@ -652,6 +666,7 @@ int target_parse_option(struct uae_prefs *p, const TCHAR *option, const TCHAR *v
 void target_save_options(struct zfile *f, struct uae_prefs *p)
 {
     cfgfile_target_dwrite_str(f, _T("serial_port"), p->sername[0] ? p->sername : _T("none"));
+    cfgfile_target_dwrite_str_escape(f, _T("parallel_port"), p->prtname[0] ? p->prtname : _T("none"));
     for (int i = 0; i < UNIX_UAESERIAL_MAX_UNITS; i++) {
         if (uaeserial_ports[i][0]) {
             TCHAR option[64];
