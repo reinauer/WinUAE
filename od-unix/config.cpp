@@ -12,6 +12,7 @@
 #include "path_expand.h"
 #include "savestate.h"
 #include "sound_unix.h"
+#include "uaeserial_unix.h"
 #ifdef WITH_MIDI
 #include "midi.h"
 #endif
@@ -32,6 +33,7 @@ static TCHAR path_saveimage[MAX_DPATH];
 static TCHAR path_ripper[MAX_DPATH];
 static TCHAR path_data[MAX_DPATH];
 static TCHAR path_rom[MAX_DPATH];
+static TCHAR uaeserial_ports[UNIX_UAESERIAL_MAX_UNITS][256];
 
 static std::string trim_copy(const std::string &s)
 {
@@ -244,6 +246,59 @@ static bool parse_int_value(const TCHAR *value, int *out)
         return false;
     }
     *out = (int)parsed;
+    return true;
+}
+
+const TCHAR *unix_uaeserial_get_port(int unit)
+{
+    if (unit < 0 || unit >= UNIX_UAESERIAL_MAX_UNITS) {
+        return _T("");
+    }
+    return uaeserial_ports[unit];
+}
+
+void unix_uaeserial_set_port(int unit, const TCHAR *port)
+{
+    if (unit < 0 || unit >= UNIX_UAESERIAL_MAX_UNITS) {
+        return;
+    }
+    uae_tcslcpy(uaeserial_ports[unit], port ? port : _T(""), sizeof uaeserial_ports[unit] / sizeof(TCHAR));
+}
+
+static bool parse_uaeserial_port_option(const TCHAR *option, const TCHAR *value)
+{
+    const TCHAR *prefix = _T("uaeserial_port");
+    int unit = 0;
+
+    if (_tcsicmp(option, prefix)) {
+        size_t prefix_len = _tcslen(prefix);
+        if (_tcsnicmp(option, prefix, prefix_len)) {
+            return false;
+        }
+        const TCHAR *unit_text = option + prefix_len;
+        if (*unit_text == '_') {
+            unit_text++;
+        }
+        if (!*unit_text) {
+            unit = 0;
+        } else if (!parse_int_value(unit_text, &unit)) {
+            return false;
+        }
+    }
+    if (unit < 0 || unit >= UNIX_UAESERIAL_MAX_UNITS) {
+        write_log(_T("UAESER: ignoring unsupported Unix uaeserial unit %d\n"), unit);
+        return true;
+    }
+
+    std::string port = trim_copy(value ? value : "");
+    if (port.size() >= 2 &&
+        ((port[0] == '"' && port[port.size() - 1] == '"') || (port[0] == '\'' && port[port.size() - 1] == '\''))) {
+        port = port.substr(1, port.size() - 2);
+    }
+    if (lowercase_copy(port) == "none") {
+        port.clear();
+    }
+    unix_uaeserial_set_port(unit, port.c_str());
     return true;
 }
 
@@ -501,6 +556,9 @@ int target_parse_option(struct uae_prefs *p, const TCHAR *option, const TCHAR *v
         p->use_serial = p->sername[0] != 0;
         return 1;
     }
+    if (parse_uaeserial_port_option(option, value)) {
+        return 1;
+    }
     if (!_tcsicmp(option, _T("soundcard"))) {
         int parsed = 0;
         if (!parse_int_value(value, &parsed)) {
@@ -594,6 +652,13 @@ int target_parse_option(struct uae_prefs *p, const TCHAR *option, const TCHAR *v
 void target_save_options(struct zfile *f, struct uae_prefs *p)
 {
     cfgfile_target_dwrite_str(f, _T("serial_port"), p->sername[0] ? p->sername : _T("none"));
+    for (int i = 0; i < UNIX_UAESERIAL_MAX_UNITS; i++) {
+        if (uaeserial_ports[i][0]) {
+            TCHAR option[64];
+            _stprintf(option, _T("uaeserial_port%d"), i);
+            cfgfile_target_write_str(f, option, uaeserial_ports[i]);
+        }
+    }
 
     int index = p->win32_soundcard;
     if (index < 0 || index >= unix_sound_device_count()) {
@@ -673,6 +738,9 @@ void target_default_options(struct uae_prefs *p, int)
     path_ripper[0] = 0;
     path_data[0] = 0;
     path_rom[0] = 0;
+    for (int i = 0; i < UNIX_UAESERIAL_MAX_UNITS; i++) {
+        uaeserial_ports[i][0] = 0;
+    }
     p->rtg_dacswitch = true;
     p->win32_samplersoundcard = -1;
     p->win32_midioutdev = -2;
