@@ -101,6 +101,7 @@ option(WINUAE_UNIX_WITH_UAESERIAL "Build uaeserial.device on top of the Unix ser
 option(WINUAE_UNIX_WITH_SAMPLER "Build SDL3 recording support for the parallel-port sampler" ON)
 option(WINUAE_UNIX_WITH_NATIVE_HARDDRIVES "Build Unix raw hard-drive enumeration and read-only open support" ON)
 option(WINUAE_UNIX_WITH_NATIVE_CD "Build Unix native CD/DVD drive access" ON)
+option(WINUAE_UNIX_WITH_NATIVE_SCSI "Build Linux SG_IO native SCSI/tape passthrough" ON)
 option(WINUAE_UNIX_WITH_MIDI "Build native Unix MIDI support" ON)
 option(WINUAE_UNIX_WITH_CPUBOARD "Build shared non-PPC CPU accelerator board support" ON)
 option(WINUAE_UNIX_WITH_SNDBOARD "Build shared Toccata/Prelude/UAESND sound-board support" ON)
@@ -198,6 +199,7 @@ set(WINUAE_UNIX_ENABLE_UAESERIAL OFF)
 set(WINUAE_UNIX_ENABLE_SAMPLER OFF)
 set(WINUAE_UNIX_ENABLE_NATIVE_HARDDRIVES OFF)
 set(WINUAE_UNIX_ENABLE_NATIVE_CD OFF)
+set(WINUAE_UNIX_ENABLE_NATIVE_SCSI OFF)
 set(WINUAE_UNIX_ENABLE_MIDI OFF)
 set(WINUAE_UNIX_ENABLE_CPUBOARD OFF)
 set(WINUAE_UNIX_ENABLE_SNDBOARD OFF)
@@ -521,6 +523,16 @@ if(WINUAE_UNIX_WITH_NATIVE_CD)
         endif()
     else()
         message(STATUS "Native Unix CD/DVD access is implemented for macOS and Linux only")
+    endif()
+endif()
+
+if(WINUAE_UNIX_WITH_NATIVE_SCSI)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        set(WINUAE_UNIX_ENABLE_NATIVE_SCSI ON)
+        target_compile_definitions(winuae_core PRIVATE WITH_SCSI_SPTI=1)
+        list(APPEND WINUAE_UNIX_EXTRA_SOURCES od-unix/blkdev_unix_sg.cpp)
+    else()
+        message(STATUS "Native Unix SCSI/tape passthrough is implemented for Linux SG_IO only")
     endif()
 endif()
 
@@ -1017,6 +1029,7 @@ if(WINUAE_UNIX_WITH_QT_UI OR WINUAE_UNIX_WITH_INTEGRATED_QT_UI)
             UAE_UNIX_WITH_SAMPLER=$<BOOL:${WINUAE_UNIX_ENABLE_SAMPLER}>
             UAE_UNIX_WITH_NATIVE_HARDDRIVES=$<BOOL:${WINUAE_UNIX_ENABLE_NATIVE_HARDDRIVES}>
             UAE_UNIX_WITH_NATIVE_CD=$<BOOL:${WINUAE_UNIX_ENABLE_NATIVE_CD}>
+            UAE_UNIX_WITH_NATIVE_SCSI=$<BOOL:${WINUAE_UNIX_ENABLE_NATIVE_SCSI}>
             UAE_UNIX_WITH_MIDI=$<BOOL:${WINUAE_UNIX_ENABLE_MIDI}>
             UAE_UNIX_WITH_CPUBOARD=$<BOOL:${WINUAE_UNIX_ENABLE_CPUBOARD}>
             UAE_UNIX_WITH_SNDBOARD=$<BOOL:${WINUAE_UNIX_ENABLE_SNDBOARD}>
