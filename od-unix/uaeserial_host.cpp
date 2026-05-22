@@ -12,6 +12,7 @@
 #include "options.h"
 #include "serial.h"
 #include "threaddep/thread.h"
+#include "uaeserial_unix.h"
 #include "uae.h"
 
 struct uaeserialdataunix
@@ -27,6 +28,7 @@ struct uaeserialdataunix
 	volatile int threadactive;
 	uae_sem_t sync_sem;
 	void *user;
+	int unit;
 	pthread_mutex_t lock;
 	bool lock_valid;
 	uae_u8 rxbuf[8192];
@@ -345,40 +347,39 @@ int uaeser_getdatalength(void)
 int uaeser_open(void *vsd, void *user, int unit)
 {
 	struct uaeserialdataunix *sd = (struct uaeserialdataunix*)vsd;
+	const TCHAR *sername = unix_uaeserial_get_port(unit);
 	memset(sd, 0, sizeof(*sd));
 	sd->fd = -1;
 	sd->listen_fd = -1;
 	sd->conn_fd = -1;
 	sd->user = user;
+	sd->unit = unit;
 	pthread_mutex_init(&sd->lock, NULL);
 	sd->lock_valid = true;
 
-	if (unit != 0) {
-		write_log(_T("UAESER: unit %d is not mapped on Unix; unit 0 uses unix.serial_port\n"), unit);
+	if (!sername[0] && unit == 0) {
+		sername = currprefs.sername;
+	}
+	if (!sername[0] || !_tcsicmp(sername, _T("none"))) {
+		write_log(_T("UAESER: no Unix host port configured for uaeserial.device unit %d\n"), unit);
 		pthread_mutex_destroy(&sd->lock);
 		sd->lock_valid = false;
 		return 0;
 	}
-	if (!currprefs.sername[0] || !_tcsicmp(currprefs.sername, _T("none"))) {
-		write_log(_T("UAESER: unix.serial_port must be configured before opening uaeserial.device unit 0\n"));
-		pthread_mutex_destroy(&sd->lock);
-		sd->lock_valid = false;
-		return 0;
-	}
-	if (!_tcsnicmp(currprefs.sername, _T("TCP://"), 6)) {
-		if (!opentcp(sd, currprefs.sername + 4)) {
+	if (!_tcsnicmp(sername, _T("TCP://"), 6)) {
+		if (!opentcp(sd, sername + 4)) {
 			uaeser_close(sd);
 			return 0;
 		}
-	} else if (!_tcsnicmp(currprefs.sername, _T("TCP:"), 4)) {
-		if (!opentcp(sd, currprefs.sername + 4)) {
+	} else if (!_tcsnicmp(sername, _T("TCP:"), 4)) {
+		if (!opentcp(sd, sername + 4)) {
 			uaeser_close(sd);
 			return 0;
 		}
 	} else {
-		sd->fd = open(currprefs.sername, O_RDWR | O_NOCTTY | O_NONBLOCK);
+		sd->fd = open(sername, O_RDWR | O_NOCTTY | O_NONBLOCK);
 		if (sd->fd < 0) {
-			write_log(_T("UAESER: failed to open '%s': %s\n"), currprefs.sername, strerror(errno));
+			write_log(_T("UAESER: failed to open '%s': %s\n"), sername, strerror(errno));
 			uaeser_close(sd);
 			return 0;
 		}
@@ -386,7 +387,7 @@ int uaeser_open(void *vsd, void *user, int unit)
 			uaeser_close(sd);
 			return 0;
 		}
-		write_log(_T("UAESER: using %s for uaeserial.device unit 0\n"), currprefs.sername);
+		write_log(_T("UAESER: using %s for uaeserial.device unit %d\n"), sername, unit);
 	}
 	uae_sem_init(&sd->sync_sem, 0, 0);
 	uae_start_thread(_T("uaeserial_unix"), uaeser_thread, sd, NULL);
