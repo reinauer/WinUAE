@@ -38,6 +38,10 @@
 #include "sysconfig.h"
 #include "newcpu.h"
 
+#if defined(CPU_AARCH64)
+#include "arm/compemu_arm.h"
+#else
+
 #ifdef UAE
 #ifdef CPU_64_BIT
 typedef uae_u64 uintptr;
@@ -577,6 +581,7 @@ void jit_abort(const char *format,...) __attribute__((format(printf, 1, 2))) __a
    32-bit pointers where it shouldn't. */
 #define uae_p32(x) ((uintptr)(x))
 
+#endif /* CPU_AARCH64 */
 #endif /* COMPEMU_H */
 
 #endif /* CPU_AARCH64 */

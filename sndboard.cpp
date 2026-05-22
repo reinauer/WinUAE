@@ -22,6 +22,9 @@
 #include "qemuvga/qemuaudio.h"
 #include "rommgr.h"
 #include "devices.h"
+#ifndef _WIN32
+#include "sndboard_host.h"
+#endif
 
 #define DEBUG_SNDDEV 0
 #define DEBUG_SNDDEV_READ 0
@@ -256,7 +259,7 @@ static bool audio_state_sndboard_uae(int streamid, void *params);
 
 extern addrbank uaesndboard_ram_bank;
 MEMORY_FUNCTIONS(uaesndboard_ram);
-static addrbank uaesndboard_ram_bank = {
+addrbank uaesndboard_ram_bank = {
 	uaesndboard_ram_lget, uaesndboard_ram_wget, uaesndboard_ram_bget,
 	uaesndboard_ram_lput, uaesndboard_ram_wput, uaesndboard_ram_bput,
 	uaesndboard_ram_xlate, uaesndboard_ram_check, NULL, _T("*"), _T("UAESND memory"),
@@ -1160,7 +1163,7 @@ static struct addrbank_sub uaesndz2_sub_banks[] = {
 	{ NULL }
 };
 
-static addrbank uaesndboard_bank_z3 = {
+addrbank uaesndboard_bank_z3 = {
 	uaesndboard_lget, uaesndboard_wget, uaesndboard_bget,
 	uaesndboard_lput, uaesndboard_wput, uaesndboard_bput,
 	default_xlate, default_check, NULL, NULL, _T("uaesnd z3"),
@@ -1168,7 +1171,7 @@ static addrbank uaesndboard_bank_z3 = {
 	ABFLAG_IO, S_READ, S_WRITE
 };
 
-static addrbank uaesndboard_bank_z2 = {
+addrbank uaesndboard_bank_z2 = {
 	sub_bank_lget, sub_bank_wget, sub_bank_bget,
 	sub_bank_lput, sub_bank_wput, sub_bank_bput,
 	default_xlate, default_check, NULL, NULL, _T("uaesnd z2"),
@@ -2205,7 +2208,7 @@ static uae_u32 REGPARAM2 toccata_lget(uaecptr addr)
 	return v;
 }
 
-static addrbank toccata_bank = {
+addrbank toccata_bank = {
 	toccata_lget, toccata_wget, toccata_bget,
 	toccata_lput, toccata_wput, toccata_bput,
 	default_xlate, default_check, NULL, _T("*"), _T("Toccata"),
@@ -2431,6 +2434,8 @@ struct fm801_data
 static struct fm801_data fm801;
 static bool fm801_active;
 static const int fm801_freq[16] = { 5500, 8000, 9600, 11025, 16000, 19200, 22050, 32000, 38400, 44100, 48000 };
+
+#ifdef WITH_PCI
 
 static void calculate_volume_fm801(void)
 {
@@ -2827,6 +2832,8 @@ const struct pci_board solo1_pci_board =
 	}
 };
 
+#endif
+
 static SWVoiceOut *qemu_voice_out;
 
 static bool audio_state_sndboard_qemu(int streamid, void *params)
@@ -2981,8 +2988,10 @@ static void sndboard_vsync(void)
 {
 	if (snddev[0].snddev_active)
 		sndboard_vsync_toccata(&snddev[0]);
+#ifdef WITH_PCI
 	if (fm801_active)
 		sndboard_vsync_fm801();
+#endif
 	if (qemu_voice_out && qemu_voice_out->active)
 		sndboard_vsync_qemu();
 }
@@ -2991,8 +3000,10 @@ void sndboard_ext_volume(void)
 {
 	if (snddev[0].snddev_active)
 		calculate_volume_toccata(&snddev[0]);
+#ifdef WITH_PCI
 	if (fm801_active)
 		calculate_volume_fm801();
+#endif
 	if (qemu_voice_out && qemu_voice_out->active)
 		calculate_volume_qemu();
 }
@@ -3148,6 +3159,28 @@ Exit:;
 	write_log(_T("sndboard capture init failed %08x\n"), hr);
 	sndboard_free_capture();
 	return false;
+}
+
+#else
+
+static uae_u8 *sndboard_get_buffer(int *frames)
+{
+	return unix_sndboard_get_buffer(frames);
+}
+
+static void sndboard_release_buffer(uae_u8 *buffer, int frames)
+{
+	unix_sndboard_release_buffer(buffer, frames);
+}
+
+static void sndboard_free_capture(void)
+{
+	unix_sndboard_free_capture();
+}
+
+static bool sndboard_init_capture(int freq)
+{
+	return unix_sndboard_init_capture(freq);
 }
 
 #endif

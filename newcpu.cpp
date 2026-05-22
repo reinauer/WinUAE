@@ -3508,6 +3508,7 @@ void REGPARAM2 Exception(int nr)
 {
 	ExceptionX(nr, 0xffffffff, 0xffffffff);
 }
+
 void REGPARAM2 ExceptionL(int nr, uaecptr address)
 {
 	ExceptionX(nr, address, 0xffffffff);

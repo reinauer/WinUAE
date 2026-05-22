@@ -2,7 +2,9 @@
 #include "arm/compemu_arm.cpp"
 #else
 #include "sysconfig.h"
-#if defined(JIT)
+#if defined(JIT) && defined(CPU_AARCH64)
+#include "arm/compemu_arm.cpp"
+#elif defined(JIT)
 #include "sysdeps.h"
 #include "options.h"
 #include "uae/memory.h"
