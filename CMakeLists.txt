@@ -101,10 +101,19 @@ option(WINUAE_UNIX_WITH_MIDI "Build native Unix MIDI support" ON)
 option(WINUAE_UNIX_WITH_CPUBOARD "Build shared non-PPC CPU accelerator board support" ON)
 option(WINUAE_UNIX_WITH_SNDBOARD "Build shared Toccata/Prelude/UAESND sound-board support" ON)
 
-set(WINUAE_UNIX_WITH_JIT_DEFAULT OFF)
-if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64)$")
-    set(WINUAE_UNIX_WITH_JIT_DEFAULT ON)
+set(WINUAE_UNIX_TARGET_ARCHES "${CMAKE_SYSTEM_PROCESSOR}")
+if(APPLE AND CMAKE_OSX_ARCHITECTURES)
+    set(WINUAE_UNIX_TARGET_ARCHES ${CMAKE_OSX_ARCHITECTURES})
 endif()
+
+set(WINUAE_UNIX_JIT_TARGET_SUPPORTED OFF)
+foreach(WINUAE_UNIX_TARGET_ARCH IN LISTS WINUAE_UNIX_TARGET_ARCHES)
+    if(WINUAE_UNIX_TARGET_ARCH MATCHES "^(aarch64|arm64|x86_64|amd64|AMD64)$")
+        set(WINUAE_UNIX_JIT_TARGET_SUPPORTED ON)
+    endif()
+endforeach()
+
+set(WINUAE_UNIX_WITH_JIT_DEFAULT ${WINUAE_UNIX_JIT_TARGET_SUPPORTED})
 option(WINUAE_UNIX_WITH_JIT "Build JIT support for Unix targets where a backend is available" ${WINUAE_UNIX_WITH_JIT_DEFAULT})
 
 set(WINUAE_UNIX_VERSION_MAJOR 0)
@@ -389,13 +398,13 @@ if(WINUAE_UNIX_WITH_SNDBOARD)
 endif()
 
 if(WINUAE_UNIX_WITH_JIT)
-    if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64)$")
+    if(WINUAE_UNIX_JIT_TARGET_SUPPORTED)
         set(WINUAE_UNIX_ENABLE_JIT ON)
         target_compile_definitions(winuae_core PRIVATE
             JIT=1
             USE_JIT_FPU=1
             NOFLAGS_SUPPORT_GENCOMP=1
-            CPU_AARCH64=1
+            SAHF_SETO_PROFITABLE=1
         )
         list(APPEND WINUAE_UNIX_EXTRA_SOURCES
             jit/compemu.cpp
@@ -404,7 +413,7 @@ if(WINUAE_UNIX_WITH_JIT)
             jit/compstbl.cpp
         )
     else()
-        message(STATUS "JIT is currently enabled only for Unix ARM64 builds; disabling JIT for ${CMAKE_SYSTEM_PROCESSOR}")
+        message(STATUS "JIT is currently enabled only for Unix ARM64 and x86_64 builds; disabling JIT for ${CMAKE_SYSTEM_PROCESSOR}")
     endif()
 endif()
 
@@ -863,6 +872,9 @@ if(WINUAE_UNIX_BUILD_EXECUTABLE)
     add_winuae_unix_smoke_target(winuae_unix_smoke_ripple_hdf unix-smoke-ripple-hdf.sh)
     add_winuae_unix_smoke_target(winuae_unix_smoke_serial_tcp unix-smoke-serial-tcp.sh)
     add_winuae_unix_smoke_target(winuae_unix_smoke_path_config unix-smoke-path-config.sh)
+    if(WINUAE_UNIX_ENABLE_JIT)
+        add_winuae_unix_smoke_target(winuae_unix_smoke_jit unix-smoke-jit.sh)
+    endif()
     add_custom_target(winuae_unix_smoke_basic
         DEPENDS winuae_unix_smoke_a1200 winuae_unix_smoke_path_config
     )
