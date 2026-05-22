@@ -96,6 +96,7 @@ option(WINUAE_UNIX_WITH_ARCHIVES "Build bundled ZIP/LHA/LZX/DMS/WRP archive supp
 option(WINUAE_UNIX_WITH_CHD "Build CHD hardfile and CD image support" ON)
 option(WINUAE_UNIX_WITH_CHD_FLAC "Build CHD FLAC codecs when a compatible libFLAC is available" ON)
 option(WINUAE_UNIX_WITH_BSDSOCKET "Build bsdsocket.library on top of POSIX sockets" ON)
+option(WINUAE_UNIX_WITH_UAESCSI "Build uaescsi.device using the shared CD/tape SCSI emulation layer" ON)
 option(WINUAE_UNIX_WITH_UAESERIAL "Build uaeserial.device on top of the Unix serial backend" ON)
 option(WINUAE_UNIX_WITH_SAMPLER "Build SDL3 recording support for the parallel-port sampler" ON)
 option(WINUAE_UNIX_WITH_NATIVE_HARDDRIVES "Build Unix raw hard-drive enumeration and read-only open support" ON)
@@ -191,6 +192,7 @@ set(WINUAE_UNIX_EXTRA_LIBRARY_DIRS)
 set(WINUAE_UNIX_ENABLE_SANA2 OFF)
 set(WINUAE_UNIX_ENABLE_UAENET_PCAP OFF)
 set(WINUAE_UNIX_ENABLE_BSDSOCKET OFF)
+set(WINUAE_UNIX_ENABLE_UAESCSI OFF)
 set(WINUAE_UNIX_ENABLE_UAESERIAL OFF)
 set(WINUAE_UNIX_ENABLE_SAMPLER OFF)
 set(WINUAE_UNIX_ENABLE_NATIVE_HARDDRIVES OFF)
@@ -495,6 +497,12 @@ if(WINUAE_UNIX_WITH_BSDSOCKET)
     set(WINUAE_UNIX_ENABLE_BSDSOCKET ON)
     target_compile_definitions(winuae_core PRIVATE BSDSOCKET=1)
     list(APPEND WINUAE_UNIX_EXTRA_SOURCES od-unix/bsdsock_unix.cpp)
+endif()
+
+if(WINUAE_UNIX_WITH_UAESCSI)
+    set(WINUAE_UNIX_ENABLE_UAESCSI ON)
+    target_compile_definitions(winuae_core PRIVATE SCSIEMU=1)
+    list(APPEND WINUAE_UNIX_EXTRA_SOURCES scsiemul.cpp)
 endif()
 
 if(WINUAE_UNIX_WITH_UAESERIAL)
@@ -985,6 +993,7 @@ if(WINUAE_UNIX_WITH_QT_UI OR WINUAE_UNIX_WITH_INTEGRATED_QT_UI)
             UAE_UNIX_WITH_SANA2=$<BOOL:${WINUAE_UNIX_ENABLE_SANA2}>
             UAE_UNIX_WITH_UAENET_PCAP=$<BOOL:${WINUAE_UNIX_ENABLE_UAENET_PCAP}>
             UAE_UNIX_WITH_BSDSOCKET=$<BOOL:${WINUAE_UNIX_ENABLE_BSDSOCKET}>
+            UAE_UNIX_WITH_UAESCSI=$<BOOL:${WINUAE_UNIX_ENABLE_UAESCSI}>
             UAE_UNIX_WITH_UAESERIAL=$<BOOL:${WINUAE_UNIX_ENABLE_UAESERIAL}>
             UAE_UNIX_WITH_SAMPLER=$<BOOL:${WINUAE_UNIX_ENABLE_SAMPLER}>
             UAE_UNIX_WITH_NATIVE_HARDDRIVES=$<BOOL:${WINUAE_UNIX_ENABLE_NATIVE_HARDDRIVES}>
