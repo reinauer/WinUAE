@@ -117,7 +117,7 @@ void wildfire_ncr815_irq(int, int) {}
 
 struct netdriverdata **target_ethernet_enumerate(void)
 {
-#ifdef WITH_SLIRP
+#if defined(WITH_SLIRP) || defined(WITH_UAENET_PCAP)
     static netdriverdata *drivers[MAX_TOTAL_NET_DEVICES];
     memset(drivers, 0, sizeof drivers);
     ethernet_enumerate(drivers, 0);
@@ -128,8 +128,10 @@ struct netdriverdata **target_ethernet_enumerate(void)
 #endif
 }
 
+#ifndef WITH_UAENET_PCAP
 void ethernet_pause(int) {}
 void ethernet_reset(void) {}
+#endif
 
 bool ariadne2_init(struct autoconfig_info *) { return false; }
 bool hydra_init(struct autoconfig_info *) { return false; }
