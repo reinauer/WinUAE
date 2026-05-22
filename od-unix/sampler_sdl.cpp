@@ -7,8 +7,8 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 
-#include "events.h"
 #include "options.h"
+#include "events.h"
 #include "sampler.h"
 #include "sound_unix.h"
 #include "uae.h"

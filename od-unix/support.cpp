@@ -17,7 +17,7 @@
 
 uae_u8 *natmem_offset;
 uae_u8 *natmem_reserved;
-uae_u32 natmem_reserved_size;
+size_t natmem_reserved_size;
 
 static volatile sig_atomic_t unix_signal_quit_requested;
 static volatile sig_atomic_t unix_exit_signal;
