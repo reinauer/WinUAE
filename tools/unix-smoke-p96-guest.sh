@@ -22,6 +22,8 @@ OPEN_SCREEN_CC=${WINUAE_M68K_CC:-m68k-amigaos-gcc}
 EXPECT_DRAW_BLITS=${WINUAE_P96_EXPECT_DRAW_BLITS:-}
 EXPECT_MODE_MASK=${WINUAE_P96_EXPECT_MODE_MASK:-}
 EXPECT_RESINFO_BYTES=${WINUAE_P96_EXPECT_RESINFO_BYTES:-}
+EXPECT_HARDWARE_SPRITE=${WINUAE_P96_EXPECT_HARDWARE_SPRITE:-}
+EXPECT_HARDWARE_VBLANK=${WINUAE_P96_EXPECT_HARDWARE_VBLANK:-}
 KEEP_WORKDIR=${WINUAE_KEEP_SMOKE_WORKDIR:-0}
 
 if [ -z "$ROM" ] || [ -z "$WORKBENCH" ]; then
@@ -272,6 +274,12 @@ grep -q "Unix RTG InitCard:" "$LOG"
 grep -q "Unix RTG SetGC:" "$LOG"
 grep -q "Unix RTG SetPanning:" "$LOG"
 grep -q "Unix RTG SetSwitch:" "$LOG"
+if [ -n "$EXPECT_HARDWARE_SPRITE" ]; then
+    grep -q "Unix RTG hardware sprite support enabled" "$LOG"
+fi
+if [ -n "$EXPECT_HARDWARE_VBLANK" ]; then
+    grep -q "Unix RTG vblank interrupt support enabled" "$LOG"
+fi
 if [ -n "$EXPECT_MODE_MASK" ]; then
     grep -qi "Unix RTG mode mask: $EXPECT_MODE_MASK" "$LOG"
 fi

@@ -766,6 +766,7 @@ void target_default_options(struct uae_prefs *p, int)
         uaeserial_ports[i][0] = 0;
     }
     p->rtg_dacswitch = true;
+    p->rtg_hardwaresprite = true;
     p->win32_samplersoundcard = -1;
     p->win32_midioutdev = -2;
     p->win32_midiindev = -1;
