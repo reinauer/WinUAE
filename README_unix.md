@@ -103,6 +103,12 @@ For the Qt frontend:
 sudo apt install qt6-base-dev
 ```
 
+For native ALSA MIDI support:
+
+```sh
+sudo apt install libasound2-dev
+```
+
 ### Fedora
 
 ```sh
@@ -113,6 +119,12 @@ For the Qt frontend:
 
 ```sh
 sudo dnf install qt6-qtbase-devel
+```
+
+For native ALSA MIDI support:
+
+```sh
+sudo dnf install alsa-lib-devel
 ```
 
 ## Build
