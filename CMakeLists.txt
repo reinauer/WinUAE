@@ -250,6 +250,15 @@ if(WINUAE_UNIX_USE_LIBPNG)
     list(APPEND WINUAE_UNIX_EXTRA_LIBRARIES PNG::PNG)
 endif()
 
+if(APPLE)
+    target_compile_definitions(winuae_core PRIVATE WINUAE_UNIX_WITH_IMAGEIO=1)
+    list(APPEND WINUAE_UNIX_EXTRA_LIBRARIES
+        "-framework CoreFoundation"
+        "-framework CoreGraphics"
+        "-framework ImageIO"
+    )
+endif()
+
 if(WINUAE_UNIX_WITH_ARCHIVES)
     target_compile_definitions(winuae_core PRIVATE
         WINUAE_UNIX_WITH_ARCHIVES=1
