@@ -223,7 +223,11 @@ static bool unixMidiInputBackendAvailable()
 
 static bool unixMidiVolumeBackendAvailable()
 {
+#if UAE_UNIX_WITH_MIDI
+    return true;
+#else
     return false;
+#endif
 }
 
 static bool unixUaeSerialBackendAvailable()

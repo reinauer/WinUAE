@@ -434,6 +434,38 @@ static bool send_midi_bytes(const uae_u8 *data, int len)
 #endif
 }
 
+static uae_u8 midi_scale_volume(uae_u8 value)
+{
+    int volume = currprefs.sound_volume_midi;
+    if (volume <= 0) {
+        return value;
+    }
+    if (volume >= 100) {
+        return 0;
+    }
+    return (uae_u8)((int)value * (100 - volume) / 100);
+}
+
+static void midi_apply_output_volume(uae_u8 *msg, int len)
+{
+    if (!msg || len < 2 || currprefs.sound_volume_midi <= 0) {
+        return;
+    }
+    switch (msg[0] & 0xf0)
+    {
+    case 0x80:
+    case 0x90:
+    case 0xa0:
+        if (len >= 3) {
+            msg[2] = midi_scale_volume(msg[2]);
+        }
+        break;
+    case 0xd0:
+        msg[1] = midi_scale_volume(msg[1]);
+        break;
+    }
+}
+
 #if defined(WINUAE_UNIX_WITH_ALSA_MIDI)
 static void poll_alsa_midi_input(void)
 {
@@ -512,6 +544,7 @@ int Midi_Parse(midi_direction_e direction, BYTE *dataptr)
         };
         const int len = 1 + out_status.length;
         out_status.posn = 0;
+        midi_apply_output_volume(msg, len);
         send_midi_bytes(msg, len);
     }
     return 0;
