@@ -101,7 +101,7 @@ option(WINUAE_UNIX_WITH_UAESERIAL "Build uaeserial.device on top of the Unix ser
 option(WINUAE_UNIX_WITH_SAMPLER "Build SDL3 recording support for the parallel-port sampler" ON)
 option(WINUAE_UNIX_WITH_NATIVE_HARDDRIVES "Build Unix raw hard-drive enumeration and read-only open support" ON)
 option(WINUAE_UNIX_WITH_NATIVE_CD "Build Unix native CD/DVD drive access" ON)
-option(WINUAE_UNIX_WITH_NATIVE_SCSI "Build Linux SG_IO native SCSI/tape passthrough" ON)
+option(WINUAE_UNIX_WITH_NATIVE_SCSI "Build native SCSI/tape passthrough (macOS SCSITaskLib, Linux SG_IO)" ON)
 option(WINUAE_UNIX_WITH_MIDI "Build native Unix MIDI support" ON)
 option(WINUAE_UNIX_WITH_CPUBOARD "Build shared non-PPC CPU accelerator board support" ON)
 option(WINUAE_UNIX_WITH_SNDBOARD "Build shared Toccata/Prelude/UAESND sound-board support" ON)
@@ -531,8 +531,16 @@ if(WINUAE_UNIX_WITH_NATIVE_SCSI)
         set(WINUAE_UNIX_ENABLE_NATIVE_SCSI ON)
         target_compile_definitions(winuae_core PRIVATE WITH_SCSI_SPTI=1)
         list(APPEND WINUAE_UNIX_EXTRA_SOURCES od-unix/blkdev_unix_sg.cpp)
+    elseif(APPLE)
+        set(WINUAE_UNIX_ENABLE_NATIVE_SCSI ON)
+        target_compile_definitions(winuae_core PRIVATE WITH_SCSI_SPTI=1)
+        list(APPEND WINUAE_UNIX_EXTRA_SOURCES od-unix/blkdev_unix_scsi_macos.cpp)
+        list(APPEND WINUAE_UNIX_EXTRA_LIBRARIES
+            "-framework CoreFoundation"
+            "-framework IOKit"
+        )
     else()
-        message(STATUS "Native Unix SCSI/tape passthrough is implemented for Linux SG_IO only")
+        message(STATUS "Native Unix SCSI/tape passthrough is implemented for macOS SCSITaskLib and Linux SG_IO only")
     endif()
 endif()
 

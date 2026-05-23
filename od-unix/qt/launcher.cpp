@@ -2567,6 +2567,12 @@ static const ConfigChoice z3MappingChoices[] = {
     { "Real", "real" }
 };
 
+static const ConfigChoice scsiModeChoices[] = {
+    { "SCSI emulation", "SCSIEMU" },
+    { "SPTI", "SPTI" },
+    { "SPTI + SCSI SCAN", "SPTI+SCSISCAN" }
+};
+
 static const AdvancedCheckChoice advancedCheckChoices[] = {
     { "CIA ROM Overlay", "cia_overlay", true },
     { "CD32 CD", "cd32cd", false },
@@ -11349,11 +11355,10 @@ private:
         miscOptions->setHorizontalSpacing(8);
         miscOptions->setVerticalSpacing(5);
         miscOptions->setColumnStretch(1, 1);
-        miscScsiMode = combo({ QStringLiteral("SCSI emulation"), QStringLiteral("SPTI"), QStringLiteral("SPTI + SCSI SCAN") });
+        miscScsiMode = combo(configChoiceDisplays(scsiModeChoices, int(sizeof(scsiModeChoices) / sizeof(scsiModeChoices[0]))));
         miscWindowedStyle = combo({ QStringLiteral("Borderless"), QStringLiteral("Minimal"), QStringLiteral("Standard"), QStringLiteral("Extended") });
         miscVideoApi = combo({ QStringLiteral("Unix video backend") });
         miscVideoApiOptions = combo({ QStringLiteral("Default") });
-        disableUnavailable(miscScsiMode, QStringLiteral("Windows SPTI/SCSI selector does not apply to the Unix backend yet."));
         disableUnavailable(miscWindowedStyle, QStringLiteral("Windows window-style selector does not apply to the Unix SDL/Qt window backend."));
         disableUnavailable(miscVideoApi, QStringLiteral("Unix video backend selection is not configurable from the Qt frontend yet."));
         disableUnavailable(miscVideoApiOptions, QStringLiteral("Unix video backend options are not configurable from the Qt frontend yet."));
@@ -14768,6 +14773,7 @@ private:
         }
         settings.insert(QStringLiteral("bsdsocket_emu"), expansionBsdsocket->isEnabled() && expansionBsdsocket->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
         settings.insert(QStringLiteral("scsi"), expansionScsiDevice->isEnabled() && expansionScsiDevice->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
+        settings.insert(QStringLiteral("uaescsimode"), configChoiceValue(scsiModeChoices, int(sizeof(scsiModeChoices) / sizeof(scsiModeChoices[0])), miscScsiMode->currentText()));
         settings.insert(QStringLiteral("sana2"), expansionSana2->isEnabled() && expansionSana2->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
         const int displayIndex = qMax(0, hostDisplay->currentIndex());
         settings.insert(QStringLiteral("gfx_display"), QString::number(displayIndex));
@@ -15213,6 +15219,8 @@ private:
             QStringLiteral("cpuboard_settings"),
             QStringLiteral("bsdsocket_emu"),
             QStringLiteral("scsi"),
+            QStringLiteral("uaescsimode"),
+            QStringLiteral("unix.uaescsimode"),
             QStringLiteral("sana2"),
             QStringLiteral("gfx_display"),
             QStringLiteral("gfx_display_rtg"),
@@ -16058,6 +16066,8 @@ private:
         } else if (key == QStringLiteral("scsi")) {
             const QString lower = value.toLower();
             expansionScsiDevice->setChecked(expansionScsiDevice->isEnabled() && lower != QStringLiteral("false") && lower != QStringLiteral("0") && !lower.isEmpty());
+        } else if (key == QStringLiteral("uaescsimode") || key == QStringLiteral("unix.uaescsimode")) {
+            miscScsiMode->setCurrentText(configChoiceDisplay(scsiModeChoices, int(sizeof(scsiModeChoices) / sizeof(scsiModeChoices[0])), value));
         } else if (key == QStringLiteral("sana2")) {
             expansionSana2->setChecked(expansionSana2->isEnabled() && configBoolValue(value));
         } else if (key == QStringLiteral("unix.soundcard") || key == QStringLiteral("soundcard")) {
