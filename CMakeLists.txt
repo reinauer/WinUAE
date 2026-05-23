@@ -254,6 +254,7 @@ if(WINUAE_UNIX_WITH_ARCHIVES)
     target_compile_definitions(winuae_core PRIVATE
         WINUAE_UNIX_WITH_ARCHIVES=1
         A_ZIP=1
+        A_7Z=1
         A_LHA=1
         A_LZX=1
         A_DMS=1
@@ -264,6 +265,43 @@ if(WINUAE_UNIX_WITH_ARCHIVES)
         archivers/zip/ioapi.cpp
         archivers/zip/unzip.cpp
         archivers/zip/zip.cpp
+        archivers/7z/7zAlloc.c
+        archivers/7z/7zArcIn.c
+        archivers/7z/7zBuf.c
+        archivers/7z/7zBuf2.c
+        archivers/7z/7zCrc.c
+        archivers/7z/7zCrcOpt.c
+        archivers/7z/7zDec.c
+        archivers/7z/7zFile.c
+        archivers/7z/7zStream.c
+        archivers/7z/Aes.c
+        archivers/7z/AesOpt.c
+        archivers/7z/Alloc.c
+        archivers/7z/Bcj2.c
+        archivers/7z/Bra.c
+        archivers/7z/Bra86.c
+        archivers/7z/BraIA64.c
+        archivers/7z/CpuArch.c
+        archivers/7z/Delta.c
+        archivers/7z/LzFind.c
+        archivers/7z/Lzma2Dec.c
+        archivers/7z/Lzma2Enc.c
+        archivers/7z/Lzma86Dec.c
+        archivers/7z/Lzma86Enc.c
+        archivers/7z/LzmaDec.c
+        archivers/7z/LzmaEnc.c
+        archivers/7z/LzmaLib.c
+        archivers/7z/Ppmd7.c
+        archivers/7z/Ppmd7Dec.c
+        archivers/7z/Ppmd7Enc.c
+        archivers/7z/Sha256.c
+        archivers/7z/Sort.c
+        archivers/7z/Xz.c
+        archivers/7z/XzCrc64.c
+        archivers/7z/XzCrc64Opt.c
+        archivers/7z/XzDec.c
+        archivers/7z/XzEnc.c
+        archivers/7z/XzIn.c
         archivers/lha/crcio.cpp
         archivers/lha/dhuf.cpp
         archivers/lha/header.cpp
@@ -308,12 +346,16 @@ if(WINUAE_UNIX_WITH_CHD)
         archivers/chd/huffman.cpp
         archivers/chd/md5.cpp
         archivers/chd/sha1.cpp
-        archivers/7z/LzmaDec.c
-        archivers/7z/LzmaEnc.c
-        archivers/7z/LzFind.c
         od-unix/chd_unix_time.cpp
         od-unix/chd_unix_work.cpp
     )
+    if(NOT WINUAE_UNIX_WITH_ARCHIVES)
+        list(APPEND WINUAE_UNIX_EXTRA_SOURCES
+            archivers/7z/LzmaDec.c
+            archivers/7z/LzmaEnc.c
+            archivers/7z/LzFind.c
+        )
+    endif()
 
     set(WINUAE_UNIX_CHD_FLAC_OK OFF)
     if(WINUAE_UNIX_WITH_CHD_FLAC AND PkgConfig_FOUND)

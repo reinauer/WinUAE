@@ -1160,7 +1160,7 @@ static struct zfile *wrp (struct zfile *z, int *retcode)
 
 #ifdef A_7Z
 #include "7z/Xz.h"
-#include "7z/Lzmadec.h"
+#include "7z/LzmaDec.h"
 #include "7z/7zCrc.h"
 
 static void *SzAlloc (void *p, size_t size)
@@ -1218,7 +1218,7 @@ static struct zfile *xz (struct zfile *z, int *retcode)
 		for (;;) {
 			SizeT srclen = read;
 			SizeT outlen = XZ_OUT_SIZE;
-			if (XzUnpacker_Code (&cx, out, &outlen, inp, &srclen, LZMA_FINISH_ANY, &status) != SZ_OK) {
+			if (XzUnpacker_Code (&cx, out, &outlen, inp, &srclen, CODER_FINISH_ANY, &status) != SZ_OK) {
 				zfile_fclose (zo);
 				zo = NULL;
 				break;
