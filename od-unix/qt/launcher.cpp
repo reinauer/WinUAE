@@ -12955,7 +12955,7 @@ private:
         rtgCenter->setChecked(false);
         rtgIntegerScale->setChecked(false);
         rtgMultithread->setChecked(false);
-        rtgHardwareSprite->setChecked(false);
+        rtgHardwareSprite->setChecked(true);
         rtgHardwareVBlank->setChecked(false);
         rtgAutoswitch->setChecked(true);
         rtgInitialMonitor->setChecked(false);
