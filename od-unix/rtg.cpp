@@ -2218,6 +2218,10 @@ static void unix_picasso_init_board(TrapContext *ctx, uaecptr board_info)
         flags |= UNIX_BIF_VBLANKINTERRUPT;
     }
     trap_put_long(ctx, board_info + PSSO_BoardInfo_Flags, flags);
+    write_log(_T("Unix RTG hardware sprite support %s\n"),
+        (flags & BIF_HARDWARESPRITE) ? _T("enabled") : _T("disabled"));
+    write_log(_T("Unix RTG vblank interrupt support %s\n"),
+        (flags & UNIX_BIF_VBLANKINTERRUPT) ? _T("enabled") : _T("disabled"));
 
     for (int mode = 0; mode < MAXMODES; mode++) {
         int max_width;
