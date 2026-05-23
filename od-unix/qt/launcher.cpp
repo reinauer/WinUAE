@@ -7665,11 +7665,7 @@ private:
         rtgMultithread->setEnabled(false);
         rtgMultithread->setToolTip(QStringLiteral("Windows RTG render-thread option; the Unix RTG renderer is currently single-threaded."));
         rtgHardwareSprite = new QCheckBox(QStringLiteral("Hardware sprite emulation"));
-        rtgHardwareSprite->setEnabled(false);
-        rtgHardwareSprite->setToolTip(QStringLiteral("Windows registers Picasso96 hardware-sprite callbacks; the Unix uaegfx.card layer does not implement them yet."));
         rtgHardwareVBlank = new QCheckBox(QStringLiteral("Hardware vertical blank interrupt"));
-        rtgHardwareVBlank->setEnabled(false);
-        rtgHardwareVBlank->setToolTip(QStringLiteral("Windows registers a Picasso96 hardware-interrupt callback; the Unix uaegfx.card layer does not implement it yet."));
         rtgAutoswitch = new QCheckBox(QStringLiteral("Native/RTG autoswitch"));
         rtgInitialMonitor = new QCheckBox(QStringLiteral("Override initial native chipset display"));
         disableUnavailable(rtgInitialMonitor, QStringLiteral("Initial RTG monitor override needs multi-monitor RTG support in the Unix backend."));
@@ -16022,9 +16018,9 @@ private:
                 rtgRefreshRate->setCurrentText(value);
             }
         } else if (key == QStringLiteral("gfxcard_hardware_vblank")) {
-            rtgHardwareVBlank->setChecked(rtgHardwareVBlank->isEnabled() && configBoolValue(value));
+            rtgHardwareVBlank->setChecked(configBoolValue(value));
         } else if (key == QStringLiteral("gfxcard_hardware_sprite")) {
-            rtgHardwareSprite->setChecked(rtgHardwareSprite->isEnabled() && configBoolValue(value));
+            rtgHardwareSprite->setChecked(configBoolValue(value));
         } else if (key == QStringLiteral("gfxcard_multithread")) {
             rtgMultithread->setChecked(rtgMultithread->isEnabled() && configBoolValue(value));
         } else if (key == QStringLiteral("rtg_modes")) {
