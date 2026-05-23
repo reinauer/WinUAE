@@ -2162,6 +2162,31 @@ static QString rtgBufferText(const QString &value)
     return value == QStringLiteral("2") ? QStringLiteral("Triple") : QStringLiteral("Double");
 }
 
+static QString rtgVBlankConfigValue(const QString &text)
+{
+    const QString value = text.trimmed();
+    if (value == QStringLiteral("Chipset")) {
+        return QStringLiteral("chipset");
+    }
+    if (value == QStringLiteral("Default")) {
+        return QStringLiteral("real");
+    }
+    return value.isEmpty() ? QStringLiteral("chipset") : value;
+}
+
+static QString rtgVBlankText(const QString &value)
+{
+    const QString normalized = value.trimmed().toLower();
+    if (normalized == QStringLiteral("real") || normalized == QStringLiteral("-1") || normalized == QStringLiteral("default")) {
+        return QStringLiteral("Default");
+    }
+    if (normalized == QStringLiteral("chipset") || normalized == QStringLiteral("disabled") ||
+        normalized == QStringLiteral("0") || normalized == QStringLiteral("-2")) {
+        return QStringLiteral("Chipset");
+    }
+    return value.trimmed().isEmpty() ? QStringLiteral("Chipset") : value.trimmed();
+}
+
 static int rtgColorDepthMask(const QString &text)
 {
     if (text == QStringLiteral("8-bit (*)")) {
@@ -14748,11 +14773,7 @@ private:
         settings.insert(QStringLiteral("gfx_filter_autoscale_rtg"), rtgScaleConfigValue(rtgScale->isChecked(), rtgCenter->isChecked(), rtgIntegerScale->isChecked()));
         settings.insert(QStringLiteral("gfx_filter_aspect_ratio_rtg"),
             configChoiceValue(rtgAspectRatioChoices, int(sizeof(rtgAspectRatioChoices) / sizeof(rtgAspectRatioChoices[0])), rtgAspectRatio->currentText()));
-        if (rtgRefreshRate->currentText() == QStringLiteral("Chipset")) {
-            settings.insert(QStringLiteral("gfx_refreshrate_rtg"), QStringLiteral("0"));
-        } else if (rtgRefreshRate->currentText() != QStringLiteral("Default")) {
-            settings.insert(QStringLiteral("gfx_refreshrate_rtg"), rtgRefreshRate->currentText());
-        }
+        settings.insert(QStringLiteral("unix.rtg_vblank"), rtgVBlankConfigValue(rtgRefreshRate->currentText()));
         settings.insert(QStringLiteral("rtg_modes"), QStringLiteral("0x%1").arg(rtgModeMask(), 0, 16));
         const QString cpuBoardConfig = unixCpuBoardBackendAvailable() ? selectedCpuBoardConfigValue() : QString();
         if (cpuBoardConfig.isEmpty()) {
@@ -15207,6 +15228,8 @@ private:
             QStringLiteral("gfx_filter_autoscale_rtg"),
             QStringLiteral("gfx_backbuffers_rtg"),
             QStringLiteral("gfx_refreshrate_rtg"),
+            QStringLiteral("unix.rtg_vblank"),
+            QStringLiteral("rtg_vblank"),
             QStringLiteral("gfxcard_hardware_vblank"),
             QStringLiteral("gfxcard_hardware_sprite"),
             QStringLiteral("gfxcard_multithread"),
@@ -16029,6 +16052,8 @@ private:
             } else {
                 rtgRefreshRate->setCurrentText(value);
             }
+        } else if (key == QStringLiteral("unix.rtg_vblank") || key == QStringLiteral("rtg_vblank")) {
+            rtgRefreshRate->setCurrentText(rtgVBlankText(value));
         } else if (key == QStringLiteral("gfxcard_hardware_vblank")) {
             rtgHardwareVBlank->setChecked(configBoolValue(value));
         } else if (key == QStringLiteral("gfxcard_hardware_sprite")) {

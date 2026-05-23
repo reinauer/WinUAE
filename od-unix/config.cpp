@@ -543,6 +543,21 @@ int target_parse_option(struct uae_prefs *p, const TCHAR *option, const TCHAR *v
     if (cfgfile_strval(option, value, _T("uaescsimode"), &p->win32_uaescsimode, uaescsimode, 0)) {
         return 1;
     }
+    {
+        TCHAR tmpbuf[CONFIG_BLEN];
+        if (cfgfile_string(option, value, _T("rtg_vblank"), tmpbuf, sizeof tmpbuf / sizeof(TCHAR))) {
+            if (!_tcsicmp(tmpbuf, _T("real"))) {
+                p->win32_rtgvblankrate = -1;
+            } else if (!_tcsicmp(tmpbuf, _T("disabled"))) {
+                p->win32_rtgvblankrate = -2;
+            } else if (!_tcsicmp(tmpbuf, _T("chipset"))) {
+                p->win32_rtgvblankrate = 0;
+            } else {
+                p->win32_rtgvblankrate = _tstol(tmpbuf);
+            }
+            return 1;
+        }
+    }
     if (cfgfile_strval(option, value, _T("screenshot_mult_width"), &p->screenshot_xmult, configmult, 0)
         || cfgfile_strval(option, value, _T("screenshot_mult_height"), &p->screenshot_ymult, configmult, 0)) {
         return 1;
@@ -710,6 +725,12 @@ void target_save_options(struct zfile *f, struct uae_prefs *p)
         scsimode = UAESCSI_SPTI;
     }
     cfgfile_target_dwrite_str(f, _T("uaescsimode"), uaescsimode[scsimode]);
+    if (p->win32_rtgvblankrate <= 0) {
+        cfgfile_target_dwrite_str(f, _T("rtg_vblank"),
+            p->win32_rtgvblankrate == -1 ? _T("real") : (p->win32_rtgvblankrate == -2 ? _T("disabled") : _T("chipset")));
+    } else {
+        cfgfile_target_dwrite(f, _T("rtg_vblank"), _T("%d"), p->win32_rtgvblankrate);
+    }
     cfgfile_target_dwrite(f, _T("recording_width"), _T("%d"), p->aviout_width);
     cfgfile_target_dwrite(f, _T("recording_height"), _T("%d"), p->aviout_height);
     cfgfile_target_dwrite(f, _T("recording_x"), _T("%d"), p->aviout_xoffset);
@@ -767,6 +788,7 @@ void target_default_options(struct uae_prefs *p, int)
     }
     p->rtg_dacswitch = true;
     p->rtg_hardwaresprite = true;
+    p->win32_rtgvblankrate = 0;
     p->win32_samplersoundcard = -1;
     p->win32_midioutdev = -2;
     p->win32_midiindev = -1;
