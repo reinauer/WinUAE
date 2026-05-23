@@ -13,6 +13,13 @@
 #endif
 #endif
 
+#ifdef WINUAE_UNIX_WITH_LIBPNG
+#include <png.h>
+#if defined(PNG_SIMPLIFIED_READ_SUPPORTED) && defined(PNG_SIMPLIFIED_WRITE_SUPPORTED)
+#define UAE_UNIX_CLIPBOARD_PNG 1
+#endif
+#endif
+
 #include "traps.h"
 #include "clipboard.h"
 #include "keybuf.h"
@@ -83,10 +90,11 @@ static bool write_command_input(const char *command, const std::string &text)
 
 #ifdef UAE_UNIX_WITH_SDL3_CLIPBOARD_DATA
 struct UnixClipboardData {
-	std::vector<uae_u8> data;
+	std::vector<uae_u8> bmp;
+	std::vector<uae_u8> png;
 };
 
-static const void *SDLCALL unix_clipboard_data_callback(void *userdata, const char *, size_t *size)
+static const void *SDLCALL unix_clipboard_data_callback(void *userdata, const char *mime_type, size_t *size)
 {
 	UnixClipboardData *data = static_cast<UnixClipboardData *>(userdata);
 	if (!data) {
@@ -95,10 +103,23 @@ static const void *SDLCALL unix_clipboard_data_callback(void *userdata, const ch
 		}
 		return NULL;
 	}
-	if (size) {
-		*size = data->data.size();
+	const std::vector<uae_u8> *payload = NULL;
+#ifdef UAE_UNIX_CLIPBOARD_PNG
+	if (mime_type && !strcmp(mime_type, "image/png") && !data->png.empty()) {
+		payload = &data->png;
 	}
-	return data->data.data();
+#endif
+	if (!payload && mime_type &&
+		(!strcmp(mime_type, "image/bmp") || !strcmp(mime_type, "image/x-bmp")) && !data->bmp.empty()) {
+		payload = &data->bmp;
+	}
+	if (!payload) {
+		payload = !data->bmp.empty() ? &data->bmp : &data->png;
+	}
+	if (size) {
+		*size = payload ? payload->size() : 0;
+	}
+	return payload ? payload->data() : NULL;
 }
 
 static void SDLCALL unix_clipboard_data_cleanup(void *userdata)
@@ -106,15 +127,17 @@ static void SDLCALL unix_clipboard_data_cleanup(void *userdata)
 	delete static_cast<UnixClipboardData *>(userdata);
 }
 
-static bool has_host_clipboard_bmp(void)
+static bool has_host_clipboard_image(void)
 {
-	return SDL_HasClipboardData("image/bmp") || SDL_HasClipboardData("image/x-bmp");
+	return
+#ifdef UAE_UNIX_CLIPBOARD_PNG
+		SDL_HasClipboardData("image/png") ||
+#endif
+		SDL_HasClipboardData("image/bmp") || SDL_HasClipboardData("image/x-bmp");
 }
 
-static bool read_host_clipboard_bmp(std::vector<uae_u8> *bmp, size_t max_bytes)
+static bool read_host_clipboard_data(const char * const *mime_types, std::vector<uae_u8> *out, size_t max_bytes)
 {
-	const char *mime_types[] = { "image/bmp", "image/x-bmp", NULL };
-
 	for (int i = 0; mime_types[i]; i++) {
 		if (!SDL_HasClipboardData(mime_types[i])) {
 			continue;
@@ -128,19 +151,42 @@ static bool read_host_clipboard_bmp(std::vector<uae_u8> *bmp, size_t max_bytes)
 			SDL_free(data);
 			return false;
 		}
-		bmp->assign((const uae_u8 *)data, (const uae_u8 *)data + size);
+		out->assign((const uae_u8 *)data, (const uae_u8 *)data + size);
 		SDL_free(data);
 		return true;
 	}
 	return false;
 }
 
-static bool write_host_clipboard_bmp(const std::vector<uae_u8> &bmp)
+#ifdef UAE_UNIX_CLIPBOARD_PNG
+static bool read_host_clipboard_png(std::vector<uae_u8> *png, size_t max_bytes)
+{
+	const char *mime_types[] = { "image/png", NULL };
+	return read_host_clipboard_data(mime_types, png, max_bytes);
+}
+#endif
+
+static bool read_host_clipboard_bmp(std::vector<uae_u8> *bmp, size_t max_bytes)
+{
+	const char *mime_types[] = { "image/bmp", "image/x-bmp", NULL };
+	return read_host_clipboard_data(mime_types, bmp, max_bytes);
+}
+
+static bool write_host_clipboard_image(const std::vector<uae_u8> &bmp, const std::vector<uae_u8> *png)
 {
 	UnixClipboardData *data = new UnixClipboardData;
-	data->data = bmp;
+	data->bmp = bmp;
+	if (png) {
+		data->png = *png;
+	}
+	const bool cache_png = png && !png->empty();
 
-	const char *mime_types[] = { "image/bmp", "image/x-bmp" };
+	const char *mime_types[] = {
+#ifdef UAE_UNIX_CLIPBOARD_PNG
+		"image/png",
+#endif
+		"image/bmp", "image/x-bmp"
+	};
 	if (!SDL_SetClipboardData(unix_clipboard_data_callback, unix_clipboard_data_cleanup,
 		data, mime_types, sizeof mime_types / sizeof mime_types[0])) {
 		write_log(_T("clipboard: failed to write host clipboard bitmap: %s\n"), SDL_GetError());
@@ -150,9 +196,14 @@ static bool write_host_clipboard_bmp(const std::vector<uae_u8> &bmp)
 
 	last_host_clipboard.clear();
 	last_host_clipboard_valid = false;
-	last_host_clipboard_bitmap = bmp;
+	last_host_clipboard_bitmap = cache_png ? *png : bmp;
 	last_host_clipboard_bitmap_valid = true;
 	return true;
+}
+
+static bool write_host_clipboard_bmp(const std::vector<uae_u8> &bmp)
+{
+	return write_host_clipboard_image(bmp, NULL);
 }
 #endif
 
@@ -172,7 +223,7 @@ static bool read_host_clipboard_text(std::string *text, size_t max_bytes)
 		}
 	}
 #ifdef UAE_UNIX_WITH_SDL3_CLIPBOARD_DATA
-	if (has_host_clipboard_bmp()) {
+	if (has_host_clipboard_image()) {
 		return false;
 	}
 #endif
@@ -443,6 +494,92 @@ static bool make_bmp(const UnixClipboardBitmap &bitmap, std::vector<uae_u8> *bmp
 	}
 	return true;
 }
+
+#ifdef UAE_UNIX_CLIPBOARD_PNG
+static bool parse_png(const std::vector<uae_u8> &png, UnixClipboardBitmap *bitmap)
+{
+	if (!bitmap || png.empty()) {
+		return false;
+	}
+
+	png_image image;
+	memset(&image, 0, sizeof image);
+	image.version = PNG_IMAGE_VERSION;
+	if (!png_image_begin_read_from_memory(&image, png.data(), png.size())) {
+		return false;
+	}
+	if (image.width == 0 || image.height == 0 ||
+		(uae_u64)image.width * (uae_u64)image.height > CLIP_SIZE_LIMIT / 4) {
+		png_image_free(&image);
+		return false;
+	}
+
+	image.format = PNG_FORMAT_RGBA;
+	std::vector<uae_u8> rgba(PNG_IMAGE_SIZE(image));
+	if (!png_image_finish_read(&image, NULL, rgba.data(), 0, NULL)) {
+		png_image_free(&image);
+		return false;
+	}
+
+	bitmap->width = (int)image.width;
+	bitmap->height = (int)image.height;
+	bitmap->pixels.assign((size_t)image.width * (size_t)image.height, 0);
+	for (png_uint_32 y = 0; y < image.height; y++) {
+		const uae_u8 *row = rgba.data() + (size_t)y * image.width * 4;
+		for (png_uint_32 x = 0; x < image.width; x++) {
+			const uae_u8 *p = row + (size_t)x * 4;
+			const uae_u32 alpha = p[3];
+			const uae_u32 red = (p[0] * alpha + 255 * (255 - alpha) + 127) / 255;
+			const uae_u32 green = (p[1] * alpha + 255 * (255 - alpha) + 127) / 255;
+			const uae_u32 blue = (p[2] * alpha + 255 * (255 - alpha) + 127) / 255;
+			bitmap->pixels[(size_t)y * image.width + x] = (red << 16) | (green << 8) | blue;
+		}
+	}
+	png_image_free(&image);
+	return true;
+}
+
+static bool make_png(const UnixClipboardBitmap &bitmap, std::vector<uae_u8> *png)
+{
+	if (!png || bitmap.width <= 0 || bitmap.height <= 0 ||
+		bitmap.pixels.size() < (size_t)bitmap.width * (size_t)bitmap.height) {
+		return false;
+	}
+
+	std::vector<uae_u8> rgb((size_t)bitmap.width * (size_t)bitmap.height * 3);
+	for (int y = 0; y < bitmap.height; y++) {
+		uae_u8 *row = rgb.data() + (size_t)y * bitmap.width * 3;
+		for (int x = 0; x < bitmap.width; x++) {
+			const uae_u32 pixel = bitmap.pixels[(size_t)y * bitmap.width + x];
+			row[(size_t)x * 3 + 0] = pixel >> 16;
+			row[(size_t)x * 3 + 1] = pixel >> 8;
+			row[(size_t)x * 3 + 2] = pixel;
+		}
+	}
+
+	png_image image;
+	memset(&image, 0, sizeof image);
+	image.version = PNG_IMAGE_VERSION;
+	image.width = bitmap.width;
+	image.height = bitmap.height;
+	image.format = PNG_FORMAT_RGB;
+
+	png_alloc_size_t size = 0;
+	if (!png_image_write_to_memory(&image, NULL, &size, 0, rgb.data(), 0, NULL) || !size) {
+		png_image_free(&image);
+		return false;
+	}
+	png->resize(size);
+	if (!png_image_write_to_memory(&image, png->data(), &size, 0, rgb.data(), 0, NULL)) {
+		png_image_free(&image);
+		png->clear();
+		return false;
+	}
+	png->resize(size);
+	png_image_free(&image);
+	return true;
+}
+#endif
 
 static std::vector<uae_u8> make_iff_text(const std::string &host_text)
 {
@@ -906,7 +1043,11 @@ static void from_iff(TrapContext *ctx, uaecptr data, uae_u32 len)
 		UnixClipboardBitmap bitmap;
 		std::vector<uae_u8> bmp;
 		if (parse_iff_ilbm(buffer.data(), len, &bitmap) && make_bmp(bitmap, &bmp)) {
-			write_host_clipboard_bmp(bmp);
+			std::vector<uae_u8> png;
+#ifdef UAE_UNIX_CLIPBOARD_PNG
+			make_png(bitmap, &png);
+#endif
+			write_host_clipboard_image(bmp, png.empty() ? NULL : &png);
 		}
 #endif
 	}
@@ -941,15 +1082,28 @@ static void clipboard_read_host(TrapContext *, bool keyboardinject, bool initial
 
 #ifdef UAE_UNIX_WITH_SDL3_CLIPBOARD_DATA
 	if (!keyboardinject) {
-		std::vector<uae_u8> bmp;
 		UnixClipboardBitmap bitmap;
-		if (read_host_clipboard_bmp(&bmp, initial ? CLIP_SIZE_LIMIT_INIT : CLIP_SIZE_LIMIT) && parse_bmp(bmp, &bitmap)) {
-			if (last_host_clipboard_bitmap_valid && bmp == last_host_clipboard_bitmap) {
+		std::vector<uae_u8> image;
+#ifdef UAE_UNIX_CLIPBOARD_PNG
+		if (read_host_clipboard_png(&image, initial ? CLIP_SIZE_LIMIT_INIT : CLIP_SIZE_LIMIT) && parse_png(image, &bitmap)) {
+			if (last_host_clipboard_bitmap_valid && image == last_host_clipboard_bitmap) {
 				return;
 			}
 			last_host_clipboard.clear();
 			last_host_clipboard_valid = false;
-			last_host_clipboard_bitmap = bmp;
+			last_host_clipboard_bitmap = image;
+			last_host_clipboard_bitmap_valid = true;
+			queue_host_bitmap_to_amiga(bitmap, initial);
+			return;
+		}
+#endif
+		if (read_host_clipboard_bmp(&image, initial ? CLIP_SIZE_LIMIT_INIT : CLIP_SIZE_LIMIT) && parse_bmp(image, &bitmap)) {
+			if (last_host_clipboard_bitmap_valid && image == last_host_clipboard_bitmap) {
+				return;
+			}
+			last_host_clipboard.clear();
+			last_host_clipboard_valid = false;
+			last_host_clipboard_bitmap = image;
 			last_host_clipboard_bitmap_valid = true;
 			queue_host_bitmap_to_amiga(bitmap, initial);
 		}
