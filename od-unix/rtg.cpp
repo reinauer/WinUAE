@@ -5,6 +5,7 @@
 #include "memory.h"
 #include "traps.h"
 #include "autoconf.h"
+#include "custom.h"
 #include "picasso96.h"
 #include "savestate.h"
 #include "gfxboard.h"
@@ -368,7 +369,8 @@ enum {
     UNIX_PICASSO_STATE_SETPANNING = 2,
     UNIX_PICASSO_STATE_SETGC = 4,
     UNIX_PICASSO_STATE_SETDAC = 8,
-    UNIX_PICASSO_STATE_SETSWITCH = 16
+    UNIX_PICASSO_STATE_SETSWITCH = 16,
+    UNIX_PICASSO_STATE_SPRITE = 32
 };
 
 #define UNIX_RTG_DEFAULT_MODEFLAGS (RGBFF_CLUT | RGBFF_R5G6B5PC | RGBFF_B8G8R8A8)
@@ -384,10 +386,18 @@ enum {
 #define UNIX_CARD_RESLIST (UNIX_CARD_NAME + 4)
 #define UNIX_CARD_RESLISTSIZE (UNIX_CARD_RESLIST + 4)
 #define UNIX_CARD_BOARDINFO (UNIX_CARD_RESLISTSIZE + 4)
-#define UNIX_CARD_SIZEOF (UNIX_CARD_BOARDINFO + 4)
+#define UNIX_CARD_VBLANKIRQ (UNIX_CARD_BOARDINFO + 4)
+#define UNIX_CARD_PORTSIRQ (UNIX_CARD_VBLANKIRQ + 22)
+#define UNIX_CARD_IRQFLAG (UNIX_CARD_PORTSIRQ + 22)
+#define UNIX_CARD_IRQPTR (UNIX_CARD_IRQFLAG + 4)
+#define UNIX_CARD_IRQEXECBASE (UNIX_CARD_IRQPTR + 4)
+#define UNIX_CARD_IRQCODE (UNIX_CARD_IRQEXECBASE + 4)
+#define UNIX_CARD_SIZEOF (UNIX_CARD_IRQCODE + 2 * 11 * 2)
 
 #define UNIX_BIB_GRANTDIRECTACCESS 26
 #define UNIX_BIF_GRANTDIRECTACCESS (1 << UNIX_BIB_GRANTDIRECTACCESS)
+#define UNIX_BIB_VBLANKINTERRUPT 4
+#define UNIX_BIF_VBLANKINTERRUPT (1 << UNIX_BIB_VBLANKINTERRUPT)
 #define UNIX_BIB_DACSWITCH 28
 #define UNIX_BIF_DACSWITCH (1 << UNIX_BIB_DACSWITCH)
 
@@ -440,6 +450,44 @@ enum {
 #define UNIX_PSSO_ReInitMemory (UNIX_PSSO_SetSplitPosition + 4)
 #define UNIX_PSSO_BoardInfo_GetCompatibleDACFormats (UNIX_PSSO_ReInitMemory + 4)
 #define UNIX_PSSO_BoardInfo_CoerceMode (UNIX_PSSO_BoardInfo_GetCompatibleDACFormats + 4)
+#define UNIX_PSSO_BoardInfo_Reserved3Default (UNIX_PSSO_BoardInfo_CoerceMode + 4)
+#define UNIX_PSSO_BoardInfo_Reserved4 (UNIX_PSSO_BoardInfo_Reserved3Default + 4)
+#define UNIX_PSSO_BoardInfo_Reserved4Default (UNIX_PSSO_BoardInfo_Reserved4 + 4)
+#define UNIX_PSSO_BoardInfo_Reserved5 (UNIX_PSSO_BoardInfo_Reserved4Default + 4)
+#define UNIX_PSSO_BoardInfo_Reserved5Default (UNIX_PSSO_BoardInfo_Reserved5 + 4)
+#define UNIX_PSSO_BoardInfo_SetDPMSLevel (UNIX_PSSO_BoardInfo_Reserved5Default + 4)
+#define UNIX_PSSO_BoardInfo_ResetChip (UNIX_PSSO_BoardInfo_SetDPMSLevel + 4)
+#define UNIX_PSSO_BoardInfo_GetFeatureAttrs (UNIX_PSSO_BoardInfo_ResetChip + 4)
+#define UNIX_PSSO_BoardInfo_AllocBitMap (UNIX_PSSO_BoardInfo_GetFeatureAttrs + 4)
+#define UNIX_PSSO_BoardInfo_FreeBitMap (UNIX_PSSO_BoardInfo_AllocBitMap + 4)
+#define UNIX_PSSO_BoardInfo_GetBitMapAttr (UNIX_PSSO_BoardInfo_FreeBitMap + 4)
+#define UNIX_PSSO_BoardInfo_SetSprite (UNIX_PSSO_BoardInfo_GetBitMapAttr + 4)
+#define UNIX_PSSO_BoardInfo_SetSpritePosition (UNIX_PSSO_BoardInfo_SetSprite + 4)
+#define UNIX_PSSO_BoardInfo_SetSpriteImage (UNIX_PSSO_BoardInfo_SetSpritePosition + 4)
+#define UNIX_PSSO_BoardInfo_SetSpriteColor (UNIX_PSSO_BoardInfo_SetSpriteImage + 4)
+
+#define UNIX_RTG_CURSOR_MAXWIDTH 256
+#define UNIX_RTG_CURSOR_MAXHEIGHT 256
+
+struct unix_rtg_sprite_state {
+    bool enabled;
+    bool visible;
+    bool image_valid;
+    int x;
+    int y;
+    int xoffset;
+    int yoffset;
+    int width;
+    int height;
+    uae_u8 pixels[UNIX_RTG_CURSOR_MAXWIDTH * UNIX_RTG_CURSOR_MAXHEIGHT];
+    uae_u32 colors[4];
+};
+
+static unix_rtg_sprite_state unix_rtg_sprites[MAX_AMIGAMONITORS];
+static uaecptr unix_uaegfx_vblankname;
+static uaecptr unix_uaegfx_portsname;
+static uaecptr unix_uaegfx_abi_interrupt;
+static bool unix_uaegfx_interrupt_enabled;
 
 struct unix_rtg_mode_size {
     int width;
@@ -1876,6 +1924,262 @@ static uae_u32 REGPARAM2 unix_picasso_set_display(TrapContext *ctx)
     return !(trap_get_dreg(ctx, 0) != 0);
 }
 
+static int unix_rtg_monitor_id(void)
+{
+    int monid = currprefs.rtgboards[0].monitor_id;
+    if (monid < 0 || monid >= MAX_AMIGAMONITORS) {
+        monid = 0;
+    }
+    return monid;
+}
+
+static void unix_picasso_update_sprite_colors(unix_rtg_sprite_state *sprite)
+{
+    sprite->colors[0] &= 0x00ffffff;
+    for (int i = 1; i < 4; i++) {
+        sprite->colors[i] |= 0xff000000;
+    }
+}
+
+static uae_u32 REGPARAM2 unix_picasso_set_sprite_position(TrapContext *ctx)
+{
+    int monid = unix_rtg_monitor_id();
+    struct picasso96_state_struct *state = &picasso96_state[monid];
+    struct picasso_vidbuf_description *vidinfo = &picasso_vidinfo[monid];
+    unix_rtg_sprite_state *sprite = &unix_rtg_sprites[monid];
+    uaecptr board_info = trap_get_areg(ctx, 0);
+
+    int x = (uae_s16)trap_get_word(ctx, board_info + PSSO_BoardInfo_MouseX) - state->XOffset;
+    int y = (uae_s16)trap_get_word(ctx, board_info + PSSO_BoardInfo_MouseY) - state->YOffset;
+    if (vidinfo->splitypos >= 0) {
+        y += vidinfo->splitypos;
+    }
+
+    sprite->x = x - sprite->xoffset;
+    sprite->y = y - sprite->yoffset;
+    atomic_or(&vidinfo->picasso_state_change, UNIX_PICASSO_STATE_SPRITE);
+    return sprite->enabled ? 1 : 0;
+}
+
+static uae_u32 REGPARAM2 unix_picasso_set_sprite_color(TrapContext *ctx)
+{
+    int monid = unix_rtg_monitor_id();
+    struct picasso_vidbuf_description *vidinfo = &picasso_vidinfo[monid];
+    unix_rtg_sprite_state *sprite = &unix_rtg_sprites[monid];
+    int index = (trap_get_dreg(ctx, 0) & 0xff) + 1;
+    uae_u8 red = trap_get_dreg(ctx, 1);
+    uae_u8 green = trap_get_dreg(ctx, 2);
+    uae_u8 blue = trap_get_dreg(ctx, 3);
+
+    if (!sprite->enabled || index < 0 || index >= 4) {
+        return 0;
+    }
+    sprite->colors[index] = ((uae_u32)red << 16) | ((uae_u32)green << 8) | blue;
+    unix_picasso_update_sprite_colors(sprite);
+    atomic_or(&vidinfo->picasso_state_change, UNIX_PICASSO_STATE_SPRITE);
+    return 1;
+}
+
+static uae_u32 unix_picasso_load_sprite_image(TrapContext *ctx, uaecptr board_info)
+{
+    int monid = unix_rtg_monitor_id();
+    struct picasso_vidbuf_description *vidinfo = &picasso_vidinfo[monid];
+    unix_rtg_sprite_state *sprite = &unix_rtg_sprites[monid];
+    int width = trap_get_byte(ctx, board_info + PSSO_BoardInfo_MouseWidth);
+    int height = trap_get_byte(ctx, board_info + PSSO_BoardInfo_MouseHeight);
+    uae_u32 flags = trap_get_long(ctx, board_info + PSSO_BoardInfo_Flags);
+    int hiressprite = (flags & BIF_HIRESSPRITE) ? 2 : 1;
+    bool doubledsprite = (flags & BIF_BIGSPRITE) != 0;
+    uaecptr image = trap_get_long(ctx, board_info + PSSO_BoardInfo_MouseImage);
+    int datasize = 4 * hiressprite + height * 4 * hiressprite;
+
+    sprite->image_valid = false;
+    sprite->width = 0;
+    sprite->height = 0;
+    sprite->xoffset = trap_get_byte(ctx, board_info + PSSO_BoardInfo_MouseXOffset);
+    sprite->yoffset = trap_get_byte(ctx, board_info + PSSO_BoardInfo_MouseYOffset);
+    unix_picasso_update_sprite_colors(sprite);
+
+    if (!sprite->enabled) {
+        return 0;
+    }
+    if (width <= 0 || height <= 0 || width > UNIX_RTG_CURSOR_MAXWIDTH ||
+        height > UNIX_RTG_CURSOR_MAXHEIGHT || image == 0 ||
+        !trap_valid_address(ctx, image, datasize)) {
+        atomic_or(&vidinfo->picasso_state_change, UNIX_PICASSO_STATE_SPRITE);
+        return 1;
+    }
+
+    memset(sprite->pixels, 0, sizeof sprite->pixels);
+    for (int y = 0, yy = 0; y < height; y++, yy++) {
+        uae_u8 *dst = sprite->pixels + y * UNIX_RTG_CURSOR_MAXWIDTH;
+        uae_u8 *previous = dst;
+        uaecptr src = image + 4 * hiressprite + yy * 4 * hiressprite;
+        int x = 0;
+        while (x < width) {
+            uae_u32 d1 = trap_get_long(ctx, src);
+            uae_u32 d2 = trap_get_long(ctx, src + 2 * hiressprite);
+            int maxbits = width - x;
+            if (maxbits > 16 * hiressprite) {
+                maxbits = 16 * hiressprite;
+            }
+            for (int bit = 0; bit < maxbits && x < width; bit++) {
+                uae_u8 color = ((d2 & 0x80000000) ? 2 : 0) + ((d1 & 0x80000000) ? 1 : 0);
+                d1 <<= 1;
+                d2 <<= 1;
+                *dst++ = color;
+                x++;
+                if (doubledsprite && x < width) {
+                    *dst++ = color;
+                    x++;
+                }
+            }
+        }
+        if (doubledsprite && y + 1 < height) {
+            y++;
+            memcpy(sprite->pixels + y * UNIX_RTG_CURSOR_MAXWIDTH, previous, width);
+        }
+    }
+
+    sprite->width = width;
+    sprite->height = height;
+    sprite->image_valid = true;
+    atomic_or(&vidinfo->picasso_state_change, UNIX_PICASSO_STATE_SPRITE);
+    return 1;
+}
+
+static uae_u32 REGPARAM2 unix_picasso_set_sprite_image(TrapContext *ctx)
+{
+    return unix_picasso_load_sprite_image(ctx, trap_get_areg(ctx, 0));
+}
+
+static uae_u32 REGPARAM2 unix_picasso_set_sprite(TrapContext *ctx)
+{
+    int monid = unix_rtg_monitor_id();
+    struct picasso_vidbuf_description *vidinfo = &picasso_vidinfo[monid];
+    unix_rtg_sprite_state *sprite = &unix_rtg_sprites[monid];
+    bool activate = trap_get_dreg(ctx, 0) != 0;
+
+    if (!sprite->enabled) {
+        return 0;
+    }
+    if (activate) {
+        unix_picasso_load_sprite_image(ctx, trap_get_areg(ctx, 0));
+        sprite->visible = true;
+    } else {
+        sprite->visible = false;
+    }
+    atomic_or(&vidinfo->picasso_state_change, UNIX_PICASSO_STATE_SPRITE);
+    return 1;
+}
+
+static uae_u32 REGPARAM2 unix_picasso_set_interrupt(TrapContext *ctx)
+{
+    unix_uaegfx_interrupt_enabled = trap_get_dreg(ctx, 0) != 0;
+    return unix_uaegfx_interrupt_enabled ? 1 : 0;
+}
+
+static void unix_init_vblank_abi(TrapContext *ctx, uaecptr base, uaecptr ABI)
+{
+    if (!base || !ABI) {
+        return;
+    }
+    for (int i = 0; i < 22; i++) {
+        trap_put_byte(ctx, ABI + PSSO_BoardInfo_HardInterrupt + i,
+            trap_get_byte(ctx, base + UNIX_CARD_PORTSIRQ + i));
+    }
+    unix_uaegfx_abi_interrupt = ABI;
+}
+
+static void unix_init_vblank_irq(TrapContext *ctx, uaecptr base)
+{
+    uaecptr vblank_irq = base + UNIX_CARD_VBLANKIRQ;
+    uaecptr ports_irq = base + UNIX_CARD_PORTSIRQ;
+    uaecptr code = base + UNIX_CARD_IRQCODE;
+    uaecptr p = code;
+
+    trap_put_word(ctx, vblank_irq + 8, 0x0205);
+    trap_put_long(ctx, vblank_irq + 10, unix_uaegfx_vblankname);
+    trap_put_long(ctx, vblank_irq + 14, base + UNIX_CARD_IRQFLAG);
+    trap_put_long(ctx, vblank_irq + 18, code);
+
+    trap_put_word(ctx, ports_irq + 8, 0x0205);
+    trap_put_long(ctx, ports_irq + 10, unix_uaegfx_portsname);
+    trap_put_long(ctx, ports_irq + 14, base + UNIX_CARD_IRQFLAG);
+    trap_put_long(ctx, ports_irq + 18, code + 11 * 2);
+
+    trap_put_long(ctx, p, 0x08910000); p += 4;  // bclr #0,(a1)
+    trap_put_word(ctx, p, 0x670e); p += 2;      // beq.s
+    trap_put_long(ctx, p, 0x2c690008); p += 4;  // move.l 8(a1),a6
+    trap_put_long(ctx, p, 0x22690004); p += 4;  // move.l 4(a1),a1
+    trap_put_long(ctx, p, 0x4eaeff4c); p += 4;  // jsr Cause(a6)
+    trap_put_word(ctx, p, 0x7000); p += 2;      // moveq #0,d0
+    trap_put_word(ctx, p, RTS); p += 2;
+
+    trap_put_long(ctx, p, 0x08910001); p += 4;  // bclr #1,(a1)
+    trap_put_word(ctx, p, 0x670e); p += 2;      // beq.s
+    trap_put_long(ctx, p, 0x2c690008); p += 4;  // move.l 8(a1),a6
+    trap_put_long(ctx, p, 0x22690004); p += 4;  // move.l 4(a1),a1
+    trap_put_long(ctx, p, 0x4eaeff4c); p += 4;  // jsr Cause(a6)
+    trap_put_word(ctx, p, 0x7000); p += 2;      // moveq #0,d0
+    trap_put_word(ctx, p, RTS);
+
+    trap_call_add_areg(ctx, 1, vblank_irq);
+    trap_call_add_dreg(ctx, 0, 5);
+    trap_call_lib(ctx, trap_get_long(ctx, 4), -168);
+    trap_call_add_areg(ctx, 1, ports_irq);
+    trap_call_add_dreg(ctx, 0, 3);
+    trap_call_lib(ctx, trap_get_long(ctx, 4), -168);
+}
+
+void picasso_trigger_vblank(void)
+{
+    TrapContext *ctx = NULL;
+    if (!unix_uaegfx_abi_interrupt || !unix_uaegfx_base || !unix_uaegfx_interrupt_enabled ||
+        !currprefs.rtg_hardwareinterrupt) {
+        return;
+    }
+    trap_put_long(ctx, unix_uaegfx_base + UNIX_CARD_IRQPTR,
+        unix_uaegfx_abi_interrupt + PSSO_BoardInfo_SoftInterrupt);
+    trap_put_byte(ctx, unix_uaegfx_base + UNIX_CARD_IRQFLAG, currprefs.win32_rtgvblankrate ? 2 : 1);
+    if (currprefs.win32_rtgvblankrate != 0) {
+        INTREQ(0x8000 | 0x0008);
+    }
+}
+
+void unix_rtg_overlay_sprite(int monid, uae_u32 *dst, int width, int height, int rowpixels)
+{
+    if (monid < 0 || monid >= MAX_AMIGAMONITORS || !dst || width <= 0 || height <= 0 ||
+        rowpixels <= 0 || !currprefs.rtg_hardwaresprite) {
+        return;
+    }
+
+    unix_rtg_sprite_state *sprite = &unix_rtg_sprites[monid];
+    if (!sprite->enabled || !sprite->visible || !sprite->image_valid ||
+        sprite->width <= 0 || sprite->height <= 0) {
+        return;
+    }
+
+    for (int sy = 0; sy < sprite->height; sy++) {
+        int dy = sprite->y + sy;
+        if (dy < 0 || dy >= height) {
+            continue;
+        }
+        const uae_u8 *src = sprite->pixels + sy * UNIX_RTG_CURSOR_MAXWIDTH;
+        uae_u32 *row = dst + dy * rowpixels;
+        for (int sx = 0; sx < sprite->width; sx++) {
+            int dx = sprite->x + sx;
+            if (dx < 0 || dx >= width) {
+                continue;
+            }
+            uae_u8 pen = src[sx];
+            if (pen) {
+                row[dx] = sprite->colors[pen & 3];
+            }
+        }
+    }
+}
+
 static uae_u32 REGPARAM2 unix_picasso_default_unsupported(TrapContext *)
 {
     return 0;
@@ -1907,6 +2211,12 @@ static void unix_picasso_init_board(TrapContext *ctx, uaecptr board_info)
     if (currprefs.rtg_dacswitch) {
         flags |= UNIX_BIF_DACSWITCH;
     }
+    if (currprefs.rtg_hardwaresprite) {
+        flags |= BIF_HARDWARESPRITE;
+    }
+    if (currprefs.rtg_hardwareinterrupt && !unix_uaegfx_old) {
+        flags |= UNIX_BIF_VBLANKINTERRUPT;
+    }
     trap_put_long(ctx, board_info + PSSO_BoardInfo_Flags, flags);
 
     for (int mode = 0; mode < MAXMODES; mode++) {
@@ -1918,6 +2228,9 @@ static void unix_picasso_init_board(TrapContext *ctx, uaecptr board_info)
     }
 
     state->CardFound = 1;
+    memset(&unix_rtg_sprites[monid], 0, sizeof unix_rtg_sprites[monid]);
+    unix_rtg_sprites[monid].enabled = currprefs.rtg_hardwaresprite;
+    unix_picasso_update_sprite_colors(&unix_rtg_sprites[monid]);
 }
 
 #define UNIX_PUTABI(func) \
@@ -2021,6 +2334,13 @@ static void unix_init_uaegfx_funcs(TrapContext *ctx, uaecptr start, uaecptr ABI)
     UNIX_RTGCALL2(UNIX_PSSO_BoardInfo_SetPanning, unix_picasso_set_panning);
     UNIX_RTGCALL2(UNIX_PSSO_BoardInfo_SetDisplay, unix_picasso_set_display);
 
+    if (currprefs.rtg_hardwaresprite) {
+        UNIX_RTGCALL2(UNIX_PSSO_BoardInfo_SetSprite, unix_picasso_set_sprite);
+        UNIX_RTGCALL2(UNIX_PSSO_BoardInfo_SetSpritePosition, unix_picasso_set_sprite_position);
+        UNIX_RTGCALL2(UNIX_PSSO_BoardInfo_SetSpriteImage, unix_picasso_set_sprite_image);
+        UNIX_RTGCALL2(UNIX_PSSO_BoardInfo_SetSpriteColor, unix_picasso_set_sprite_color);
+    }
+
     UNIX_RTGCALLDEFAULT(UNIX_PSSO_BoardInfo_ScrollPlanar, UNIX_PSSO_BoardInfo_ScrollPlanarDefault);
     UNIX_RTGCALLDEFAULT(UNIX_PSSO_BoardInfo_UpdatePlanar, UNIX_PSSO_BoardInfo_UpdatePlanarDefault);
     UNIX_RTGCALLDEFAULT(UNIX_PSSO_BoardInfo_DrawLine, UNIX_PSSO_BoardInfo_DrawLineDefault);
@@ -2028,6 +2348,11 @@ static void unix_init_uaegfx_funcs(TrapContext *ctx, uaecptr start, uaecptr ABI)
     if (currprefs.rtg_dacswitch) {
         UNIX_RTGCALL2(UNIX_PSSO_BoardInfo_GetCompatibleDACFormats, unix_picasso_get_compatible_dac_formats);
         UNIX_RTGCALL2(UNIX_PSSO_BoardInfo_CoerceMode, unix_picasso_coerce_mode);
+    }
+
+    if (currprefs.rtg_hardwareinterrupt) {
+        UNIX_RTGCALL2(UNIX_PSSO_BoardInfo_SetInterrupt, unix_picasso_set_interrupt);
+        unix_init_vblank_abi(ctx, unix_uaegfx_base, ABI);
     }
 
     write_log(_T("Unix RTG uaegfx.card code: %08X-%08X BI=%08X\n"), start, here(), ABI);
@@ -2249,6 +2574,8 @@ static uaecptr unix_uaegfx_card_install(TrapContext *ctx, uae_u32 extrasize)
 
     exec = trap_get_long(ctx, 4);
     unix_uaegfx_resid = ds(_T("UAE Graphics Card 4.0"));
+    unix_uaegfx_vblankname = ds(_T("UAE Graphics Card VBLANK"));
+    unix_uaegfx_portsname = ds(_T("UAE Graphics Card PORTS"));
 
     openfunc = here();
     calltrap(deftrap(unix_gfx_open));
@@ -2296,9 +2623,14 @@ static uaecptr unix_uaegfx_card_install(TrapContext *ctx, uae_u32 extrasize)
     trap_call_add_dreg(ctx, 0, 0);
     trap_put_long(ctx, unix_uaegfx_base + UNIX_CARD_EXPANSIONBASE, trap_call_lib(ctx, exec, -0x228));
     trap_put_long(ctx, unix_uaegfx_base + UNIX_CARD_EXECBASE, exec);
+    trap_put_long(ctx, unix_uaegfx_base + UNIX_CARD_IRQEXECBASE, exec);
     trap_put_long(ctx, unix_uaegfx_base + UNIX_CARD_NAME, unix_uaegfx_resname);
     trap_put_long(ctx, unix_uaegfx_base + UNIX_CARD_RESLIST, unix_uaegfx_base + UNIX_CARD_SIZEOF);
     trap_put_long(ctx, unix_uaegfx_base + UNIX_CARD_RESLISTSIZE, extrasize);
+
+    if (currprefs.rtg_hardwareinterrupt) {
+        unix_init_vblank_irq(ctx, unix_uaegfx_base);
+    }
 
     unix_uaegfx_active = 1;
     write_log(_T("Unix uaegfx.card %d.%d init @%08X (%u bytes modes)\n"),

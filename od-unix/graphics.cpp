@@ -15,6 +15,8 @@
 #include <stdlib.h>
 
 extern int pause_emulation;
+extern void picasso_trigger_vblank(void);
+extern void unix_rtg_overlay_sprite(int monid, uae_u32 *dst, int width, int height, int rowpixels);
 
 uae_u32 p96_rgbx16[65536];
 bool gfx_hdr;
@@ -30,7 +32,8 @@ enum {
     UNIX_PICASSO_STATE_SETPANNING = 2,
     UNIX_PICASSO_STATE_SETGC = 4,
     UNIX_PICASSO_STATE_SETDAC = 8,
-    UNIX_PICASSO_STATE_SETSWITCH = 16
+    UNIX_PICASSO_STATE_SETSWITCH = 16,
+    UNIX_PICASSO_STATE_SPRITE = 32
 };
 
 static int unix_picasso_bytes_per_pixel(RGBFTYPE rgbfmt)
@@ -549,6 +552,7 @@ static void unix_picasso_render(int monid)
             dst[x] = unix_picasso_convert_pixel(src + x * srcpixbytes, (RGBFTYPE)state->RGBFormat, pvidinfo->clut);
         }
     }
+    unix_rtg_overlay_sprite(monid, (uae_u32 *)vb->bufmem, state->Width, state->Height, vb->rowbytes / sizeof(uae_u32));
 }
 
 void picasso_enablescreen(int monid, int on)
@@ -645,6 +649,7 @@ void picasso_handle_vsync(void)
             }
         }
         if (ad->picasso_on || vidinfo->picasso_active) {
+            picasso_trigger_vblank();
             picasso_refresh(monid);
         }
     }
