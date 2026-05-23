@@ -142,6 +142,7 @@ static bool testRepresentativeConfig()
     settings.insert(QStringLiteral("gfx_width_windowed"), QStringLiteral("800"));
     settings.insert(QStringLiteral("gfx_height_windowed"), QStringLiteral("600"));
     settings.insert(QStringLiteral("uaescsimode"), QStringLiteral("SPTI"));
+    settings.insert(QStringLiteral("unix.rtg_vblank"), QStringLiteral("real"));
     settings.insert(QStringLiteral("unix.ui.config_path"), QStringLiteral("/configs"));
     settings.insert(QStringLiteral("unix.screenshot_path"), QStringLiteral("/screenshots"));
 
@@ -156,13 +157,14 @@ static bool testRepresentativeConfig()
     parsedLines.clear();
     bool ok = applyWinUaeQtConfigToPrefs(WinUaeQtConfig(settings), prefs);
     ok = require(ok, "adapter rejected representative config") && ok;
-    ok = requireInt(parsedLines.size(), settings.size() - 6, "parsed line count") && ok;
+    ok = requireInt(parsedLines.size(), settings.size() - 7, "parsed line count") && ok;
     ok = require(!parsedLines.contains(QStringLiteral("unix.ui.config_path=/configs")), "UI-only path was delegated") && ok;
     ok = require(!parsedLines.contains(QStringLiteral("floppy0wp=true")), "floppy0wp was delegated") && ok;
     ok = require(!parsedLines.contains(QStringLiteral("floppy1wp=false")), "floppy1wp was delegated") && ok;
     ok = require(!parsedLines.contains(QStringLiteral("floppy2wp=yes")), "floppy2wp was delegated") && ok;
     ok = require(!parsedLines.contains(QStringLiteral("floppy3wp=t")), "floppy3wp was delegated") && ok;
     ok = require(!parsedLines.contains(QStringLiteral("uaescsimode=SPTI")), "uaescsimode was delegated") && ok;
+    ok = require(!parsedLines.contains(QStringLiteral("unix.rtg_vblank=real")), "unix.rtg_vblank was delegated") && ok;
     ok = require(parsedLines.contains(QStringLiteral("unix.screenshot_path=/screenshots")), "runtime path was not delegated") && ok;
     ok = require(parsedLines.contains(QStringLiteral("chipset_compatible=A1200")), "chipset compatibility was not delegated") && ok;
     ok = require(parsedLines.contains(QStringLiteral("floppy1type=1")), "floppy drive type was not delegated") && ok;
@@ -193,6 +195,7 @@ static bool testRepresentativeConfig()
     ok = requireInt(prefs->cachesize, 8, "cachesize") && ok;
     ok = requireInt(prefs->produce_sound, 2, "produce_sound") && ok;
     ok = requireInt(prefs->win32_uaescsimode, UAESCSI_SPTI, "win32_uaescsimode") && ok;
+    ok = requireInt(prefs->win32_rtgvblankrate, -1, "win32_rtgvblankrate") && ok;
     ok = requireUnsigned(prefs->rtgboards[0].rtgmem_size, 16 * 0x100000, "rtgmem_size") && ok;
     ok = requireInt(prefs->rtgboards[0].rtgmem_type, 1, "rtgmem_type") && ok;
     ok = requireInt(prefs->gfx_monitor[0].gfx_size_win.width, 800, "gfx width") && ok;
