@@ -208,6 +208,7 @@ static inline long uae_unix_timezone_offset(void)
 #define UAESCSI_CDEMU 0
 #define UAESCSI_SPTI 1
 #define UAESCSI_SPTISCAN 2
+#define UAESCSI_LAST 2
 #define UAESCSI_ASPI_FIRST 3
 #define UAESCSI_ADAPTECASPI 3
 #define UAESCSI_NEROASPI 4
