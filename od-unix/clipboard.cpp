@@ -1,10 +1,18 @@
 #include "sysconfig.h"
 #include "sysdeps.h"
 
+#include <limits.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <string>
 #include <vector>
+
+#ifdef WINUAE_UNIX_WITH_IMAGEIO
+#include <CoreFoundation/CoreFoundation.h>
+#include <CoreGraphics/CoreGraphics.h>
+#include <ImageIO/ImageIO.h>
+#define UAE_UNIX_CLIPBOARD_IMAGEIO 1
+#endif
 
 #ifdef UAE_UNIX_WITH_SDL3
 #include <SDL3/SDL.h>
@@ -92,6 +100,7 @@ static bool write_command_input(const char *command, const std::string &text)
 struct UnixClipboardData {
 	std::vector<uae_u8> bmp;
 	std::vector<uae_u8> png;
+	std::vector<uae_u8> tiff;
 };
 
 static const void *SDLCALL unix_clipboard_data_callback(void *userdata, const char *mime_type, size_t *size)
@@ -107,6 +116,13 @@ static const void *SDLCALL unix_clipboard_data_callback(void *userdata, const ch
 #ifdef UAE_UNIX_CLIPBOARD_PNG
 	if (mime_type && !strcmp(mime_type, "image/png") && !data->png.empty()) {
 		payload = &data->png;
+	}
+#endif
+#ifdef UAE_UNIX_CLIPBOARD_IMAGEIO
+	if (!payload && mime_type &&
+		(!strcmp(mime_type, "image/tiff") || !strcmp(mime_type, "image/tif") ||
+		 !strcmp(mime_type, "public.tiff")) && !data->tiff.empty()) {
+		payload = &data->tiff;
 	}
 #endif
 	if (!payload && mime_type &&
@@ -132,6 +148,10 @@ static bool has_host_clipboard_image(void)
 	return
 #ifdef UAE_UNIX_CLIPBOARD_PNG
 		SDL_HasClipboardData("image/png") ||
+#endif
+#ifdef UAE_UNIX_CLIPBOARD_IMAGEIO
+		SDL_HasClipboardData("image/tiff") || SDL_HasClipboardData("image/tif") ||
+		SDL_HasClipboardData("public.tiff") ||
 #endif
 		SDL_HasClipboardData("image/bmp") || SDL_HasClipboardData("image/x-bmp");
 }
@@ -166,24 +186,40 @@ static bool read_host_clipboard_png(std::vector<uae_u8> *png, size_t max_bytes)
 }
 #endif
 
+#ifdef UAE_UNIX_CLIPBOARD_IMAGEIO
+static bool read_host_clipboard_tiff(std::vector<uae_u8> *tiff, size_t max_bytes)
+{
+	const char *mime_types[] = { "image/tiff", "image/tif", "public.tiff", NULL };
+	return read_host_clipboard_data(mime_types, tiff, max_bytes);
+}
+#endif
+
 static bool read_host_clipboard_bmp(std::vector<uae_u8> *bmp, size_t max_bytes)
 {
 	const char *mime_types[] = { "image/bmp", "image/x-bmp", NULL };
 	return read_host_clipboard_data(mime_types, bmp, max_bytes);
 }
 
-static bool write_host_clipboard_image(const std::vector<uae_u8> &bmp, const std::vector<uae_u8> *png)
+static bool write_host_clipboard_image(const std::vector<uae_u8> &bmp, const std::vector<uae_u8> *png,
+	const std::vector<uae_u8> *tiff)
 {
 	UnixClipboardData *data = new UnixClipboardData;
 	data->bmp = bmp;
 	if (png) {
 		data->png = *png;
 	}
+	if (tiff) {
+		data->tiff = *tiff;
+	}
 	const bool cache_png = png && !png->empty();
+	const bool cache_tiff = tiff && !tiff->empty();
 
 	const char *mime_types[] = {
 #ifdef UAE_UNIX_CLIPBOARD_PNG
 		"image/png",
+#endif
+#ifdef UAE_UNIX_CLIPBOARD_IMAGEIO
+		"image/tiff", "image/tif", "public.tiff",
 #endif
 		"image/bmp", "image/x-bmp"
 	};
@@ -196,14 +232,14 @@ static bool write_host_clipboard_image(const std::vector<uae_u8> &bmp, const std
 
 	last_host_clipboard.clear();
 	last_host_clipboard_valid = false;
-	last_host_clipboard_bitmap = cache_png ? *png : bmp;
+	last_host_clipboard_bitmap = cache_png ? *png : (cache_tiff ? *tiff : bmp);
 	last_host_clipboard_bitmap_valid = true;
 	return true;
 }
 
 static bool write_host_clipboard_bmp(const std::vector<uae_u8> &bmp)
 {
-	return write_host_clipboard_image(bmp, NULL);
+	return write_host_clipboard_image(bmp, NULL, NULL);
 }
 #endif
 
@@ -578,6 +614,137 @@ static bool make_png(const UnixClipboardBitmap &bitmap, std::vector<uae_u8> *png
 	png->resize(size);
 	png_image_free(&image);
 	return true;
+}
+#endif
+
+#ifdef UAE_UNIX_CLIPBOARD_IMAGEIO
+static bool parse_imageio_bitmap(const std::vector<uae_u8> &data, UnixClipboardBitmap *bitmap)
+{
+    if (!bitmap || data.empty()) {
+        return false;
+    }
+
+    CFDataRef image_data = CFDataCreate(kCFAllocatorDefault, data.data(), data.size());
+    if (!image_data) {
+        return false;
+    }
+    CGImageSourceRef source = CGImageSourceCreateWithData(image_data, NULL);
+    CFRelease(image_data);
+    if (!source) {
+        return false;
+    }
+
+    CGImageRef image = CGImageSourceCreateImageAtIndex(source, 0, NULL);
+    CFRelease(source);
+    if (!image) {
+        return false;
+    }
+
+    const size_t width = CGImageGetWidth(image);
+    const size_t height = CGImageGetHeight(image);
+    if (!width || !height || width > INT_MAX || height > INT_MAX ||
+        (uae_u64)width * (uae_u64)height > CLIP_SIZE_LIMIT / 4) {
+        CGImageRelease(image);
+        return false;
+    }
+
+    std::vector<uae_u8> rgba(width * height * 4);
+    CGColorSpaceRef colorspace = CGColorSpaceCreateDeviceRGB();
+    CGContextRef context = CGBitmapContextCreate(rgba.data(), width, height, 8, width * 4,
+        colorspace, kCGBitmapByteOrder32Big | kCGImageAlphaPremultipliedLast);
+    CGColorSpaceRelease(colorspace);
+    if (!context) {
+        CGImageRelease(image);
+        return false;
+    }
+
+    CGContextTranslateCTM(context, 0, (CGFloat)height);
+    CGContextScaleCTM(context, 1, -1);
+    CGContextDrawImage(context, CGRectMake(0, 0, (CGFloat)width, (CGFloat)height), image);
+    CGContextRelease(context);
+    CGImageRelease(image);
+
+    bitmap->width = (int)width;
+    bitmap->height = (int)height;
+    bitmap->pixels.assign(width * height, 0);
+    for (size_t y = 0; y < height; y++) {
+        const uae_u8 *row = rgba.data() + y * width * 4;
+        for (size_t x = 0; x < width; x++) {
+            const uae_u8 *p = row + x * 4;
+            const uae_u32 alpha = p[3];
+            const uae_u32 red = p[0] + 255 - alpha;
+            const uae_u32 green = p[1] + 255 - alpha;
+            const uae_u32 blue = p[2] + 255 - alpha;
+            bitmap->pixels[y * width + x] =
+                ((red > 255 ? 255 : red) << 16) |
+                ((green > 255 ? 255 : green) << 8) |
+                (blue > 255 ? 255 : blue);
+        }
+    }
+    return true;
+}
+
+static bool make_tiff(const UnixClipboardBitmap &bitmap, std::vector<uae_u8> *tiff)
+{
+    if (!tiff || bitmap.width <= 0 || bitmap.height <= 0 ||
+        bitmap.pixels.size() < (size_t)bitmap.width * (size_t)bitmap.height) {
+        return false;
+    }
+
+    const size_t width = bitmap.width;
+    const size_t height = bitmap.height;
+    std::vector<uae_u8> rgba(width * height * 4);
+    for (size_t y = 0; y < height; y++) {
+        uae_u8 *row = rgba.data() + y * width * 4;
+        for (size_t x = 0; x < width; x++) {
+            const uae_u32 pixel = bitmap.pixels[y * width + x];
+            uae_u8 *p = row + x * 4;
+            p[0] = pixel >> 16;
+            p[1] = pixel >> 8;
+            p[2] = pixel;
+            p[3] = 255;
+        }
+    }
+
+    CGDataProviderRef provider = CGDataProviderCreateWithData(NULL, rgba.data(), rgba.size(), NULL);
+    if (!provider) {
+        return false;
+    }
+    CGColorSpaceRef colorspace = CGColorSpaceCreateDeviceRGB();
+    CGImageRef image = CGImageCreate(width, height, 8, 32, width * 4, colorspace,
+        kCGBitmapByteOrder32Big | kCGImageAlphaNoneSkipLast, provider, NULL, false,
+        kCGRenderingIntentDefault);
+    CGColorSpaceRelease(colorspace);
+    CGDataProviderRelease(provider);
+    if (!image) {
+        return false;
+    }
+
+    CFMutableDataRef image_data = CFDataCreateMutable(kCFAllocatorDefault, 0);
+    if (!image_data) {
+        CGImageRelease(image);
+        return false;
+    }
+    CGImageDestinationRef destination = CGImageDestinationCreateWithData(image_data, CFSTR("public.tiff"), 1, NULL);
+    if (!destination) {
+        CFRelease(image_data);
+        CGImageRelease(image);
+        return false;
+    }
+    CGImageDestinationAddImage(destination, image, NULL);
+    const bool ok = CGImageDestinationFinalize(destination);
+    CFRelease(destination);
+    CGImageRelease(image);
+    if (!ok) {
+        CFRelease(image_data);
+        return false;
+    }
+
+    const UInt8 *bytes = CFDataGetBytePtr(image_data);
+    const CFIndex length = CFDataGetLength(image_data);
+    tiff->assign(bytes, bytes + length);
+    CFRelease(image_data);
+    return !tiff->empty();
 }
 #endif
 
@@ -1047,7 +1214,11 @@ static void from_iff(TrapContext *ctx, uaecptr data, uae_u32 len)
 #ifdef UAE_UNIX_CLIPBOARD_PNG
 			make_png(bitmap, &png);
 #endif
-			write_host_clipboard_image(bmp, png.empty() ? NULL : &png);
+			std::vector<uae_u8> tiff;
+#ifdef UAE_UNIX_CLIPBOARD_IMAGEIO
+			make_tiff(bitmap, &tiff);
+#endif
+			write_host_clipboard_image(bmp, png.empty() ? NULL : &png, tiff.empty() ? NULL : &tiff);
 		}
 #endif
 	}
@@ -1086,6 +1257,19 @@ static void clipboard_read_host(TrapContext *, bool keyboardinject, bool initial
 		std::vector<uae_u8> image;
 #ifdef UAE_UNIX_CLIPBOARD_PNG
 		if (read_host_clipboard_png(&image, initial ? CLIP_SIZE_LIMIT_INIT : CLIP_SIZE_LIMIT) && parse_png(image, &bitmap)) {
+			if (last_host_clipboard_bitmap_valid && image == last_host_clipboard_bitmap) {
+				return;
+			}
+			last_host_clipboard.clear();
+			last_host_clipboard_valid = false;
+			last_host_clipboard_bitmap = image;
+			last_host_clipboard_bitmap_valid = true;
+			queue_host_bitmap_to_amiga(bitmap, initial);
+			return;
+		}
+#endif
+#ifdef UAE_UNIX_CLIPBOARD_IMAGEIO
+		if (read_host_clipboard_tiff(&image, initial ? CLIP_SIZE_LIMIT_INIT : CLIP_SIZE_LIMIT) && parse_imageio_bitmap(image, &bitmap)) {
 			if (last_host_clipboard_bitmap_valid && image == last_host_clipboard_bitmap) {
 				return;
 			}
