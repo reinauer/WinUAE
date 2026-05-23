@@ -49,12 +49,38 @@ static bool settingToBool(const WinUaeQtConfig::Settings &settings, const QStrin
     return false;
 }
 
+static bool rtgVBlankValueToInt(const QString &value, int *out)
+{
+    const QString normalized = value.trimmed().toLower();
+    int parsed = 0;
+    bool ok = false;
+    if (normalized == QStringLiteral("real") || normalized == QStringLiteral("default")) {
+        parsed = -1;
+        ok = true;
+    } else if (normalized == QStringLiteral("disabled")) {
+        parsed = -2;
+        ok = true;
+    } else if (normalized == QStringLiteral("chipset")) {
+        parsed = 0;
+        ok = true;
+    } else {
+        parsed = normalized.toInt(&ok);
+    }
+    if (ok && out) {
+        *out = parsed;
+    }
+    return ok;
+}
+
 static void parseSettingOption(struct uae_prefs *prefs, const QString &key, const QString &value)
 {
     if (value.isEmpty() || key.startsWith(QStringLiteral("unix.ui."))) {
         return;
     }
     if (key == QStringLiteral("uaescsimode") || key == QStringLiteral("unix.uaescsimode")) {
+        return;
+    }
+    if (key == QStringLiteral("rtg_vblank") || key == QStringLiteral("unix.rtg_vblank")) {
         return;
     }
     QByteArray option = key.toLocal8Bit();
@@ -146,6 +172,13 @@ static void applyDirectSettings(const WinUaeQtConfig::Settings &settings, struct
         } else {
             prefs->win32_uaescsimode = UAESCSI_CDEMU;
         }
+    }
+    QString rtgVBlank = settings.value(QStringLiteral("unix.rtg_vblank"));
+    if (rtgVBlank.isEmpty()) {
+        rtgVBlank = settings.value(QStringLiteral("rtg_vblank"));
+    }
+    if (rtgVBlankValueToInt(rtgVBlank, &value)) {
+        prefs->win32_rtgvblankrate = value;
     }
     applyWindowSize(settings, prefs);
 }
