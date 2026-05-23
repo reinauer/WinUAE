@@ -54,6 +54,9 @@ static void parseSettingOption(struct uae_prefs *prefs, const QString &key, cons
     if (value.isEmpty() || key.startsWith(QStringLiteral("unix.ui."))) {
         return;
     }
+    if (key == QStringLiteral("uaescsimode") || key == QStringLiteral("unix.uaescsimode")) {
+        return;
+    }
     QByteArray option = key.toLocal8Bit();
     QByteArray optionValue = value.toLocal8Bit();
     cfgfile_parse_option(prefs, option.constData(), optionValue.data(), 0);
@@ -130,6 +133,19 @@ static void applyDirectSettings(const WinUaeQtConfig::Settings &settings, struct
     }
     if (settingToInt(settings, QStringLiteral("gfxcard_size"), &value)) {
         prefs->rtgboards[0].rtgmem_size = value * 0x100000;
+    }
+    QString scsiMode = settings.value(QStringLiteral("uaescsimode"));
+    if (scsiMode.isEmpty()) {
+        scsiMode = settings.value(QStringLiteral("unix.uaescsimode"));
+    }
+    if (!scsiMode.isEmpty()) {
+        if (scsiMode.compare(QStringLiteral("SPTI+SCSISCAN"), Qt::CaseInsensitive) == 0) {
+            prefs->win32_uaescsimode = UAESCSI_SPTISCAN;
+        } else if (scsiMode.compare(QStringLiteral("SPTI"), Qt::CaseInsensitive) == 0) {
+            prefs->win32_uaescsimode = UAESCSI_SPTI;
+        } else {
+            prefs->win32_uaescsimode = UAESCSI_CDEMU;
+        }
     }
     applyWindowSize(settings, prefs);
 }

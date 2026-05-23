@@ -319,6 +319,7 @@ static int activity_priority_index_from_value(int value, int defpri)
 }
 
 static const TCHAR *configmult[] = { _T("1x"), _T("2x"), _T("3x"), _T("4x"), _T("5x"), _T("6x"), _T("7x"), _T("8x"), NULL };
+static const TCHAR *uaescsimode[] = { _T("SCSIEMU"), _T("SPTI"), _T("SPTI+SCSISCAN"), NULL };
 
 static void add_line(std::vector<std::string> &lines, const std::string &option, const std::string &value)
 {
@@ -539,6 +540,9 @@ int target_parse_option(struct uae_prefs *p, const TCHAR *option, const TCHAR *v
         || cfgfile_intval(option, value, _T("screenshot_output_height_limit"), &p->screenshot_output_height, 1)) {
         return 1;
     }
+    if (cfgfile_strval(option, value, _T("uaescsimode"), &p->win32_uaescsimode, uaescsimode, 0)) {
+        return 1;
+    }
     if (cfgfile_strval(option, value, _T("screenshot_mult_width"), &p->screenshot_xmult, configmult, 0)
         || cfgfile_strval(option, value, _T("screenshot_mult_height"), &p->screenshot_ymult, configmult, 0)) {
         return 1;
@@ -701,6 +705,11 @@ void target_save_options(struct zfile *f, struct uae_prefs *p)
     cfgfile_target_dwrite_str_escape(f, _T("midiin_device_name"), _T("none"));
 #endif
     cfgfile_target_dwrite_bool(f, _T("midirouter"), p->win32_midirouter);
+    int scsimode = p->win32_uaescsimode;
+    if (scsimode < 0 || scsimode > UAESCSI_LAST) {
+        scsimode = UAESCSI_SPTI;
+    }
+    cfgfile_target_dwrite_str(f, _T("uaescsimode"), uaescsimode[scsimode]);
     cfgfile_target_dwrite(f, _T("recording_width"), _T("%d"), p->aviout_width);
     cfgfile_target_dwrite(f, _T("recording_height"), _T("%d"), p->aviout_height);
     cfgfile_target_dwrite(f, _T("recording_x"), _T("%d"), p->aviout_xoffset);
@@ -769,6 +778,9 @@ void target_fixup_options(struct uae_prefs *p)
     p->win32_midiindev = -1;
     p->win32_midirouter = false;
 #endif
+    if (p->win32_uaescsimode > UAESCSI_LAST) {
+        p->win32_uaescsimode = UAESCSI_SPTI;
+    }
 }
 
 void target_multipath_modified(struct uae_prefs*)
