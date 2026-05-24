@@ -62,6 +62,30 @@ static bool parse_path_option(const TCHAR *option, const TCHAR *value, const TCH
     return true;
 }
 
+static bool parse_rom_path_option(struct uae_prefs *p, const TCHAR *option, const TCHAR *value)
+{
+    if (!parse_path_option(option, value, _T("rom_path"), path_rom, sizeof path_rom / sizeof(TCHAR))) {
+        return false;
+    }
+    if (!p) {
+        return true;
+    }
+    if (!path_rom[0]) {
+        p->path_rom.path[0][0] = 0;
+        return true;
+    }
+    for (int i = 0; i < MAX_PATHS; i++) {
+        if (p->path_rom.path[i][0] == 0 || (i == 0 && (!_tcscmp(p->path_rom.path[i], _T(".\\")) || !_tcscmp(p->path_rom.path[i], _T("./"))))) {
+            uae_tcslcpy(p->path_rom.path[i], path_rom, sizeof p->path_rom.path[i] / sizeof(TCHAR));
+            target_multipath_modified(p);
+            return true;
+        }
+    }
+    uae_tcslcpy(p->path_rom.path[MAX_PATHS - 1], path_rom, sizeof p->path_rom.path[MAX_PATHS - 1] / sizeof(TCHAR));
+    target_multipath_modified(p);
+    return true;
+}
+
 static std::string lowercase_copy(std::string s)
 {
     for (char &c : s) {
@@ -676,7 +700,7 @@ int target_parse_option(struct uae_prefs *p, const TCHAR *option, const TCHAR *v
         || parse_path_option(option, value, _T("ui.rip_path"), path_ripper, sizeof path_ripper / sizeof(TCHAR))
         || parse_path_option(option, value, _T("data_path"), path_data, sizeof path_data / sizeof(TCHAR))
         || parse_path_option(option, value, _T("ui.data_path"), path_data, sizeof path_data / sizeof(TCHAR))
-        || parse_path_option(option, value, _T("rom_path"), path_rom, sizeof path_rom / sizeof(TCHAR))) {
+        || parse_rom_path_option(p, option, value)) {
         return 1;
     }
     return 0;
