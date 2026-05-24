@@ -23,6 +23,7 @@ public:
     void setSettings(Settings settings);
     void applySettings(const Settings &settings, const QStringList &ownedKeys);
     void applyRepeatedSettings(const OrderedSettings &settings, const QStringList &ownedKeys);
+    void moveSettingBefore(const QString &key, const QStringList &beforeKeys);
 
     QString value(const QString &key, const QString &defaultValue = QString()) const;
     void setValue(const QString &key, const QString &value);

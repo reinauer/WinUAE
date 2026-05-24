@@ -7770,6 +7770,8 @@ private:
                 rtgCenter->setChecked(false);
             }
         });
+        connect(rtgMem, &QComboBox::currentTextChanged, this, [this]() { updateCpuControlState(); });
+        connect(rtgType, &QComboBox::currentTextChanged, this, [this]() { updateCpuControlState(); });
         return page;
     }
 
@@ -12276,9 +12278,14 @@ private:
     {
         const int cpu = selectedCpuModel();
         const int fpu = fpuModelConfigValue(cpu);
+        const bool z3Rtg = rtgNeeds32BitAddressSpace();
         bool jitEnabled = jit && jit->isChecked();
         if (cpu24Bit) {
-            cpu24Bit->setEnabled(cpu <= 68030);
+            cpu24Bit->setEnabled(cpu <= 68030 && !z3Rtg);
+            cpu24Bit->setToolTip(z3Rtg ? QStringLiteral("Zorro III RTG requires a 32-bit address space.") : QString());
+            if (z3Rtg && cpu24Bit->isChecked()) {
+                cpu24Bit->setChecked(false);
+            }
         }
         if (jit) {
             jit->setEnabled(unixJitBackendAvailable() && cpu >= 68020 && !cpu24Bit->isChecked());
@@ -12327,6 +12334,13 @@ private:
             }
         }
         updateJitCacheLabel();
+    }
+
+    bool rtgNeeds32BitAddressSpace() const
+    {
+        return rtgMem && rtgType
+            && rtgMem->currentText() != QStringLiteral("None")
+            && rtgType->currentText() == QStringLiteral("ZorroIII");
     }
 
     WinUaeQtFilterState defaultFilterState(int target) const
@@ -14394,6 +14408,7 @@ private:
         WinUaeQtConfig::Settings settings;
         const int cpu = selectedCpuModel();
         const int fpu = fpuModelConfigValue(cpu);
+        const bool z3Rtg = rtgNeeds32BitAddressSpace();
         if (configDescription && !configDescription->text().trimmed().isEmpty()) {
             settings.insert(QStringLiteral("config_description"), configDescription->text().trimmed());
         }
@@ -14578,7 +14593,7 @@ private:
         if (fpu) {
             settings.insert(QStringLiteral("fpu_model"), QString::number(fpu));
         }
-        settings.insert(QStringLiteral("cpu_24bit_addressing"), cpu24Bit->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
+        settings.insert(QStringLiteral("cpu_24bit_addressing"), !z3Rtg && cpu24Bit->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
         if (mmuButtons->checkedId() == 1 && cpu >= 68030) {
             settings.insert(QStringLiteral("mmu_model"), QString::number(cpu));
         } else if (mmuButtons->checkedId() == 2 && cpu >= 68030) {
@@ -15421,6 +15436,11 @@ private:
         config.applySettings(currentSettings(), uiOwnedKeys());
         config.applySettings(currentExpansionBoardSettings(), expansionKeys);
         config.applyRepeatedSettings(currentMountSettings(), mountKeys);
+        QStringList quickstartOverrideKeys = uiOwnedKeys();
+        quickstartOverrideKeys.append(expansionKeys);
+        quickstartOverrideKeys.append(mountKeys);
+        quickstartOverrideKeys.removeAll(QStringLiteral("quickstart"));
+        config.moveSettingBefore(QStringLiteral("quickstart"), quickstartOverrideKeys);
         return config;
     }
 
