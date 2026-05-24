@@ -26,17 +26,17 @@ extern struct flag_struct regflags;
 #define FLAGBIT_V 28
 #define FLAGBIT_X 0
 
-#define FLAGVAL_N (1 << FLAGBIT_N)
-#define FLAGVAL_Z (1 << FLAGBIT_Z)
-#define FLAGVAL_C (1 << FLAGBIT_C)
-#define FLAGVAL_V (1 << FLAGBIT_V)
-#define FLAGVAL_X (1 << FLAGBIT_X)
+#define FLAGVAL_N (1UL << FLAGBIT_N)
+#define FLAGVAL_Z (1UL << FLAGBIT_Z)
+#define FLAGVAL_C (1UL << FLAGBIT_C)
+#define FLAGVAL_V (1UL << FLAGBIT_V)
+#define FLAGVAL_X (1UL << FLAGBIT_X)
 
-#define SET_ZFLG(y) (regflags.nzcv = (regflags.nzcv & ~FLAGVAL_Z) | (((y) ? 1 : 0) << FLAGBIT_Z))
-#define SET_CFLG(y) (regflags.nzcv = (regflags.nzcv & ~FLAGVAL_C) | (((y) ? 1 : 0) << FLAGBIT_C))
-#define SET_VFLG(y) (regflags.nzcv = (regflags.nzcv & ~FLAGVAL_V) | (((y) ? 1 : 0) << FLAGBIT_V))
-#define SET_NFLG(y) (regflags.nzcv = (regflags.nzcv & ~FLAGVAL_N) | (((y) ? 1 : 0) << FLAGBIT_N))
-#define SET_XFLG(y) (regflags.x = ((y) ? 1 : 0))
+#define SET_ZFLG(y) (regflags.nzcv = (regflags.nzcv & ~FLAGVAL_Z) | (((y) ? 1UL : 0UL) << FLAGBIT_Z))
+#define SET_CFLG(y) (regflags.nzcv = (regflags.nzcv & ~FLAGVAL_C) | (((y) ? 1UL : 0UL) << FLAGBIT_C))
+#define SET_VFLG(y) (regflags.nzcv = (regflags.nzcv & ~FLAGVAL_V) | (((y) ? 1UL : 0UL) << FLAGBIT_V))
+#define SET_NFLG(y) (regflags.nzcv = (regflags.nzcv & ~FLAGVAL_N) | (((y) ? 1UL : 0UL) << FLAGBIT_N))
+#define SET_XFLG(y) (regflags.x = ((y) ? 1UL : 0UL))
 
 #define GET_ZFLG() ((regflags.nzcv >> FLAGBIT_Z) & 1)
 #define GET_CFLG() ((regflags.nzcv >> FLAGBIT_C) & 1)
