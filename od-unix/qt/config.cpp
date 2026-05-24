@@ -192,6 +192,66 @@ void WinUaeQtConfig::applyRepeatedSettings(const OrderedSettings &settings, cons
     rebuildSettingsFromDocumentLines();
 }
 
+void WinUaeQtConfig::moveSettingBefore(const QString &key, const QStringList &beforeKeys)
+{
+    Setting moved;
+    bool found = false;
+    OrderedSettings updatedSettings;
+    for (const Setting &setting : std::as_const(orderedConfigSettings)) {
+        if (setting.key == key) {
+            if (!found) {
+                moved = setting;
+                found = true;
+            }
+            continue;
+        }
+        updatedSettings.append(setting);
+    }
+    if (!found) {
+        return;
+    }
+
+    int insertIndex = updatedSettings.size();
+    for (int i = 0; i < updatedSettings.size(); i++) {
+        if (beforeKeys.contains(updatedSettings[i].key)) {
+            insertIndex = i;
+            break;
+        }
+    }
+    updatedSettings.insert(insertIndex, moved);
+    orderedConfigSettings = updatedSettings;
+    rebuildSettingsFromOrderedSettings();
+
+    if (!documentLoaded) {
+        return;
+    }
+
+    DocumentLine movedLine = makeSettingLine(moved.key, moved.value);
+    QList<DocumentLine> updatedLines;
+    bool lineFound = false;
+    for (const DocumentLine &line : std::as_const(documentLines)) {
+        if (line.setting && line.key == key) {
+            if (!lineFound) {
+                movedLine = line;
+                lineFound = true;
+            }
+            continue;
+        }
+        updatedLines.append(line);
+    }
+
+    int lineInsertIndex = updatedLines.size();
+    for (int i = 0; i < updatedLines.size(); i++) {
+        if (updatedLines[i].setting && beforeKeys.contains(updatedLines[i].key)) {
+            lineInsertIndex = i;
+            break;
+        }
+    }
+    updatedLines.insert(lineInsertIndex, movedLine);
+    documentLines = updatedLines;
+    rebuildSettingsFromDocumentLines();
+}
+
 QString WinUaeQtConfig::value(const QString &key, const QString &defaultValue) const
 {
     return configSettings.value(key, defaultValue);

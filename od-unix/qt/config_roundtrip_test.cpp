@@ -272,5 +272,39 @@ int main()
     ok = requireNotContains(expansionOutput, QStringLiteral("/old-a4091.rom")) && ok;
     ok = requireNotContains(expansionOutput, QStringLiteral("/old/disk.hdf")) && ok;
 
+    const QString quickstartInputPath = QDir(tempDir.path()).filePath(QStringLiteral("quickstart-input.uae"));
+    const QString quickstartOutputPath = QDir(tempDir.path()).filePath(QStringLiteral("quickstart-output.uae"));
+    const QString quickstartInput =
+        QStringLiteral("cpu_model=68020\n")
+        + QStringLiteral("cpu_24bit_addressing=false\n")
+        + QStringLiteral("quickstart=A1200,1\n")
+        + QStringLiteral("gfxcard_size=4\n")
+        + QStringLiteral("gfxcard_type=ZorroIII\n");
+    if (!writeText(quickstartInputPath, quickstartInput)) {
+        return 1;
+    }
+
+    WinUaeQtConfig quickstartConfig;
+    if (!quickstartConfig.load(quickstartInputPath, &error)) {
+        qWarning().noquote() << error;
+        return 1;
+    }
+    quickstartConfig.moveSettingBefore(QStringLiteral("quickstart"), {
+        QStringLiteral("cpu_model"),
+        QStringLiteral("cpu_24bit_addressing"),
+        QStringLiteral("gfxcard_size"),
+        QStringLiteral("gfxcard_type")
+    });
+    if (!quickstartConfig.save(quickstartOutputPath, &error)) {
+        qWarning().noquote() << error;
+        return 1;
+    }
+    const QString quickstartOutput = readText(quickstartOutputPath);
+    ok = requireBefore(quickstartOutput, QStringLiteral("quickstart=A1200,1\n"), QStringLiteral("cpu_model=68020\n")) && ok;
+    ok = requireBefore(quickstartOutput, QStringLiteral("cpu_24bit_addressing=false\n"), QStringLiteral("gfxcard_size=4\n")) && ok;
+    const QStringList quickstartArgs = quickstartConfig.commandArguments();
+    ok = requireArgBefore(quickstartArgs, QStringLiteral("quickstart=A1200,1"), QStringLiteral("cpu_model=68020")) && ok;
+    ok = requireArgBefore(quickstartArgs, QStringLiteral("quickstart=A1200,1"), QStringLiteral("gfxcard_size=4")) && ok;
+
     return ok ? 0 : 1;
 }
