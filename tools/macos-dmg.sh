@@ -92,7 +92,7 @@ apply_volume_icon() {
 apply_volume_icon "${staging_dir}"
 
 background_ppm="${staging_dir}/.background/background.ppm"
-background_png="${staging_dir}/.background/background.png"
+background_tiff="${staging_dir}/.background/background.tiff"
 awk '
 BEGIN {
     w = 640; h = 400;
@@ -118,7 +118,7 @@ BEGIN {
         print "";
     }
 }' > "${background_ppm}"
-sips -s format png "${background_ppm}" --out "${background_png}" >/dev/null
+sips -s format tiff "${background_ppm}" --out "${background_tiff}" >/dev/null
 rm -f "${background_ppm}"
 
 hdiutil create -volname "${volume_name}" -srcfolder "${staging_dir}" -fs HFS+ -format UDRW -ov "${rw_dmg}" >/dev/null
@@ -130,17 +130,52 @@ fi
 
 apply_volume_icon "${mount_dir}"
 
+require_finder_layout_records() {
+    local ds_store="$1"
+    local missing=0
+
+    for record in Iloc bwsp icvp; do
+        if ! LC_ALL=C grep -aq "${record}" "${ds_store}"; then
+            echo "error: Finder layout metadata is missing ${record} record in ${ds_store}" >&2
+            missing=1
+        fi
+    done
+
+    return "${missing}"
+}
+
 if [[ "${WINUAE_SKIP_FINDER_LAYOUT:-0}" != "1" ]] && command -v osascript >/dev/null 2>&1; then
     osascript <<EOF
 tell application "Finder"
     set dmgFolder to POSIX file "${mount_dir}" as alias
-    set backgroundPicture to POSIX file "${mount_dir}/.background/background.png" as alias
+    set backgroundPicture to POSIX file "${mount_dir}/.background/background.tiff" as alias
+    open dmgFolder
+    delay 5
+    set dmgWindow to container window of dmgFolder
+    set current view of dmgWindow to icon view
+    set viewOptions to icon view options of dmgWindow
+    set background picture of viewOptions to backgroundPicture
+    set arrangement of viewOptions to not arranged
+    set icon size of viewOptions to 96
+    update dmgFolder
+    delay 5
+    try
+        close dmgWindow
+    end try
+
     open dmgFolder
     delay 1
     set dmgWindow to container window of dmgFolder
     set current view of dmgWindow to icon view
-    set toolbar visible of dmgWindow to false
-    set statusbar visible of dmgWindow to false
+    try
+        set sidebar width of dmgWindow to 0
+    end try
+    try
+        set toolbar visible of dmgWindow to false
+    end try
+    try
+        set statusbar visible of dmgWindow to false
+    end try
     set bounds of dmgWindow to {100, 100, 740, 500}
     set viewOptions to icon view options of dmgWindow
     set arrangement of viewOptions to not arranged
@@ -149,12 +184,20 @@ tell application "Finder"
     set position of item "WinUAE.app" of dmgFolder to {178, 200}
     set position of item "Applications" of dmgFolder to {462, 200}
     update dmgFolder
+    delay 5
+    try
+        close dmgWindow
+    end try
+
+    open dmgFolder
     delay 1
-    close dmgWindow
+    try
+        close container window of dmgFolder
+    end try
 end tell
 EOF
     for _ in {1..20}; do
-        if [[ -f "${mount_dir}/.DS_Store" ]]; then
+        if [[ -f "${mount_dir}/.DS_Store" ]] && require_finder_layout_records "${mount_dir}/.DS_Store" >/dev/null 2>&1; then
             break
         fi
         sleep 0.5
@@ -163,6 +206,7 @@ EOF
         echo "error: Finder did not write ${mount_dir}/.DS_Store; DMG background layout was not saved" >&2
         exit 1
     fi
+    require_finder_layout_records "${mount_dir}/.DS_Store"
 fi
 
 apply_volume_icon "${mount_dir}"
