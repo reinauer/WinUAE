@@ -7189,6 +7189,41 @@ static char *cfg_fgets (char *line, int max, struct zfile *fh)
 	return 0;
 }
 
+#ifdef UAE_TARGET_UNIX
+static bool cfgfile_unix_preload_qt_quickstart (struct uae_prefs *p, const TCHAR *filename, struct zfile *fh, int type)
+{
+	char linea[CONFIG_BLEN];
+	TCHAR line1b[CONFIG_BLEN], line2b[CONFIG_BLEN], quickstart[CONFIG_BLEN];
+	bool has_qt_settings = false;
+	bool has_quickstart = false;
+
+	quickstart[0] = 0;
+	while (cfg_fgets (linea, sizeof (linea), fh) != 0) {
+		trimwsa (linea);
+		if (strlen (linea) <= 0 || linea[0] == '#' || linea[0] == ';')
+			continue;
+		if (!cfgfile_separate_linea (filename, linea, line1b, line2b))
+			continue;
+		if (!strcasecmp (line1b, _T("quickstart"))) {
+			_tcscpy (quickstart, line2b);
+			has_quickstart = true;
+		} else if (!_tcsnicmp (line1b, _T("unix.ui."), 8)) {
+			has_qt_settings = true;
+		}
+	}
+	zfile_fseek (fh, 0, SEEK_SET);
+
+	if (!has_qt_settings || !has_quickstart)
+		return false;
+
+	_tcscpy (line1b, _T("quickstart"));
+	_tcscpy (line2b, quickstart);
+	cfgfile_parse_separated_line (p, line1b, line2b, type);
+	write_log (_T("Unix Qt config: applying quickstart before explicit overrides.\n"));
+	return true;
+}
+#endif
+
 static int cfgfile_load_2 (struct uae_prefs *p, const TCHAR *filename, bool real, int *type)
 {
 	int i;
@@ -7213,6 +7248,10 @@ static int cfgfile_load_2 (struct uae_prefs *p, const TCHAR *filename, bool real
 #ifndef	SINGLEFILE
 	if (! fh)
 		return 0;
+#endif
+
+#ifdef UAE_TARGET_UNIX
+	bool unix_qt_preloaded_quickstart = real ? cfgfile_unix_preload_qt_quickstart (p, filename, fh, askedtype) : false;
 #endif
 
 	while (cfg_fgets (linea, sizeof (linea), fh) != 0) {
@@ -7241,6 +7280,10 @@ static int cfgfile_load_2 (struct uae_prefs *p, const TCHAR *filename, bool real
 					continue;
 			}
 			if (real) {
+#ifdef UAE_TARGET_UNIX
+				if (unix_qt_preloaded_quickstart && !strcasecmp (line1b, _T("quickstart")))
+					continue;
+#endif
 				cfgfile_parse_separated_line (p, line1b, line2b, askedtype);
 			} else {
 				// metadata
