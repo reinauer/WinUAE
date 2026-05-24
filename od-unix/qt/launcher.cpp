@@ -14455,12 +14455,6 @@ private:
         if (configDescription && !configDescription->text().trimmed().isEmpty()) {
             settings.insert(QStringLiteral("config_description"), configDescription->text().trimmed());
         }
-        if (quickstartMode && quickstartMode->isChecked()) {
-            const QString quickstart = quickstartConfigValue();
-            if (!quickstart.isEmpty()) {
-                settings.insert(QStringLiteral("quickstart"), quickstart);
-            }
-        }
         if (romsPath && !romsPath->text().trimmed().isEmpty()) {
             settings.insert(QStringLiteral("unix.rom_path"), romsPath->text().trimmed());
         }
