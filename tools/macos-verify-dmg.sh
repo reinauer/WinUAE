@@ -99,8 +99,15 @@ if [[ "$(readlink "${mount_dir}/Applications")" != "/Applications" ]]; then
 fi
 
 require_file "${mount_dir}/.DS_Store" "Finder layout metadata"
-require_file "${mount_dir}/.background/background.png" "Finder background image"
+require_file "${mount_dir}/.background/background.tiff" "Finder background image"
 require_file "${mount_dir}/.VolumeIcon.icns" "volume icon"
+
+for record in Iloc bwsp icvp; do
+    if ! LC_ALL=C grep -aq "${record}" "${mount_dir}/.DS_Store"; then
+        echo "error: Finder layout metadata is missing ${record} record in ${mount_dir}/.DS_Store" >&2
+        exit 1
+    fi
+done
 
 if command -v GetFileInfo >/dev/null 2>&1; then
     volume_attrs="$(GetFileInfo -a "${mount_dir}" 2>/dev/null || true)"
