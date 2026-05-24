@@ -15484,12 +15484,22 @@ private:
         config.applySettings(currentSettings(), uiOwnedKeys());
         config.applySettings(currentExpansionBoardSettings(), expansionKeys);
         config.applyRepeatedSettings(currentMountSettings(), mountKeys);
+        moveQuickstartBeforeOverrides(config, expansionKeys, mountKeys);
+        return config;
+    }
+
+    void moveQuickstartBeforeOverrides(WinUaeQtConfig &config) const
+    {
+        moveQuickstartBeforeOverrides(config, expansionBoardOwnedKeys(), uiOwnedMountKeys());
+    }
+
+    void moveQuickstartBeforeOverrides(WinUaeQtConfig &config, const QStringList &expansionKeys, const QStringList &mountKeys) const
+    {
         QStringList quickstartOverrideKeys = uiOwnedKeys();
         quickstartOverrideKeys.append(expansionKeys);
         quickstartOverrideKeys.append(mountKeys);
         quickstartOverrideKeys.removeAll(QStringLiteral("quickstart"));
         config.moveSettingBefore(QStringLiteral("quickstart"), quickstartOverrideKeys);
-        return config;
     }
 
     int enabledFloppyCount() const
@@ -15688,6 +15698,7 @@ private:
         inputMappingSettings.clear();
         inputOwnedMappingKeys.clear();
         hardwareOrderOwnedKeys.clear();
+        moveQuickstartBeforeOverrides(config);
         for (const WinUaeQtConfig::Setting &setting : config.orderedSettings()) {
             applySetting(setting.key, setting.value);
         }
