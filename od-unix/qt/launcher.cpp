@@ -3833,6 +3833,11 @@ static QString jitCacheText(int size)
     return QStringLiteral("%1 MB").arg(size > 0 ? size / 1024 : 0);
 }
 
+static int defaultJitCacheSize()
+{
+    return 8192;
+}
+
 static int cpuMultiplierValue(const QString &text)
 {
     if (text.startsWith(QStringLiteral("2x"))) {
@@ -6595,10 +6600,25 @@ private:
 
         connect(cpu24Bit, &QCheckBox::toggled, this, [this]() { updateCpuControlState(); });
         connect(moreCompatible, &QCheckBox::toggled, this, [this]() { updateCpuControlState(); });
-        connect(jit, &QCheckBox::toggled, this, [this]() { updateCpuControlState(); });
+        connect(jit, &QCheckBox::toggled, this, [this](bool checked) {
+            if (checked) {
+                if (jitCache && jitCacheSizeFromPosition(jitCache->value()) <= 0) {
+                    jitCache->setValue(jitCachePositionFromSize(defaultJitCacheSize()));
+                }
+                setCheckBoxIfChanged(chipsetCycleExact, false);
+                setCheckBoxIfChanged(chipsetCycleExactMemory, false);
+            }
+            updateCpuControlState();
+        });
         connect(fpuButtons, QOverload<QAbstractButton *>::of(&QButtonGroup::buttonClicked), this, [this]() { updateCpuControlState(); });
         connect(cpuSpeed, &QSlider::valueChanged, this, [this]() { updateCpuSpeedLabel(); });
-        connect(jitCache, &QSlider::valueChanged, this, [this]() { updateJitCacheLabel(); });
+        connect(jitCache, &QSlider::valueChanged, this, [this]() {
+            if (jit && jit->isChecked() && jitCacheSizeFromPosition(jitCache->value()) <= 0) {
+                jit->setChecked(false);
+            }
+            updateJitCacheLabel();
+            updateCpuControlState();
+        });
         updateFpuControls();
         updateCpuControlState();
 
@@ -6745,14 +6765,24 @@ private:
             setCheckBoxIfChanged(chipsetNtsc, checked);
         });
         connect(chipsetCycleExact, &QCheckBox::toggled, this, [this](bool checked) {
+            if (checked && jit && jit->isChecked()) {
+                setCheckBoxIfChanged(chipsetCycleExact, false);
+                return;
+            }
             if (checked) {
                 chipsetCycleExactMemory->setChecked(true);
             }
+            updateCpuControlState();
         });
         connect(chipsetCycleExactMemory, &QCheckBox::toggled, this, [this](bool checked) {
+            if (checked && jit && jit->isChecked()) {
+                setCheckBoxIfChanged(chipsetCycleExactMemory, false);
+                return;
+            }
             if (!checked) {
                 chipsetCycleExact->setChecked(false);
             }
+            updateCpuControlState();
         });
         connect(immediateBlits, &QCheckBox::toggled, this, [this](bool checked) {
             if (checked) {
@@ -12294,6 +12324,15 @@ private:
             }
             jitEnabled = jit->isChecked();
         }
+        const bool cycleExactEnabled = !jitEnabled;
+        if (chipsetCycleExact) {
+            chipsetCycleExact->setEnabled(cycleExactEnabled);
+            chipsetCycleExact->setToolTip(jitEnabled ? QStringLiteral("Cycle-exact emulation is not compatible with JIT.") : QString());
+        }
+        if (chipsetCycleExactMemory) {
+            chipsetCycleExactMemory->setEnabled(cycleExactEnabled);
+            chipsetCycleExactMemory->setToolTip(jitEnabled ? QStringLiteral("Cycle-exact emulation is not compatible with JIT.") : QString());
+        }
         if (cpuDataCache) {
             cpuDataCache->setEnabled(cpu >= 68030 && moreCompatible->isChecked() && !jitEnabled);
         }
@@ -12971,7 +13010,7 @@ private:
         cpuFrequency->setCurrentText(QStringLiteral("4x (A1200)"));
         cpuFrequencyCustom->clear();
         jit->setChecked(false);
-        jitCache->setValue(jitCachePositionFromSize(8192));
+        jitCache->setValue(jitCachePositionFromSize(defaultJitCacheSize()));
         jitFpu->setChecked(false);
         jitConstJump->setChecked(true);
         jitHardFlush->setChecked(false);
@@ -14409,6 +14448,10 @@ private:
         const int cpu = selectedCpuModel();
         const int fpu = fpuModelConfigValue(cpu);
         const bool z3Rtg = rtgNeeds32BitAddressSpace();
+        const bool cpu24BitAddressing = !z3Rtg && cpu24Bit && cpu24Bit->isChecked();
+        const int requestedJitCacheSize = jitCache ? jitCacheSizeFromPosition(jitCache->value()) : 0;
+        const bool jitActive = jit && jit->isChecked() && unixJitBackendAvailable()
+            && cpu >= 68020 && !cpu24BitAddressing && requestedJitCacheSize > 0;
         if (configDescription && !configDescription->text().trimmed().isEmpty()) {
             settings.insert(QStringLiteral("config_description"), configDescription->text().trimmed());
         }
@@ -14568,7 +14611,12 @@ private:
             configChoiceValue(agnusSizeChoices, int(sizeof(agnusSizeChoices) / sizeof(agnusSizeChoices[0])), advancedAgnusSize->currentText()));
         settings.insert(QStringLiteral("denisemodel"),
             configChoiceValue(deniseModelChoices, int(sizeof(deniseModelChoices) / sizeof(deniseModelChoices[0])), advancedDeniseModel->currentText()));
-        if (chipsetCycleExact->isChecked()) {
+        if (jitActive) {
+            settings.insert(QStringLiteral("cycle_exact"), QStringLiteral("false"));
+            settings.insert(QStringLiteral("cpu_cycle_exact"), QStringLiteral("false"));
+            settings.insert(QStringLiteral("cpu_memory_cycle_exact"), QStringLiteral("false"));
+            settings.insert(QStringLiteral("blitter_cycle_exact"), QStringLiteral("false"));
+        } else if (chipsetCycleExact->isChecked()) {
             settings.insert(QStringLiteral("cycle_exact"), QStringLiteral("true"));
             settings.insert(QStringLiteral("cpu_cycle_exact"), QStringLiteral("true"));
             settings.insert(QStringLiteral("cpu_memory_cycle_exact"), QStringLiteral("true"));
@@ -14593,7 +14641,7 @@ private:
         if (fpu) {
             settings.insert(QStringLiteral("fpu_model"), QString::number(fpu));
         }
-        settings.insert(QStringLiteral("cpu_24bit_addressing"), !z3Rtg && cpu24Bit->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
+        settings.insert(QStringLiteral("cpu_24bit_addressing"), cpu24BitAddressing ? QStringLiteral("true") : QStringLiteral("false"));
         if (mmuButtons->checkedId() == 1 && cpu >= 68030) {
             settings.insert(QStringLiteral("mmu_model"), QString::number(cpu));
         } else if (mmuButtons->checkedId() == 2 && cpu >= 68030) {
@@ -14632,8 +14680,8 @@ private:
         }
         settings.insert(QStringLiteral("z3mapping"),
             configChoiceValue(z3MappingChoices, int(sizeof(z3MappingChoices) / sizeof(z3MappingChoices[0])), z3Mapping->currentText()));
-        settings.insert(QStringLiteral("cachesize"), QString::number(jit->isChecked() ? jitCacheSizeFromPosition(jitCache->value()) : 0));
-        settings.insert(QStringLiteral("compfpu"), jitFpu->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
+        settings.insert(QStringLiteral("cachesize"), QString::number(jitActive ? requestedJitCacheSize : 0));
+        settings.insert(QStringLiteral("compfpu"), jitActive && jitFpu->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
         settings.insert(QStringLiteral("comp_constjump"), jitConstJump->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
         settings.insert(QStringLiteral("comp_flushmode"), jitHardFlush->isChecked() ? QStringLiteral("hard") : QStringLiteral("soft"));
         settings.insert(QStringLiteral("comp_nf"), jitNoFlags->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
