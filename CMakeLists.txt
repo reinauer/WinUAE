@@ -105,10 +105,14 @@ option(WINUAE_UNIX_WITH_NATIVE_SCSI "Build native SCSI/tape passthrough (macOS S
 option(WINUAE_UNIX_WITH_MIDI "Build native Unix MIDI support" ON)
 option(WINUAE_UNIX_WITH_CPUBOARD "Build shared non-PPC CPU accelerator board support" ON)
 option(WINUAE_UNIX_WITH_PPC_QEMU "Build Unix PPC accelerator support through the qemu-uae plugin ABI" ON)
+option(WINUAE_UNIX_BUILD_QEMU_UAE_PLUGIN "Build the sibling qemu-uae plugin for Unix packaging" ON)
 option(WINUAE_UNIX_WITH_SNDBOARD "Build shared Toccata/Prelude/UAESND sound-board support" ON)
 option(WINUAE_UNIX_WITH_GFXBOARD "Build shared hardware RTG graphics board, PCI, QEMU VGA and PCem Voodoo support" ON)
 option(WINUAE_UNIX_WITH_AVIOUTPUT "Build Unix screenshot and video/audio capture output support" ON)
 option(WINUAE_UNIX_WITH_OPENGL_SHADER_PIPELINE "Build OpenGL-backed Unix shader/filter presentation support" ON)
+
+set(WINUAE_QEMU_UAE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../qemu-uae-v11.0"
+    CACHE PATH "QEMU-UAE plugin source directory")
 
 set(WINUAE_UNIX_TARGET_ARCHES "${CMAKE_SYSTEM_PROCESSOR}")
 if(APPLE AND CMAKE_OSX_ARCHITECTURES)
@@ -1304,16 +1308,39 @@ if(APPLE)
     )
 endif()
 
+set(WINUAE_QEMU_UAE_PLUGIN_PATH "${CMAKE_BINARY_DIR}/qemu-uae.so")
+if(UNIX
+    AND WINUAE_UNIX_WITH_PPC_QEMU
+    AND WINUAE_UNIX_BUILD_QEMU_UAE_PLUGIN
+    AND EXISTS "${WINUAE_QEMU_UAE_SOURCE_DIR}/configure-qemu-uae")
+    add_custom_target(winuae_unix_qemu_uae_plugin
+        COMMAND "${CMAKE_COMMAND}" -E env
+            "WINUAE_MACOS_DEPLOYMENT_TARGET=${CMAKE_OSX_DEPLOYMENT_TARGET}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tools/build-qemu-uae.sh"
+            "${WINUAE_QEMU_UAE_SOURCE_DIR}"
+            "${WINUAE_QEMU_UAE_PLUGIN_PATH}"
+        WORKING_DIRECTORY "${WINUAE_QEMU_UAE_SOURCE_DIR}"
+        COMMENT "Building QEMU-UAE PPC plugin"
+        VERBATIM
+    )
+endif()
+
 if(APPLE AND TARGET winuae_unix)
+    set(WINUAE_UNIX_MACOS_APP_DEPS winuae_unix)
+    if(TARGET winuae_unix_qemu_uae_plugin)
+        list(APPEND WINUAE_UNIX_MACOS_APP_DEPS winuae_unix_qemu_uae_plugin)
+    endif()
     add_custom_target(winuae_unix_macos_app
-        COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tools/macos-bundle.sh" "${CMAKE_BINARY_DIR}" "${CMAKE_BINARY_DIR}/package"
-        DEPENDS winuae_unix
+        COMMAND "${CMAKE_COMMAND}" -E env
+            "WINUAE_QEMU_UAE_PLUGIN=${WINUAE_QEMU_UAE_PLUGIN_PATH}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tools/macos-bundle.sh" "${CMAKE_BINARY_DIR}" "${CMAKE_BINARY_DIR}/package"
+        DEPENDS ${WINUAE_UNIX_MACOS_APP_DEPS}
         COMMENT "Creating WinUAE.app"
         VERBATIM
     )
     add_custom_target(winuae_unix_macos_dmg
         COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tools/macos-dmg.sh" "${CMAKE_BINARY_DIR}" "${CMAKE_BINARY_DIR}/package"
-        DEPENDS winuae_unix
+        DEPENDS winuae_unix_macos_app
         COMMENT "Creating WinUAE drag-install DMG"
         VERBATIM
     )
