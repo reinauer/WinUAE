@@ -107,6 +107,7 @@ option(WINUAE_UNIX_WITH_CPUBOARD "Build shared non-PPC CPU accelerator board sup
 option(WINUAE_UNIX_WITH_SNDBOARD "Build shared Toccata/Prelude/UAESND sound-board support" ON)
 option(WINUAE_UNIX_WITH_GFXBOARD "Build shared hardware RTG graphics board, PCI, QEMU VGA and PCem Voodoo support" ON)
 option(WINUAE_UNIX_WITH_AVIOUTPUT "Build Unix screenshot and video/audio capture output support" ON)
+option(WINUAE_UNIX_WITH_OPENGL_SHADER_PIPELINE "Build OpenGL-backed Unix shader/filter presentation support" ON)
 
 set(WINUAE_UNIX_TARGET_ARCHES "${CMAKE_SYSTEM_PROCESSOR}")
 if(APPLE AND CMAKE_OSX_ARCHITECTURES)
@@ -208,6 +209,7 @@ set(WINUAE_UNIX_ENABLE_SNDBOARD OFF)
 set(WINUAE_UNIX_ENABLE_GFXBOARD OFF)
 set(WINUAE_UNIX_ENABLE_JIT OFF)
 set(WINUAE_UNIX_ENABLE_AVIOUTPUT OFF)
+set(WINUAE_UNIX_ENABLE_SHADER_PIPELINE OFF)
 set(WINUAE_UNIX_MIDI_LIBRARIES)
 set(WINUAE_UNIX_MIDI_INCLUDE_DIRS)
 set(WINUAE_UNIX_MIDI_LIBRARY_DIRS)
@@ -484,6 +486,17 @@ if(WINUAE_UNIX_WITH_AVIOUTPUT)
     set(WINUAE_UNIX_ENABLE_AVIOUTPUT ON)
     target_compile_definitions(winuae_core PRIVATE AVIOUTPUT=1)
     list(APPEND WINUAE_UNIX_EXTRA_SOURCES od-unix/avioutput.cpp)
+endif()
+
+if(WINUAE_UNIX_WITH_OPENGL_SHADER_PIPELINE AND WINUAE_UNIX_WITH_SDL3)
+    find_package(OpenGL QUIET)
+    if(OpenGL_FOUND)
+        set(WINUAE_UNIX_ENABLE_SHADER_PIPELINE ON)
+        target_compile_definitions(winuae_core PRIVATE WINUAE_UNIX_WITH_OPENGL_SHADER_PIPELINE=1)
+        list(APPEND WINUAE_UNIX_EXTRA_LIBRARIES OpenGL::GL)
+    else()
+        message(STATUS "OpenGL development package not found; Unix shader pipeline disabled")
+    endif()
 endif()
 
 if(WINUAE_UNIX_WITH_JIT)
@@ -1124,6 +1137,7 @@ if(WINUAE_UNIX_WITH_QT_UI OR WINUAE_UNIX_WITH_INTEGRATED_QT_UI)
             UAE_UNIX_WITH_GFXBOARD=$<BOOL:${WINUAE_UNIX_ENABLE_GFXBOARD}>
             UAE_UNIX_WITH_JIT=$<BOOL:${WINUAE_UNIX_ENABLE_JIT}>
             UAE_UNIX_WITH_AVIOUTPUT=$<BOOL:${WINUAE_UNIX_ENABLE_AVIOUTPUT}>
+            UAE_UNIX_WITH_SHADER_PIPELINE=$<BOOL:${WINUAE_UNIX_ENABLE_SHADER_PIPELINE}>
             UAE_UNIX_WITH_SERIAL_DIRECT=1
             ${WINUAE_UNIX_MIDI_QT_DEFINITIONS}
         )
