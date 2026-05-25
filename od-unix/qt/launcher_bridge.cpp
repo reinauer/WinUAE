@@ -17,6 +17,7 @@
 #include "options.h"
 #include "memory.h"
 #include "autoconf.h"
+#include "rommgr.h"
 #include "xwin.h"
 #include "audio.h"
 #include "inputrecord.h"
@@ -30,6 +31,257 @@
 static QString bridgeText(const TCHAR *text)
 {
     return text && text[0] ? QString::fromLocal8Bit(text) : QString();
+}
+
+static QStringList bridgeTextList(const TCHAR *text)
+{
+    QStringList items;
+    if (!text) {
+        return items;
+    }
+    const TCHAR *p = text;
+    while (p[0]) {
+        items.append(bridgeText(p));
+        while (p[0]) {
+            p++;
+        }
+        p++;
+    }
+    return items;
+}
+
+static QString bridgeBoardDisplay(const TCHAR *name, const TCHAR *manufacturer)
+{
+    QString display = bridgeText(name);
+    const QString maker = bridgeText(manufacturer);
+    if (!maker.isEmpty()) {
+        display += QStringLiteral(" (%1)").arg(maker);
+    }
+    return display;
+}
+
+static WinUaeQtBoardSetting bridgeBoardSetting(const struct expansionboardsettings *setting)
+{
+    WinUaeQtBoardSetting item;
+    if (!setting) {
+        return item;
+    }
+
+    const QStringList names = bridgeTextList(setting->name);
+    const QStringList configs = bridgeTextList(setting->configname);
+    item.display = names.value(0);
+    item.configValue = configs.value(0);
+    if (setting->type == EXPANSIONBOARD_MULTI) {
+        item.type = WinUaeQtBoardSettingType::Multi;
+        item.multiDisplays = names.mid(1);
+        item.multiValues = configs.mid(1);
+    } else if (setting->type == EXPANSIONBOARD_STRING) {
+        item.type = WinUaeQtBoardSettingType::String;
+    } else {
+        item.type = WinUaeQtBoardSettingType::CheckBox;
+    }
+    return item;
+}
+
+static QVector<WinUaeQtBoardSetting> bridgeBoardSettings(const struct expansionboardsettings *settings)
+{
+    QVector<WinUaeQtBoardSetting> items;
+    if (!settings) {
+        return items;
+    }
+    for (int i = 0; settings[i].name; i++) {
+        WinUaeQtBoardSetting item = bridgeBoardSetting(&settings[i]);
+        if (!item.display.isEmpty() && !item.configValue.isEmpty()) {
+            items.append(item);
+        }
+    }
+    return items;
+}
+
+static QByteArray bridgeCatalogEncode(const QString &text)
+{
+    return text.toUtf8().toBase64();
+}
+
+static QString bridgeCatalogJoin(const QStringList &items)
+{
+    return items.join(QChar(0x1f));
+}
+
+static void bridgeCatalogPrintField(const QString &text)
+{
+    const QByteArray encoded = bridgeCatalogEncode(text);
+    fputc('\t', stdout);
+    fwrite(encoded.constData(), 1, encoded.size(), stdout);
+}
+
+static int bridgeCatalogSettingType(WinUaeQtBoardSettingType type)
+{
+    switch (type) {
+        case WinUaeQtBoardSettingType::Multi:
+            return 1;
+        case WinUaeQtBoardSettingType::String:
+            return 2;
+        case WinUaeQtBoardSettingType::CheckBox:
+        default:
+            return 0;
+    }
+}
+
+static void bridgeCatalogPrintSetting(char owner, const QString &ownerKey, const WinUaeQtBoardSetting &setting)
+{
+    fputc(owner, stdout);
+    fputc('O', stdout);
+    bridgeCatalogPrintField(ownerKey);
+    bridgeCatalogPrintField(setting.display);
+    bridgeCatalogPrintField(setting.configValue);
+    fprintf(stdout, "\t%d", bridgeCatalogSettingType(setting.type));
+    bridgeCatalogPrintField(bridgeCatalogJoin(setting.multiDisplays));
+    bridgeCatalogPrintField(bridgeCatalogJoin(setting.multiValues));
+    fputc('\n', stdout);
+}
+
+static int bridgeExpansionCategoryMask(int deviceFlags)
+{
+    int mask = 0;
+    if (deviceFlags & EXPANSIONTYPE_INTERNAL) {
+        mask |= WinUaeQtExpansionCategoryInternal;
+    }
+    if ((deviceFlags & EXPANSIONTYPE_SCSI) && !(deviceFlags & (EXPANSIONTYPE_SASI | EXPANSIONTYPE_CUSTOM))) {
+        mask |= WinUaeQtExpansionCategoryScsi;
+    }
+    if (deviceFlags & EXPANSIONTYPE_IDE) {
+        mask |= WinUaeQtExpansionCategoryIde;
+    }
+    if (deviceFlags & EXPANSIONTYPE_SASI) {
+        mask |= WinUaeQtExpansionCategorySasi;
+    }
+    if (deviceFlags & EXPANSIONTYPE_CUSTOM) {
+        mask |= WinUaeQtExpansionCategoryCustom;
+    }
+    if (deviceFlags & EXPANSIONTYPE_PCI_BRIDGE) {
+        mask |= WinUaeQtExpansionCategoryPciBridge;
+    }
+    if (deviceFlags & EXPANSIONTYPE_X86_BRIDGE) {
+        mask |= WinUaeQtExpansionCategoryX86Bridge;
+    }
+    if (deviceFlags & EXPANSIONTYPE_RTG) {
+        mask |= WinUaeQtExpansionCategoryRtg;
+    }
+    if (deviceFlags & EXPANSIONTYPE_SOUND) {
+        mask |= WinUaeQtExpansionCategorySound;
+    }
+    if (deviceFlags & EXPANSIONTYPE_NET) {
+        mask |= WinUaeQtExpansionCategoryNet;
+    }
+    if (deviceFlags & EXPANSIONTYPE_FLOPPY) {
+        mask |= WinUaeQtExpansionCategoryFloppy;
+    }
+    if (deviceFlags & EXPANSIONTYPE_X86_EXPANSION) {
+        mask |= WinUaeQtExpansionCategoryX86Expansion;
+    }
+    return mask;
+}
+
+static WinUaeQtBoardCatalog bridgeBoardCatalog(void *)
+{
+    WinUaeQtBoardCatalog catalog;
+
+    for (int i = 0; expansionroms[i].name; i++) {
+        const struct expansionromtype *rom = &expansionroms[i];
+        if (rom->romtype & ROMTYPE_CPUBOARD) {
+            continue;
+        }
+        WinUaeQtExpansionBoardCatalogItem item;
+        item.key = bridgeText(rom->name);
+        item.display = bridgeBoardDisplay(rom->friendlyname, rom->friendlymanufacturer);
+        item.deviceFlags = rom->deviceflags;
+        item.categoryMask = bridgeExpansionCategoryMask(rom->deviceflags);
+        item.zorro = rom->zorro;
+        item.singleOnly = rom->singleonly;
+        item.dma24Bit = rom->deviceflags & EXPANSIONTYPE_DMA24;
+        item.pcmcia = rom->deviceflags & EXPANSIONTYPE_PCMCIA;
+        item.autobootJumper = rom->autoboot_jumper;
+        item.idJumper = rom->id_jumper;
+        if (rom->subtypes) {
+            for (int j = 0; rom->subtypes[j].name; j++) {
+                WinUaeQtBoardSubtype subtype;
+                subtype.display = bridgeText(rom->subtypes[j].name);
+                subtype.configValue = bridgeText(rom->subtypes[j].configname);
+                subtype.deviceFlags = rom->subtypes[j].deviceflags;
+                item.subtypes.append(subtype);
+            }
+        }
+        item.settings = bridgeBoardSettings(rom->settings);
+        if (!item.key.isEmpty() && !item.display.isEmpty()) {
+            catalog.expansionBoards.append(item);
+        }
+    }
+
+    for (int type = 0; cpuboards[type].name; type++) {
+        if (!cpuboards[type].subtypes || cpuboards[type].id < 0) {
+            continue;
+        }
+        const QString typeName = bridgeText(cpuboards[type].name);
+        for (int subtype = 0; cpuboards[type].subtypes[subtype].name; subtype++) {
+            const struct cpuboardsubtype *st = &cpuboards[type].subtypes[subtype];
+            WinUaeQtCpuBoardCatalogItem item;
+            item.type = typeName;
+            item.display = bridgeText(st->name);
+            item.configValue = bridgeText(st->configname);
+            item.maxMemoryMb = st->maxmemory > 0 ? st->maxmemory / (1024 * 1024) : 0;
+            item.ppc = item.configValue.compare(QStringLiteral("BlizzardPPC"), Qt::CaseInsensitive) == 0
+                || item.configValue.compare(QStringLiteral("CyberStormPPC"), Qt::CaseInsensitive) == 0;
+            item.settings = bridgeBoardSettings(st->settings);
+            if (!item.type.isEmpty() && !item.display.isEmpty() && !item.configValue.isEmpty()) {
+                catalog.cpuBoards.append(item);
+            }
+        }
+    }
+
+    return catalog;
+}
+
+int runWinUaeQtBoardCatalogDump(void)
+{
+    const WinUaeQtBoardCatalog catalog = bridgeBoardCatalog(nullptr);
+    for (const WinUaeQtExpansionBoardCatalogItem &board : catalog.expansionBoards) {
+        fputc('E', stdout);
+        bridgeCatalogPrintField(board.key);
+        bridgeCatalogPrintField(board.display);
+        fprintf(stdout, "\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d",
+            board.deviceFlags,
+            board.categoryMask,
+            board.zorro,
+            board.singleOnly ? 1 : 0,
+            board.dma24Bit ? 1 : 0,
+            board.pcmcia ? 1 : 0,
+            board.autobootJumper ? 1 : 0,
+            board.idJumper ? 1 : 0);
+        fputc('\n', stdout);
+        for (const WinUaeQtBoardSubtype &subtype : board.subtypes) {
+            fputc('S', stdout);
+            bridgeCatalogPrintField(board.key);
+            bridgeCatalogPrintField(subtype.display);
+            bridgeCatalogPrintField(subtype.configValue);
+            fprintf(stdout, "\t%d\n", subtype.deviceFlags);
+        }
+        for (const WinUaeQtBoardSetting &setting : board.settings) {
+            bridgeCatalogPrintSetting('E', board.key, setting);
+        }
+    }
+    for (const WinUaeQtCpuBoardCatalogItem &board : catalog.cpuBoards) {
+        fputc('C', stdout);
+        bridgeCatalogPrintField(board.type);
+        bridgeCatalogPrintField(board.display);
+        bridgeCatalogPrintField(board.configValue);
+        fprintf(stdout, "\t%d\t%d\n", board.maxMemoryMb, board.ppc ? 1 : 0);
+        for (const WinUaeQtBoardSetting &setting : board.settings) {
+            bridgeCatalogPrintSetting('C', board.configValue, setting);
+        }
+    }
+    fflush(stdout);
+    return 0;
 }
 
 static QString bridgeHex(uae_u32 value)
@@ -268,6 +520,7 @@ static WinUaeQtHardwareInfoProvider bridgeHardwareProvider(struct uae_prefs *pre
 {
     WinUaeQtHardwareInfoProvider provider;
     provider.context = prefs;
+    provider.boardCatalog = bridgeBoardCatalog;
     provider.boards = bridgeHardwareBoards;
     provider.customOrder = bridgeHardwareCustomOrder;
     provider.setCustomOrder = bridgeSetHardwareCustomOrder;
