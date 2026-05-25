@@ -158,7 +158,11 @@ if [[ -z "${macdeployqt_executable}" ]]; then
 fi
 
 if [[ "${WINUAE_SKIP_MACDEPLOYQT:-0}" != "1" && -n "${macdeployqt_executable}" && -x "${macdeployqt_executable}" ]]; then
-    "${macdeployqt_executable}" "${app_dir}" -always-overwrite -no-codesign -no-plugins -verbose=0
+    macdeployqt_args=("${app_dir}" -always-overwrite -no-plugins -verbose=0)
+    if "${macdeployqt_executable}" -help 2>&1 | grep -q -- "-no-codesign"; then
+        macdeployqt_args+=(-no-codesign)
+    fi
+    "${macdeployqt_executable}" "${macdeployqt_args[@]}"
 
     qt_plugin_root=""
     qt_plugin_candidates=()

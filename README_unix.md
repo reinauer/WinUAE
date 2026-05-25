@@ -10,7 +10,7 @@ This is an early macOS/Linux port of the WinUAE source tree. The current Unix bu
 - SDL3 gamepads and non-gamepad joysticks are exposed through the WinUAE input-device layer for game-port use; the Qt Game Ports/Input pages have first remap/test dialogs backed by SDL3 device enumeration and WinUAE config keys.
 - Qt Widgets provides an initial Windows-style configuration UI. When Qt is available, it is integrated into `winuae_unix` and the standalone `winuae_unix_qt` launcher is also built.
 - Host clipboard text paste is available through the same paste input event as Windows. The `clipboard_sharing` option has native text clipboard-device support, and SDL3 builds exchange bitmap clipboard data through `image/bmp`, `image/png` when libpng is available, and macOS `image/tiff` through ImageIO, bridged through Amiga IFF ILBM conversion.
-- Floppy drive click sound config and sample loading are present, but audible click output still needs follow-up.
+- Floppy drive click sounds are present and audible when enabled.
 - The integrated Qt Output page can toggle the core Sample ripper; ripped WAV files use the configured Rips path. The standalone launcher keeps this runtime action disabled.
 - The integrated Qt Output page can run Pro Wizard when the default `WINUAE_UNIX_WITH_PROWIZARD` build option is enabled. Save prompts use Qt warning dialogs with the same OK/Yes/No/Cancel return contract as Windows.
 - When opened during emulation, the integrated Qt Output page can play, start/stop, and save core input re-recordings. The standalone launcher keeps these runtime actions disabled.
@@ -158,6 +158,12 @@ cmake --build /tmp/winuae_cmake_build --target package
 
 This currently produces a `.tar.gz` package and, when Debian packaging tools are available, a `.deb` package with shared-library dependencies inferred by `dpkg-shlibdeps`.
 
+The Linux install/package metadata can be checked on any Unix host:
+
+```sh
+cmake --build /tmp/winuae_cmake_build --target winuae_unix_linux_package_metadata_check
+```
+
 If Qt Widgets is available, CMake links the Windows-style configuration UI into `winuae_unix` by default and also builds the standalone launcher:
 
 ```sh
@@ -206,7 +212,7 @@ For a single local release gate, build:
 cmake --build /tmp/winuae_cmake_build --target winuae_unix_macos_release_check -j
 ```
 
-This produces and verifies the DMG, then launches the packaged Qt app from an isolated temporary home directory when the integrated Qt UI is enabled. A macOS 13-targeted private-dependency DMG has been smoke-tested on macOS 13; keep using the private dependency prefix path for release artifacts instead of newer Homebrew Qt/SDL bottles.
+This produces and verifies the DMG, then launches the packaged Qt app from an isolated temporary home directory when the integrated Qt UI is enabled. Use the private dependency prefix path for release artifacts instead of newer Homebrew Qt/SDL bottles.
 
 Local app bundles are ad-hoc signed by default. For Developer ID release signing and notarization, pass signing/notary settings through the packaging environment:
 

@@ -1184,6 +1184,12 @@ if(TARGET winuae_unix_qt AND NOT APPLE)
     )
 endif()
 
+add_custom_target(winuae_unix_linux_package_metadata_check
+    COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tools/unix-check-linux-package-metadata.sh" "${CMAKE_CURRENT_SOURCE_DIR}"
+    COMMENT "Checking Linux install and package metadata"
+    VERBATIM
+)
+
 if(APPLE)
     add_custom_target(winuae_unix_macos_deps
         COMMAND "${CMAKE_COMMAND}" -E env
