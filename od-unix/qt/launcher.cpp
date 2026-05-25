@@ -2,6 +2,7 @@
 
 #include <QDesktopServices>
 #include <QFileOpenEvent>
+#include <QSet>
 #include <QStandardItemModel>
 #include <QUrl>
 
@@ -3451,10 +3452,16 @@ static const WinUaeQtCpuBoardSubtypeChoice cpuBoardSubtypeChoices[] = {
     { "Great Valley Products", "QuikPak", "quikpak", 128 },
     { "Kupke", "Golem 030", "golem030", 16 },
     { "MacroSystem", "Falcon 040", "Falcon040", 128 },
+    { "Phase 5 - Blizzard", "Blizzard 1230 I/II", "Blizzard1230II", 64 },
     { "Phase 5 - Blizzard", "Blizzard 1230 III", "Blizzard1230III", 32 },
     { "Phase 5 - Blizzard", "Blizzard 1230 IV", "Blizzard1230IV", 256 },
     { "Phase 5 - Blizzard", "Blizzard 1260", "Blizzard1260", 256 },
+    { "Phase 5 - Blizzard", "Blizzard 2060", "Blizzard2060", 128 },
+    { "Phase 5 - Blizzard", "Blizzard PPC", "BlizzardPPC", 256 },
     { "Phase 5 - CyberStorm", "CyberStorm MK I", "CyberStormMK1", 128 },
+    { "Phase 5 - CyberStorm", "CyberStorm MK II", "CyberStormMK2", 128 },
+    { "Phase 5 - CyberStorm", "CyberStorm MK III", "CyberStormMK3", 128 },
+    { "Phase 5 - CyberStorm", "CyberStorm PPC", "CyberStormPPC", 128 },
     { "RCS Management", "Fusion Forty", "FusionForty", 32 },
     { "Interactive Video Systems", "Vector", "Vector", 32 },
     { "Computer System Associates", "Twelve Gauge", "twelvegauge", 32 },
@@ -3527,6 +3534,12 @@ static const WinUaeQtCpuBoardSubtypeChoice *cpuBoardSubtypeChoiceByConfig(const 
         }
     }
     return nullptr;
+}
+
+static bool cpuBoardConfigIsPpc(const QString &configValue)
+{
+    return configValue.compare(QStringLiteral("BlizzardPPC"), Qt::CaseInsensitive) == 0
+        || configValue.compare(QStringLiteral("CyberStormPPC"), Qt::CaseInsensitive) == 0;
 }
 
 static const WinUaeQtCpuBoardOptionChoice *cpuBoardOptionChoiceByConfig(const QString &boardConfigValue, const QString &configValue)
@@ -13701,6 +13714,63 @@ private:
         updateMountButtons();
     }
 
+    QString mountEntryConfigKey(const WinUaeQtMountEntry &entry, int index = 0) const
+    {
+        if (entry.kind == QStringLiteral("dir")) {
+            return QStringLiteral("filesystem2");
+        }
+        if (entry.kind == QStringLiteral("hdf")) {
+            return QStringLiteral("hardfile2");
+        }
+        if (entry.kind == QStringLiteral("cd") || entry.kind == QStringLiteral("tape")) {
+            return QStringLiteral("uaehf%1").arg(index);
+        }
+        return QString();
+    }
+
+    QString mountEntryConfigValue(const WinUaeQtMountEntry &entry) const
+    {
+        if (entry.kind == QStringLiteral("dir")) {
+            return serializeWinUaeQtFilesystem2MountValue(entry);
+        }
+        if (entry.kind == QStringLiteral("hdf")) {
+            return serializeWinUaeQtHardfile2MountValue(entry);
+        }
+        if (entry.kind == QStringLiteral("cd")) {
+            return serializeWinUaeQtUaehfCdMountValue(entry);
+        }
+        if (entry.kind == QStringLiteral("tape")) {
+            return serializeWinUaeQtUaehfTapeMountValue(entry);
+        }
+        return QString();
+    }
+
+    bool mountEntryExists(const WinUaeQtMountEntry &entry) const
+    {
+        if (!mountedDrives) {
+            return false;
+        }
+        const QString key = mountEntryConfigKey(entry);
+        const QString value = mountEntryConfigValue(entry);
+        if (key.isEmpty() || value.isEmpty()) {
+            return false;
+        }
+        for (int i = 0; i < mountedDrives->topLevelItemCount(); i++) {
+            const WinUaeQtMountEntry existing = mountEntryFromItem(mountedDrives->topLevelItem(i));
+            if (mountEntryConfigKey(existing) == key && mountEntryConfigValue(existing) == value) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    void addMountEntryIfUnique(const WinUaeQtMountEntry &entry)
+    {
+        if (!mountEntryExists(entry)) {
+            addMountEntry(entry);
+        }
+    }
+
     void updateMountItem(QTreeWidgetItem *item, const WinUaeQtMountEntry &entry)
     {
         if (!mountedDrives || !item) {
@@ -14440,17 +14510,20 @@ private:
         if (!mountedDrives) {
             return settings;
         }
+        QSet<QString> emitted;
         for (int i = 0; i < mountedDrives->topLevelItemCount(); i++) {
             const WinUaeQtMountEntry entry = mountEntryFromItem(mountedDrives->topLevelItem(i));
-            if (entry.kind == QStringLiteral("dir")) {
-                settings.append({ QStringLiteral("filesystem2"), serializeWinUaeQtFilesystem2MountValue(entry) });
-            } else if (entry.kind == QStringLiteral("hdf")) {
-                settings.append({ QStringLiteral("hardfile2"), serializeWinUaeQtHardfile2MountValue(entry) });
-            } else if (entry.kind == QStringLiteral("cd")) {
-                settings.append({ QStringLiteral("uaehf%1").arg(i), serializeWinUaeQtUaehfCdMountValue(entry) });
-            } else if (entry.kind == QStringLiteral("tape")) {
-                settings.append({ QStringLiteral("uaehf%1").arg(i), serializeWinUaeQtUaehfTapeMountValue(entry) });
+            const QString key = mountEntryConfigKey(entry, i);
+            const QString value = mountEntryConfigValue(entry);
+            if (key.isEmpty() || value.isEmpty()) {
+                continue;
             }
+            const QString duplicateKey = mountEntryConfigKey(entry) + QLatin1Char('\n') + value;
+            if (emitted.contains(duplicateKey)) {
+                continue;
+            }
+            emitted.insert(duplicateKey);
+            settings.append({ key, value });
         }
         return settings;
     }
@@ -14931,6 +15004,9 @@ private:
             settings.insert(QStringLiteral("cpuboard_type"), cpuBoardConfig);
             settings.insert(QStringLiteral("cpuboardmem1_size"), QString::number(megabytesFromText(cpuBoardMem->currentText())));
             settings.insert(QStringLiteral("cpuboardmem2_size"), QStringLiteral("0"));
+            if (cpuBoardConfigIsPpc(cpuBoardConfig)) {
+                settings.insert(QStringLiteral("ppc_model"), QStringLiteral("manual"));
+            }
             const QString cpuBoardRomPath = cpuBoardRom->currentText().trimmed();
             if (!cpuBoardRomPath.isEmpty()) {
                 settings.insert(QStringLiteral("cpuboard_rom_file"), cpuBoardRomPath);
@@ -15406,6 +15482,7 @@ private:
             QStringLiteral("cpuboardmem2_size"),
             QStringLiteral("cpuboard_rom_file"),
             QStringLiteral("cpuboard_settings"),
+            QStringLiteral("ppc_model"),
             QStringLiteral("bsdsocket_emu"),
             QStringLiteral("scsi"),
             QStringLiteral("uaescsimode"),
@@ -15979,17 +16056,17 @@ private:
         } else if (key.startsWith(QStringLiteral("uaehf"))) {
             WinUaeQtMountEntry entry;
             if (parseWinUaeQtUaehfMountValue(value, &entry)) {
-                addMountEntry(entry);
+                addMountEntryIfUnique(entry);
             }
         } else if (key == QStringLiteral("filesystem2")) {
             WinUaeQtMountEntry entry;
             if (parseWinUaeQtFilesystem2MountValue(value, &entry)) {
-                addMountEntry(entry);
+                addMountEntryIfUnique(entry);
             }
         } else if (key == QStringLiteral("hardfile2")) {
             WinUaeQtMountEntry entry;
             if (parseWinUaeQtHardfile2MountValue(value, &entry)) {
-                addMountEntry(entry);
+                addMountEntryIfUnique(entry);
             }
         } else if (key.startsWith(QStringLiteral("cdimage"))) {
             bool ok = false;
