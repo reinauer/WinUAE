@@ -23,6 +23,8 @@ Environment:
                               "--options runtime --timestamp".
   WINUAE_CODESIGN_ENTITLEMENTS
                               Optional entitlements plist passed to codesign.
+  WINUAE_QEMU_UAE_PLUGIN      Optional qemu-uae.so path to copy into
+                              Contents/PlugIns.
 EOF
 }
 
@@ -148,6 +150,26 @@ cat > "${contents_dir}/Info.plist" <<EOF
 </dict>
 </plist>
 EOF
+
+qemu_uae_plugin=""
+for candidate in \
+    "${WINUAE_QEMU_UAE_PLUGIN:-}" \
+    "${build_dir}/qemu-uae.so" \
+    "${build_dir}/plugins/qemu-uae.so" \
+    "${source_dir}/../qemu-uae-v11.0/build/qemu-uae.so"
+do
+    if [[ -n "${candidate}" && -f "${candidate}" ]]; then
+        qemu_uae_plugin="${candidate}"
+        break
+    fi
+done
+
+if [[ -n "${qemu_uae_plugin}" ]]; then
+    mkdir -p "${contents_dir}/PlugIns"
+    cp "${qemu_uae_plugin}" "${contents_dir}/PlugIns/qemu-uae.so"
+    install_name_tool -add_rpath "@loader_path/../Frameworks" \
+        "${contents_dir}/PlugIns/qemu-uae.so" 2>/dev/null || true
+fi
 
 macdeployqt_executable="${WINUAE_MACDEPLOYQT:-}"
 if [[ -z "${macdeployqt_executable}" ]]; then
