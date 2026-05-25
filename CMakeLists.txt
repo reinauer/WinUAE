@@ -105,6 +105,8 @@ option(WINUAE_UNIX_WITH_NATIVE_SCSI "Build native SCSI/tape passthrough (macOS S
 option(WINUAE_UNIX_WITH_MIDI "Build native Unix MIDI support" ON)
 option(WINUAE_UNIX_WITH_CPUBOARD "Build shared non-PPC CPU accelerator board support" ON)
 option(WINUAE_UNIX_WITH_SNDBOARD "Build shared Toccata/Prelude/UAESND sound-board support" ON)
+option(WINUAE_UNIX_WITH_GFXBOARD "Build shared hardware RTG graphics board, PCI, QEMU VGA and PCem Voodoo support" ON)
+option(WINUAE_UNIX_WITH_AVIOUTPUT "Build Unix screenshot and video/audio capture output support" ON)
 
 set(WINUAE_UNIX_TARGET_ARCHES "${CMAKE_SYSTEM_PROCESSOR}")
 if(APPLE AND CMAKE_OSX_ARCHITECTURES)
@@ -203,7 +205,9 @@ set(WINUAE_UNIX_ENABLE_NATIVE_SCSI OFF)
 set(WINUAE_UNIX_ENABLE_MIDI OFF)
 set(WINUAE_UNIX_ENABLE_CPUBOARD OFF)
 set(WINUAE_UNIX_ENABLE_SNDBOARD OFF)
+set(WINUAE_UNIX_ENABLE_GFXBOARD OFF)
 set(WINUAE_UNIX_ENABLE_JIT OFF)
+set(WINUAE_UNIX_ENABLE_AVIOUTPUT OFF)
 set(WINUAE_UNIX_MIDI_LIBRARIES)
 set(WINUAE_UNIX_MIDI_INCLUDE_DIRS)
 set(WINUAE_UNIX_MIDI_LIBRARY_DIRS)
@@ -456,6 +460,72 @@ if(WINUAE_UNIX_WITH_SNDBOARD)
         sndboard.cpp
         od-unix/sndboard_host.cpp
     )
+endif()
+
+if(WINUAE_UNIX_WITH_GFXBOARD)
+    if(NOT WINUAE_UNIX_WITH_SNDBOARD)
+        message(STATUS "Hardware graphics boards require Unix sound-board sources for PCI FM801 definitions; disabling WINUAE_UNIX_WITH_GFXBOARD")
+    else()
+        set(WINUAE_UNIX_ENABLE_GFXBOARD ON)
+        target_compile_definitions(winuae_core PRIVATE
+            UAE=
+            GFXBOARD=1
+            WITH_PCI=1
+            WINUAE_UNIX_WITH_GFXBOARD=1
+            WINUAE_UNIX_WITH_PCEM=1
+        )
+        target_compile_options(winuae_core PRIVATE
+            $<$<COMPILE_LANGUAGE:CXX>:-include>
+            $<$<COMPILE_LANGUAGE:CXX>:${CMAKE_CURRENT_SOURCE_DIR}/od-unix/pcem_wincompat.h>
+        )
+        list(APPEND WINUAE_UNIX_EXTRA_SOURCES
+            gfxboard.cpp
+            pci.cpp
+            mame/a2410.cpp
+            mame/tm34010/tms34010.cpp
+            od-unix/pcem_wincompat.cpp
+            pcem/pcemglue.cpp
+            pcem/timer.cpp
+            pcem/vid_bt482_ramdac.cpp
+            pcem/vid_cl5429.cpp
+            pcem/vid_et4000.cpp
+            pcem/vid_et4000w32.cpp
+            pcem/vid_inmos.cpp
+            pcem/vid_mga.cpp
+            pcem/vid_ncr.cpp
+            pcem/vid_permedia2.cpp
+            pcem/vid_s3.cpp
+            pcem/vid_s3_virge.cpp
+            pcem/vid_sc1502x_ramdac.cpp
+            pcem/vid_sdac_ramdac.cpp
+            pcem/vid_svga.cpp
+            pcem/vid_svga_render.cpp
+            pcem/vid_tvp3026_ramdac.cpp
+            pcem/vid_voodoo.cpp
+            pcem/vid_voodoo_banshee.cpp
+            pcem/vid_voodoo_banshee_blitter.cpp
+            pcem/vid_voodoo_blitter.cpp
+            pcem/vid_voodoo_display.cpp
+            pcem/vid_voodoo_fb.cpp
+            pcem/vid_voodoo_fifo.cpp
+            pcem/vid_voodoo_reg.cpp
+            pcem/vid_voodoo_render.cpp
+            pcem/vid_voodoo_setup.cpp
+            pcem/vid_voodoo_texture.cpp
+            qemuvga/cirrus_vga.cpp
+            qemuvga/es1370.cpp
+            qemuvga/ne2000.cpp
+            qemuvga/qemu.cpp
+            qemuvga/qemuuaeglue.cpp
+            qemuvga/vga.cpp
+        )
+    endif()
+endif()
+
+if(WINUAE_UNIX_WITH_AVIOUTPUT)
+    set(WINUAE_UNIX_ENABLE_AVIOUTPUT ON)
+    target_compile_definitions(winuae_core PRIVATE AVIOUTPUT=1)
+    list(APPEND WINUAE_UNIX_EXTRA_SOURCES od-unix/avioutput.cpp)
 endif()
 
 if(WINUAE_UNIX_WITH_JIT)
@@ -967,6 +1037,7 @@ set(WINUAE_CORE_SOURCES
     od-unix/time.cpp
 )
 
+list(REMOVE_DUPLICATES WINUAE_UNIX_EXTRA_SOURCES)
 list(APPEND WINUAE_CORE_SOURCES ${WINUAE_UNIX_EXTRA_SOURCES})
 target_sources(winuae_core PRIVATE ${WINUAE_CORE_SOURCES})
 
@@ -1092,7 +1163,9 @@ if(WINUAE_UNIX_WITH_QT_UI OR WINUAE_UNIX_WITH_INTEGRATED_QT_UI)
             UAE_UNIX_WITH_MIDI=$<BOOL:${WINUAE_UNIX_ENABLE_MIDI}>
             UAE_UNIX_WITH_CPUBOARD=$<BOOL:${WINUAE_UNIX_ENABLE_CPUBOARD}>
             UAE_UNIX_WITH_SNDBOARD=$<BOOL:${WINUAE_UNIX_ENABLE_SNDBOARD}>
+            UAE_UNIX_WITH_GFXBOARD=$<BOOL:${WINUAE_UNIX_ENABLE_GFXBOARD}>
             UAE_UNIX_WITH_JIT=$<BOOL:${WINUAE_UNIX_ENABLE_JIT}>
+            UAE_UNIX_WITH_AVIOUTPUT=$<BOOL:${WINUAE_UNIX_ENABLE_AVIOUTPUT}>
             UAE_UNIX_WITH_SERIAL_DIRECT=1
             ${WINUAE_UNIX_MIDI_QT_DEFINITIONS}
         )

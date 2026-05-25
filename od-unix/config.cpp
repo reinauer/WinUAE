@@ -9,6 +9,11 @@
 #include <vector>
 
 #include "options.h"
+#ifdef AVIOUTPUT
+#include "avioutput.h"
+extern int video_recording_active;
+static int unix_avi_audio_codec = AVIAUDIO_AVI;
+#endif
 #include "path_expand.h"
 #include "savestate.h"
 #include "sound_unix.h"
@@ -586,6 +591,87 @@ int target_parse_option(struct uae_prefs *p, const TCHAR *option, const TCHAR *v
         || cfgfile_strval(option, value, _T("screenshot_mult_height"), &p->screenshot_ymult, configmult, 0)) {
         return 1;
     }
+#ifdef AVIOUTPUT
+    if (!_tcsicmp(option, _T("screenshot_original_size")) || !_tcsicmp(option, _T("ui.screenshot_original_size"))) {
+        screenshot_originalsize = parse_bool_value(value ? value : "");
+        return 1;
+    }
+    if (!_tcsicmp(option, _T("screenshot_paletted")) || !_tcsicmp(option, _T("ui.screenshot_paletted"))) {
+        screenshot_paletteindexed = parse_bool_value(value ? value : "");
+        return 1;
+    }
+    if (!_tcsicmp(option, _T("screenshot_clip")) || !_tcsicmp(option, _T("ui.screenshot_clip"))) {
+        screenshot_clipmode = parse_bool_value(value ? value : "");
+        return 1;
+    }
+    if (!_tcsicmp(option, _T("screenshot_auto")) || !_tcsicmp(option, _T("ui.screenshot_auto"))) {
+        screenshot_multi = parse_bool_value(value ? value : "") ? -1 : 0;
+        if (screenshot_multi) {
+            video_recording_active |= 2;
+        } else {
+            video_recording_active &= ~2;
+        }
+        return 1;
+    }
+    {
+        TCHAR tmpbuf[MAX_DPATH];
+        if (cfgfile_string_escape(option, value, _T("output_file"), tmpbuf, sizeof tmpbuf / sizeof(TCHAR)) ||
+            cfgfile_string_escape(option, value, _T("ui.output_file"), tmpbuf, sizeof tmpbuf / sizeof(TCHAR))) {
+            _tcsncpy(avioutput_filename_gui, tmpbuf, sizeof avioutput_filename_gui / sizeof(TCHAR) - 1);
+            avioutput_filename_gui[sizeof avioutput_filename_gui / sizeof(TCHAR) - 1] = 0;
+            return 1;
+        }
+    }
+    if (!_tcsicmp(option, _T("output_frame_limiter_disabled")) || !_tcsicmp(option, _T("ui.output_frame_limiter_disabled"))) {
+        avioutput_framelimiter = parse_bool_value(value ? value : "") ? 0 : 1;
+        if (!avioutput_framelimiter) {
+            avioutput_nosoundoutput = 1;
+        }
+        return 1;
+    }
+    if (!_tcsicmp(option, _T("output_original_size")) || !_tcsicmp(option, _T("ui.output_original_size"))) {
+        avioutput_originalsize = parse_bool_value(value ? value : "");
+        return 1;
+    }
+    if (!_tcsicmp(option, _T("output_no_sound")) || !_tcsicmp(option, _T("ui.output_no_sound"))) {
+        avioutput_nosoundoutput = parse_bool_value(value ? value : "");
+        return 1;
+    }
+    if (!_tcsicmp(option, _T("output_no_sound_sync")) || !_tcsicmp(option, _T("ui.output_no_sound_sync"))) {
+        avioutput_nosoundsync = parse_bool_value(value ? value : "");
+        return 1;
+    }
+    if (!_tcsicmp(option, _T("output_audio_codec")) || !_tcsicmp(option, _T("ui.output_audio_codec"))) {
+        if (value && (!_tcsicmp(value, _T("wav")) || !_tcsicmp(value, _T("wave")))) {
+            unix_avi_audio_codec = AVIAUDIO_WAV;
+        } else {
+            unix_avi_audio_codec = AVIAUDIO_AVI;
+        }
+        if (avioutput_audio) {
+            avioutput_audio = unix_avi_audio_codec;
+        }
+        return 1;
+    }
+    if (!_tcsicmp(option, _T("output_video_codec")) || !_tcsicmp(option, _T("ui.output_video_codec"))) {
+        return 1;
+    }
+    if (!_tcsicmp(option, _T("output_audio")) || !_tcsicmp(option, _T("ui.output_audio"))) {
+        avioutput_audio = parse_bool_value(value ? value : "") ? unix_avi_audio_codec : 0;
+        return 1;
+    }
+    if (!_tcsicmp(option, _T("output_video")) || !_tcsicmp(option, _T("ui.output_video"))) {
+        avioutput_video = parse_bool_value(value ? value : "") ? 1 : 0;
+        return 1;
+    }
+    if (!_tcsicmp(option, _T("output_enabled")) || !_tcsicmp(option, _T("ui.output_enabled"))) {
+        if (parse_bool_value(value ? value : "")) {
+            AVIOutput_Begin(false);
+        } else {
+            AVIOutput_End();
+        }
+        return 1;
+    }
+#endif
     if (!_tcsicmp(option, _T("serial_port"))) {
         std::string port = trim_copy(value ? value : "");
         if (port.size() >= 2 &&
@@ -771,6 +857,25 @@ void target_save_options(struct zfile *f, struct uae_prefs *p)
     cfgfile_target_dwrite(f, _T("screenshot_output_height_limit"), _T("%d"), p->screenshot_output_height);
     cfgfile_target_dwrite_str(f, _T("screenshot_mult_width"), configmult[p->screenshot_xmult]);
     cfgfile_target_dwrite_str(f, _T("screenshot_mult_height"), configmult[p->screenshot_ymult]);
+#ifdef AVIOUTPUT
+    cfgfile_target_dwrite_bool(f, _T("screenshot_original_size"), screenshot_originalsize != 0);
+    cfgfile_target_dwrite_bool(f, _T("screenshot_paletted"), screenshot_paletteindexed != 0);
+    cfgfile_target_dwrite_bool(f, _T("screenshot_clip"), screenshot_clipmode != 0);
+    cfgfile_target_dwrite_bool(f, _T("screenshot_auto"), screenshot_multi != 0);
+    if (avioutput_filename_gui[0]) {
+        cfgfile_target_dwrite_str_escape(f, _T("output_file"), avioutput_filename_gui);
+    }
+    cfgfile_target_dwrite_bool(f, _T("output_frame_limiter_disabled"), avioutput_framelimiter == 0);
+    cfgfile_target_dwrite_bool(f, _T("output_original_size"), avioutput_originalsize != 0);
+    cfgfile_target_dwrite_bool(f, _T("output_no_sound"), avioutput_nosoundoutput != 0);
+    cfgfile_target_dwrite_bool(f, _T("output_no_sound_sync"), avioutput_nosoundsync != 0);
+    cfgfile_target_write_str(f, _T("output_audio_codec"),
+        avioutput_audio == AVIAUDIO_WAV ? _T("wav") : _T("pcm"));
+    cfgfile_target_write_str(f, _T("output_video_codec"), _T("dib"));
+    cfgfile_target_dwrite_bool(f, _T("output_audio"), avioutput_audio != 0);
+    cfgfile_target_dwrite_bool(f, _T("output_video"), avioutput_video != 0);
+    cfgfile_target_dwrite_bool(f, _T("output_enabled"), avioutput_requested != 0);
+#endif
     if (path_configuration[0]) {
         cfgfile_target_write_str(f, _T("config_path"), path_configuration);
     }

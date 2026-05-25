@@ -11,6 +11,7 @@ struct unix_video_frame
     int rowbytes;
     int pixbytes;
     int filter_index;
+    int backbuffers;
 };
 
 struct unix_video_display_mode

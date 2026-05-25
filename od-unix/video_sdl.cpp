@@ -25,6 +25,7 @@ extern void pausemode(int mode);
 static SDL_Window *s_window;
 static SDL_Renderer *s_renderer;
 static SDL_Texture *s_texture;
+static std::vector<SDL_Texture *> s_textures;
 static SDL_Texture *s_status_texture;
 static bool s_setup_done;
 static bool s_available;
@@ -42,6 +43,8 @@ static int s_active_fullscreen_refresh = -1;
 static int s_texture_width;
 static int s_texture_height;
 static int s_texture_pixbytes;
+static int s_texture_backbuffers;
+static int s_texture_index;
 static int s_status_width;
 static int s_status_height;
 static std::vector<uae_u32> s_status_pixels;
@@ -71,6 +74,31 @@ static SDL_PixelFormat texture_format_for_pixbytes(int pixbytes)
         return SDL_PIXELFORMAT_RGB565;
     }
     return SDL_PIXELFORMAT_ARGB8888;
+}
+
+static int clamp_backbuffer_count(int backbuffers)
+{
+    if (backbuffers < 1) {
+        return 1;
+    }
+    if (backbuffers > 3) {
+        return 3;
+    }
+    return backbuffers;
+}
+
+static void destroy_frame_textures(void)
+{
+    for (SDL_Texture *texture : s_textures) {
+        SDL_DestroyTexture(texture);
+    }
+    s_textures.clear();
+    s_texture = NULL;
+    s_texture_width = 0;
+    s_texture_height = 0;
+    s_texture_pixbytes = 0;
+    s_texture_backbuffers = 0;
+    s_texture_index = 0;
 }
 
 static SDL_DisplayID *get_sdl_displays(int *count)
@@ -295,29 +323,36 @@ static void init_status_colors(void)
     s_status_colors_ready = true;
 }
 
-static bool ensure_texture(int width, int height, int pixbytes)
+static bool ensure_texture(int width, int height, int pixbytes, int backbuffers)
 {
     if (!s_renderer || width <= 0 || height <= 0) {
         return false;
     }
-    if (s_texture && s_texture_width == width && s_texture_height == height && s_texture_pixbytes == pixbytes) {
+    backbuffers = clamp_backbuffer_count(backbuffers);
+    if (!s_textures.empty() && s_texture_width == width && s_texture_height == height &&
+        s_texture_pixbytes == pixbytes && s_texture_backbuffers == backbuffers) {
         return true;
     }
 
-    if (s_texture) {
-        SDL_DestroyTexture(s_texture);
-        s_texture = NULL;
-    }
+    destroy_frame_textures();
 
-    s_texture = SDL_CreateTexture(s_renderer, texture_format_for_pixbytes(pixbytes), SDL_TEXTUREACCESS_STREAMING, width, height);
-    if (!s_texture) {
-        write_log(_T("SDL3: failed to create %dx%d texture: %s\n"), width, height, SDL_GetError());
-        return false;
+    for (int i = 0; i < backbuffers; i++) {
+        SDL_Texture *texture = SDL_CreateTexture(s_renderer, texture_format_for_pixbytes(pixbytes),
+            SDL_TEXTUREACCESS_STREAMING, width, height);
+        if (!texture) {
+            write_log(_T("SDL3: failed to create %dx%d texture: %s\n"), width, height, SDL_GetError());
+            destroy_frame_textures();
+            return false;
+        }
+        SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_NONE);
+        s_textures.push_back(texture);
     }
-    SDL_SetTextureBlendMode(s_texture, SDL_BLENDMODE_NONE);
+    s_texture = s_textures[0];
     s_texture_width = width;
     s_texture_height = height;
     s_texture_pixbytes = pixbytes;
+    s_texture_backbuffers = backbuffers;
+    s_texture_index = 0;
     return true;
 }
 
@@ -720,7 +755,7 @@ bool unix_video_init(int width, int height, int pixbytes)
 
     apply_window_mode();
 
-    return ensure_texture(width, height, pixbytes);
+    return ensure_texture(width, height, pixbytes, 1);
 }
 
 void unix_video_shutdown(void)
@@ -728,10 +763,7 @@ void unix_video_shutdown(void)
     unix_input_release_keys();
     unix_video_set_mouse_grab(false);
 
-    if (s_texture) {
-        SDL_DestroyTexture(s_texture);
-        s_texture = NULL;
-    }
+    destroy_frame_textures();
     if (s_status_texture) {
         SDL_DestroyTexture(s_status_texture);
         s_status_texture = NULL;
@@ -745,9 +777,6 @@ void unix_video_shutdown(void)
         SDL_DestroyWindow(s_window);
         s_window = NULL;
     }
-    s_texture_width = 0;
-    s_texture_height = 0;
-    s_texture_pixbytes = 0;
     s_status_width = 0;
     s_status_height = 0;
 
@@ -865,8 +894,12 @@ void unix_video_present(const struct unix_video_frame *frame)
     if (!unix_video_init(frame->width, frame->height, frame->pixbytes)) {
         return;
     }
-    if (!ensure_texture(frame->width, frame->height, frame->pixbytes)) {
+    if (!ensure_texture(frame->width, frame->height, frame->pixbytes, frame->backbuffers)) {
         return;
+    }
+    if (!s_textures.empty()) {
+        s_texture_index = (s_texture_index + 1) % (int)s_textures.size();
+        s_texture = s_textures[s_texture_index];
     }
 
     const struct gfx_filterdata *filter = filterdata_for_frame(frame);
