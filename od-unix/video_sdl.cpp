@@ -5,8 +5,17 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 
+#ifdef WINUAE_UNIX_WITH_OPENGL_SHADER_PIPELINE
+#if defined(__APPLE__)
+#include <OpenGL/gl.h>
+#else
+#include <GL/gl.h>
+#endif
+#endif
+
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <vector>
 
 #include "statusline.h"
@@ -27,6 +36,23 @@ static SDL_Renderer *s_renderer;
 static SDL_Texture *s_texture;
 static std::vector<SDL_Texture *> s_textures;
 static SDL_Texture *s_status_texture;
+#ifdef WINUAE_UNIX_WITH_OPENGL_SHADER_PIPELINE
+static SDL_GLContext s_gl_context;
+static std::vector<GLuint> s_gl_textures;
+static GLuint s_gl_texture;
+static GLuint s_gl_status_texture;
+static GLuint s_gl_program;
+static bool s_gl_active;
+static bool s_gl_failed;
+static bool s_gl_functions_loaded;
+static int s_gl_uniform_texture = -1;
+static int s_gl_uniform_source_size = -1;
+static int s_gl_uniform_adjust = -1;
+static int s_gl_uniform_scanline = -1;
+static int s_gl_uniform_blur_noise = -1;
+static int s_gl_uniform_frame = -1;
+static unsigned int s_gl_frame_counter;
+#endif
 static bool s_setup_done;
 static bool s_available;
 static bool s_mouse_grabbed;
@@ -56,6 +82,86 @@ static Uint8 s_status_click_button;
 
 static constexpr int UnixStatusScale = 2;
 static TCHAR s_display_name[MAX_DPATH];
+
+#ifdef WINUAE_UNIX_WITH_OPENGL_SHADER_PIPELINE
+#ifndef APIENTRY
+#define APIENTRY
+#endif
+#ifndef APIENTRYP
+#define APIENTRYP APIENTRY *
+#endif
+#ifndef GL_FRAGMENT_SHADER
+#define GL_FRAGMENT_SHADER 0x8B30
+#endif
+#ifndef GL_VERTEX_SHADER
+#define GL_VERTEX_SHADER 0x8B31
+#endif
+#ifndef GL_COMPILE_STATUS
+#define GL_COMPILE_STATUS 0x8B81
+#endif
+#ifndef GL_LINK_STATUS
+#define GL_LINK_STATUS 0x8B82
+#endif
+#ifndef GL_INFO_LOG_LENGTH
+#define GL_INFO_LOG_LENGTH 0x8B84
+#endif
+#ifndef GL_CLAMP_TO_EDGE
+#define GL_CLAMP_TO_EDGE 0x812F
+#endif
+#ifndef GL_BGRA
+#define GL_BGRA 0x80E1
+#endif
+#ifndef GL_UNSIGNED_SHORT_5_6_5
+#define GL_UNSIGNED_SHORT_5_6_5 0x8363
+#endif
+
+typedef GLuint(APIENTRYP UnixGlCreateShaderProc)(GLenum);
+typedef void(APIENTRYP UnixGlShaderSourceProc)(GLuint, GLsizei, const GLchar **, const GLint *);
+typedef void(APIENTRYP UnixGlCompileShaderProc)(GLuint);
+typedef void(APIENTRYP UnixGlGetShaderivProc)(GLuint, GLenum, GLint *);
+typedef void(APIENTRYP UnixGlGetShaderInfoLogProc)(GLuint, GLsizei, GLsizei *, GLchar *);
+typedef GLuint(APIENTRYP UnixGlCreateProgramProc)(void);
+typedef void(APIENTRYP UnixGlAttachShaderProc)(GLuint, GLuint);
+typedef void(APIENTRYP UnixGlLinkProgramProc)(GLuint);
+typedef void(APIENTRYP UnixGlGetProgramivProc)(GLuint, GLenum, GLint *);
+typedef void(APIENTRYP UnixGlGetProgramInfoLogProc)(GLuint, GLsizei, GLsizei *, GLchar *);
+typedef void(APIENTRYP UnixGlDeleteShaderProc)(GLuint);
+typedef void(APIENTRYP UnixGlDeleteProgramProc)(GLuint);
+typedef void(APIENTRYP UnixGlUseProgramProc)(GLuint);
+typedef GLint(APIENTRYP UnixGlGetUniformLocationProc)(GLuint, const GLchar *);
+typedef void(APIENTRYP UnixGlUniform1iProc)(GLint, GLint);
+typedef void(APIENTRYP UnixGlUniform1fProc)(GLint, GLfloat);
+typedef void(APIENTRYP UnixGlUniform2fProc)(GLint, GLfloat, GLfloat);
+typedef void(APIENTRYP UnixGlUniform4fProc)(GLint, GLfloat, GLfloat, GLfloat, GLfloat);
+
+static UnixGlCreateShaderProc p_glCreateShader;
+static UnixGlShaderSourceProc p_glShaderSource;
+static UnixGlCompileShaderProc p_glCompileShader;
+static UnixGlGetShaderivProc p_glGetShaderiv;
+static UnixGlGetShaderInfoLogProc p_glGetShaderInfoLog;
+static UnixGlCreateProgramProc p_glCreateProgram;
+static UnixGlAttachShaderProc p_glAttachShader;
+static UnixGlLinkProgramProc p_glLinkProgram;
+static UnixGlGetProgramivProc p_glGetProgramiv;
+static UnixGlGetProgramInfoLogProc p_glGetProgramInfoLog;
+static UnixGlDeleteShaderProc p_glDeleteShader;
+static UnixGlDeleteProgramProc p_glDeleteProgram;
+static UnixGlUseProgramProc p_glUseProgram;
+static UnixGlGetUniformLocationProc p_glGetUniformLocation;
+static UnixGlUniform1iProc p_glUniform1i;
+static UnixGlUniform1fProc p_glUniform1f;
+static UnixGlUniform2fProc p_glUniform2f;
+static UnixGlUniform4fProc p_glUniform4f;
+
+static SDL_FunctionPointer unix_gl_get_proc(const char *name)
+{
+    SDL_FunctionPointer proc = SDL_GL_GetProcAddress(name);
+    if (!proc) {
+        write_log(_T("OpenGL shader pipeline: missing %s\n"), name);
+    }
+    return proc;
+}
+#endif
 
 static int clamp_window_dimension(int value, int fallback, int maxvalue)
 {
@@ -93,6 +199,13 @@ static void destroy_frame_textures(void)
         SDL_DestroyTexture(texture);
     }
     s_textures.clear();
+#ifdef WINUAE_UNIX_WITH_OPENGL_SHADER_PIPELINE
+    if (!s_gl_textures.empty()) {
+        glDeleteTextures((GLsizei)s_gl_textures.size(), s_gl_textures.data());
+        s_gl_textures.clear();
+    }
+    s_gl_texture = 0;
+#endif
     s_texture = NULL;
     s_texture_width = 0;
     s_texture_height = 0;
@@ -463,13 +576,13 @@ static void render_scanline_overlay(const struct gfx_filterdata *filter, const S
     SDL_SetRenderDrawBlendMode(s_renderer, SDL_BLENDMODE_NONE);
 }
 
-static bool ensure_status_texture(int width)
+static bool ensure_status_pixels(int width)
 {
     const int height = statusbar_source_height();
-    if (!s_renderer || width <= 0 || height <= 0) {
+    if (width <= 0 || height <= 0) {
         return false;
     }
-    if (s_status_texture && s_status_width == width && s_status_height == height) {
+    if (s_status_width == width && s_status_height == height) {
         return true;
     }
 
@@ -477,21 +590,40 @@ static bool ensure_status_texture(int width)
         SDL_DestroyTexture(s_status_texture);
         s_status_texture = NULL;
     }
-    s_status_texture = SDL_CreateTexture(s_renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, width, height);
-    if (!s_status_texture) {
-        write_log(_T("SDL3: failed to create %dx%d status texture: %s\n"), width, height, SDL_GetError());
-        return false;
+#ifdef WINUAE_UNIX_WITH_OPENGL_SHADER_PIPELINE
+    if (s_gl_status_texture) {
+        glDeleteTextures(1, &s_gl_status_texture);
+        s_gl_status_texture = 0;
     }
-    SDL_SetTextureBlendMode(s_status_texture, SDL_BLENDMODE_NONE);
+#endif
     s_status_width = width;
     s_status_height = height;
     s_status_pixels.resize(size_t(width) * size_t(height));
     return true;
 }
 
-static bool update_status_texture(int width)
+static bool ensure_status_texture(int width)
 {
-    if (!ensure_status_texture(width)) {
+    if (!s_renderer || !ensure_status_pixels(width)) {
+        return false;
+    }
+    if (s_status_texture) {
+        return true;
+    }
+
+    const int height = statusbar_source_height();
+    s_status_texture = SDL_CreateTexture(s_renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, width, height);
+    if (!s_status_texture) {
+        write_log(_T("SDL3: failed to create %dx%d status texture: %s\n"), width, height, SDL_GetError());
+        return false;
+    }
+    SDL_SetTextureBlendMode(s_status_texture, SDL_BLENDMODE_NONE);
+    return true;
+}
+
+static bool update_status_pixels(int width)
+{
+    if (!ensure_status_pixels(width)) {
         return false;
     }
 
@@ -509,10 +641,454 @@ static bool update_status_texture(int width)
             s_status_bc,
             NULL);
     }
+    return true;
+}
+
+static bool update_status_texture(int width)
+{
+    if (!ensure_status_texture(width) || !update_status_pixels(width)) {
+        return false;
+    }
 
     SDL_UpdateTexture(s_status_texture, NULL, s_status_pixels.data(), width * int(sizeof(uae_u32)));
     return true;
 }
+
+#ifdef WINUAE_UNIX_WITH_OPENGL_SHADER_PIPELINE
+static bool unix_gl_load_functions(void)
+{
+    if (s_gl_functions_loaded) {
+        return true;
+    }
+
+    p_glCreateShader = reinterpret_cast<UnixGlCreateShaderProc>(unix_gl_get_proc("glCreateShader"));
+    p_glShaderSource = reinterpret_cast<UnixGlShaderSourceProc>(unix_gl_get_proc("glShaderSource"));
+    p_glCompileShader = reinterpret_cast<UnixGlCompileShaderProc>(unix_gl_get_proc("glCompileShader"));
+    p_glGetShaderiv = reinterpret_cast<UnixGlGetShaderivProc>(unix_gl_get_proc("glGetShaderiv"));
+    p_glGetShaderInfoLog = reinterpret_cast<UnixGlGetShaderInfoLogProc>(unix_gl_get_proc("glGetShaderInfoLog"));
+    p_glCreateProgram = reinterpret_cast<UnixGlCreateProgramProc>(unix_gl_get_proc("glCreateProgram"));
+    p_glAttachShader = reinterpret_cast<UnixGlAttachShaderProc>(unix_gl_get_proc("glAttachShader"));
+    p_glLinkProgram = reinterpret_cast<UnixGlLinkProgramProc>(unix_gl_get_proc("glLinkProgram"));
+    p_glGetProgramiv = reinterpret_cast<UnixGlGetProgramivProc>(unix_gl_get_proc("glGetProgramiv"));
+    p_glGetProgramInfoLog = reinterpret_cast<UnixGlGetProgramInfoLogProc>(unix_gl_get_proc("glGetProgramInfoLog"));
+    p_glDeleteShader = reinterpret_cast<UnixGlDeleteShaderProc>(unix_gl_get_proc("glDeleteShader"));
+    p_glDeleteProgram = reinterpret_cast<UnixGlDeleteProgramProc>(unix_gl_get_proc("glDeleteProgram"));
+    p_glUseProgram = reinterpret_cast<UnixGlUseProgramProc>(unix_gl_get_proc("glUseProgram"));
+    p_glGetUniformLocation = reinterpret_cast<UnixGlGetUniformLocationProc>(unix_gl_get_proc("glGetUniformLocation"));
+    p_glUniform1i = reinterpret_cast<UnixGlUniform1iProc>(unix_gl_get_proc("glUniform1i"));
+    p_glUniform1f = reinterpret_cast<UnixGlUniform1fProc>(unix_gl_get_proc("glUniform1f"));
+    p_glUniform2f = reinterpret_cast<UnixGlUniform2fProc>(unix_gl_get_proc("glUniform2f"));
+    p_glUniform4f = reinterpret_cast<UnixGlUniform4fProc>(unix_gl_get_proc("glUniform4f"));
+
+    s_gl_functions_loaded = p_glCreateShader && p_glShaderSource && p_glCompileShader &&
+        p_glGetShaderiv && p_glGetShaderInfoLog && p_glCreateProgram && p_glAttachShader &&
+        p_glLinkProgram && p_glGetProgramiv && p_glGetProgramInfoLog && p_glDeleteShader &&
+        p_glDeleteProgram && p_glUseProgram && p_glGetUniformLocation && p_glUniform1i &&
+        p_glUniform1f && p_glUniform2f && p_glUniform4f;
+    return s_gl_functions_loaded;
+}
+
+static bool unix_gl_shader_ok(GLuint shader, const char *label)
+{
+    GLint ok = 0;
+    p_glGetShaderiv(shader, GL_COMPILE_STATUS, &ok);
+    if (ok) {
+        return true;
+    }
+
+    GLint length = 0;
+    p_glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &length);
+    std::vector<char> log(length > 1 ? length : 1, 0);
+    if (length > 1) {
+        p_glGetShaderInfoLog(shader, length, NULL, log.data());
+    }
+    write_log(_T("OpenGL shader pipeline: %s compile failed: %s\n"), label, log.data());
+    return false;
+}
+
+static bool unix_gl_program_ok(GLuint program)
+{
+    GLint ok = 0;
+    p_glGetProgramiv(program, GL_LINK_STATUS, &ok);
+    if (ok) {
+        return true;
+    }
+
+    GLint length = 0;
+    p_glGetProgramiv(program, GL_INFO_LOG_LENGTH, &length);
+    std::vector<char> log(length > 1 ? length : 1, 0);
+    if (length > 1) {
+        p_glGetProgramInfoLog(program, length, NULL, log.data());
+    }
+    write_log(_T("OpenGL shader pipeline: program link failed: %s\n"), log.data());
+    return false;
+}
+
+static GLuint unix_gl_compile_shader(GLenum type, const char *source, const char *label)
+{
+    GLuint shader = p_glCreateShader(type);
+    if (!shader) {
+        return 0;
+    }
+    const GLchar *sources[] = { reinterpret_cast<const GLchar *>(source) };
+    p_glShaderSource(shader, 1, sources, NULL);
+    p_glCompileShader(shader);
+    if (!unix_gl_shader_ok(shader, label)) {
+        p_glDeleteShader(shader);
+        return 0;
+    }
+    return shader;
+}
+
+static bool unix_gl_build_program(void)
+{
+    if (s_gl_program) {
+        return true;
+    }
+    if (!unix_gl_load_functions()) {
+        return false;
+    }
+
+    static const char *vertex_shader =
+        "#version 120\n"
+        "varying vec2 v_tex;\n"
+        "void main(void) {\n"
+        "    gl_Position = gl_Vertex;\n"
+        "    v_tex = gl_MultiTexCoord0.xy;\n"
+        "}\n";
+    static const char *fragment_shader =
+        "#version 120\n"
+        "uniform sampler2D u_tex;\n"
+        "uniform vec2 u_source_size;\n"
+        "uniform vec4 u_adjust;\n"
+        "uniform vec4 u_scanline;\n"
+        "uniform vec4 u_blur_noise;\n"
+        "uniform float u_frame;\n"
+        "varying vec2 v_tex;\n"
+        "float rand(vec2 co) {\n"
+        "    return fract(sin(dot(co, vec2(12.9898, 78.233))) * 43758.5453);\n"
+        "}\n"
+        "void main(void) {\n"
+        "    vec2 texel = 1.0 / max(u_source_size, vec2(1.0));\n"
+        "    vec4 color = texture2D(u_tex, v_tex);\n"
+        "    float blur = clamp(u_blur_noise.x, 0.0, 1.0);\n"
+        "    if (blur > 0.001) {\n"
+        "        vec4 sum = color * 4.0;\n"
+        "        sum += texture2D(u_tex, v_tex + vec2(texel.x, 0.0));\n"
+        "        sum += texture2D(u_tex, v_tex - vec2(texel.x, 0.0));\n"
+        "        sum += texture2D(u_tex, v_tex + vec2(0.0, texel.y));\n"
+        "        sum += texture2D(u_tex, v_tex - vec2(0.0, texel.y));\n"
+        "        color = mix(color, sum / 8.0, blur);\n"
+        "    }\n"
+        "    float luma = dot(color.rgb, vec3(0.299, 0.587, 0.114));\n"
+        "    color.rgb = mix(vec3(luma), color.rgb, u_adjust.z);\n"
+        "    color.rgb = (color.rgb - vec3(0.5)) * u_adjust.y + vec3(0.5 + u_adjust.x);\n"
+        "    color.rgb = pow(max(color.rgb, vec3(0.0)), vec3(u_adjust.w));\n"
+        "    if (u_scanline.x > 0.001 && u_scanline.z > 0.5) {\n"
+        "        float y = mod(gl_FragCoord.y + u_scanline.w, u_scanline.z);\n"
+        "        if (y < u_scanline.y) {\n"
+        "            color.rgb *= 1.0 - u_scanline.x;\n"
+        "        }\n"
+        "    }\n"
+        "    float noise = clamp(u_blur_noise.y, 0.0, 1.0);\n"
+        "    if (noise > 0.001) {\n"
+        "        color.rgb += (rand(v_tex * u_source_size + vec2(u_frame, u_frame * 0.37)) - 0.5) * noise;\n"
+        "    }\n"
+        "    gl_FragColor = clamp(color, 0.0, 1.0);\n"
+        "}\n";
+
+    GLuint vs = unix_gl_compile_shader(GL_VERTEX_SHADER, vertex_shader, "vertex");
+    GLuint fs = unix_gl_compile_shader(GL_FRAGMENT_SHADER, fragment_shader, "fragment");
+    if (!vs || !fs) {
+        if (vs) {
+            p_glDeleteShader(vs);
+        }
+        if (fs) {
+            p_glDeleteShader(fs);
+        }
+        return false;
+    }
+
+    GLuint program = p_glCreateProgram();
+    p_glAttachShader(program, vs);
+    p_glAttachShader(program, fs);
+    p_glLinkProgram(program);
+    p_glDeleteShader(vs);
+    p_glDeleteShader(fs);
+    if (!unix_gl_program_ok(program)) {
+        p_glDeleteProgram(program);
+        return false;
+    }
+
+    s_gl_program = program;
+    s_gl_uniform_texture = p_glGetUniformLocation(program, reinterpret_cast<const GLchar *>("u_tex"));
+    s_gl_uniform_source_size = p_glGetUniformLocation(program, reinterpret_cast<const GLchar *>("u_source_size"));
+    s_gl_uniform_adjust = p_glGetUniformLocation(program, reinterpret_cast<const GLchar *>("u_adjust"));
+    s_gl_uniform_scanline = p_glGetUniformLocation(program, reinterpret_cast<const GLchar *>("u_scanline"));
+    s_gl_uniform_blur_noise = p_glGetUniformLocation(program, reinterpret_cast<const GLchar *>("u_blur_noise"));
+    s_gl_uniform_frame = p_glGetUniformLocation(program, reinterpret_cast<const GLchar *>("u_frame"));
+    return true;
+}
+
+static bool unix_gl_ensure_context(int width, int height)
+{
+    if (s_gl_active) {
+        return true;
+    }
+    if (!s_window || s_gl_failed) {
+        return false;
+    }
+
+    s_gl_context = SDL_GL_CreateContext(s_window);
+    if (!s_gl_context) {
+        write_log(_T("OpenGL shader pipeline: context creation failed: %s\n"), SDL_GetError());
+        s_gl_failed = true;
+        return false;
+    }
+    SDL_GL_MakeCurrent(s_window, s_gl_context);
+    SDL_GL_SetSwapInterval(1);
+    if (!unix_gl_build_program()) {
+        SDL_GL_DestroyContext(s_gl_context);
+        s_gl_context = NULL;
+        s_gl_failed = true;
+        return false;
+    }
+
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_CULL_FACE);
+    glEnable(GL_TEXTURE_2D);
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glViewport(0, 0, width, height);
+    s_gl_active = true;
+    write_log(_T("OpenGL shader pipeline enabled\n"));
+    return true;
+}
+
+static void unix_gl_destroy_status_texture(void)
+{
+    if (s_gl_status_texture) {
+        glDeleteTextures(1, &s_gl_status_texture);
+        s_gl_status_texture = 0;
+    }
+}
+
+static bool unix_gl_ensure_textures(int width, int height, int pixbytes, int backbuffers)
+{
+    if (!s_gl_active || width <= 0 || height <= 0) {
+        return false;
+    }
+    backbuffers = clamp_backbuffer_count(backbuffers);
+    if (!s_gl_textures.empty() && s_texture_width == width && s_texture_height == height &&
+        s_texture_pixbytes == pixbytes && s_texture_backbuffers == backbuffers) {
+        return true;
+    }
+
+    destroy_frame_textures();
+    s_gl_textures.resize(backbuffers);
+    glGenTextures(backbuffers, s_gl_textures.data());
+    for (GLuint texture : s_gl_textures) {
+        glBindTexture(GL_TEXTURE_2D, texture);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        if (pixbytes == 2) {
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0,
+                GL_RGB, GL_UNSIGNED_SHORT_5_6_5, NULL);
+        } else {
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0,
+                GL_BGRA, GL_UNSIGNED_BYTE, NULL);
+        }
+    }
+    s_gl_texture = s_gl_textures[0];
+    s_texture_width = width;
+    s_texture_height = height;
+    s_texture_pixbytes = pixbytes;
+    s_texture_backbuffers = backbuffers;
+    s_texture_index = 0;
+    return true;
+}
+
+static bool unix_gl_ensure_status_texture(int width)
+{
+    if (!s_gl_active || !update_status_pixels(width)) {
+        return false;
+    }
+    if (!s_gl_status_texture) {
+        glGenTextures(1, &s_gl_status_texture);
+        glBindTexture(GL_TEXTURE_2D, s_gl_status_texture);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, statusbar_source_height(), 0,
+            GL_BGRA, GL_UNSIGNED_BYTE, s_status_pixels.data());
+    } else {
+        glBindTexture(GL_TEXTURE_2D, s_gl_status_texture);
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, statusbar_source_height(),
+            GL_BGRA, GL_UNSIGNED_BYTE, s_status_pixels.data());
+    }
+    return true;
+}
+
+static void unix_gl_set_logical_viewport(int logical_width, int logical_height)
+{
+    int window_width = 0;
+    int window_height = 0;
+    SDL_GetWindowSizeInPixels(s_window, &window_width, &window_height);
+    if (window_width <= 0 || window_height <= 0) {
+        SDL_GetWindowSize(s_window, &window_width, &window_height);
+    }
+    if (window_width <= 0 || window_height <= 0 || logical_width <= 0 || logical_height <= 0) {
+        return;
+    }
+
+    float scale = std::min((float)window_width / (float)logical_width,
+        (float)window_height / (float)logical_height);
+    int viewport_width = std::max(1, (int)(logical_width * scale + 0.5f));
+    int viewport_height = std::max(1, (int)(logical_height * scale + 0.5f));
+    int viewport_x = (window_width - viewport_width) / 2;
+    int viewport_y = (window_height - viewport_height) / 2;
+
+    glViewport(viewport_x, viewport_y, viewport_width, viewport_height);
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+    glOrtho(0.0, logical_width, logical_height, 0.0, -1.0, 1.0);
+    glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity();
+}
+
+static void unix_gl_draw_texture(GLuint texture, const SDL_FRect &dst, bool shader,
+    const struct gfx_filterdata *filter, int source_width, int source_height)
+{
+    glBindTexture(GL_TEXTURE_2D, texture);
+    if (shader) {
+        p_glUseProgram(s_gl_program);
+        p_glUniform1i(s_gl_uniform_texture, 0);
+        p_glUniform2f(s_gl_uniform_source_size, (GLfloat)source_width, (GLfloat)source_height);
+
+        float luminance = filter ? filter->gfx_filter_luminance / 1000.0f : 0.0f;
+        float contrast = filter ? 1.0f + filter->gfx_filter_contrast / 1000.0f : 1.0f;
+        float saturation = filter ? 1.0f + filter->gfx_filter_saturation / 1000.0f : 1.0f;
+        float gamma = filter ? 1.0f + filter->gfx_filter_gamma / 1000.0f : 1.0f;
+        if (contrast < 0.0f) {
+            contrast = 0.0f;
+        }
+        if (saturation < 0.0f) {
+            saturation = 0.0f;
+        }
+        if (gamma <= 0.01f) {
+            gamma = 1.0f;
+        }
+        p_glUniform4f(s_gl_uniform_adjust, luminance, contrast, saturation, 1.0f / gamma);
+
+        int lit_lines = filter ? (filter->gfx_filter_scanlineratio & 15) : 0;
+        int shaded_lines = filter ? ((filter->gfx_filter_scanlineratio >> 4) & 15) : 0;
+        int period = lit_lines + shaded_lines;
+        float opacity = filter ? clamp_filter_percent(filter->gfx_filter_scanlines) / 100.0f : 0.0f;
+        if (period <= 0 || shaded_lines <= 0) {
+            opacity = 0.0f;
+            period = 0;
+            shaded_lines = 0;
+        }
+        float scan_offset = filter ? (float)filter->gfx_filter_scanlineoffset : 0.0f;
+        p_glUniform4f(s_gl_uniform_scanline, opacity, (GLfloat)shaded_lines,
+            (GLfloat)period, scan_offset);
+        float blur = filter ? std::min(1.0f, std::max(0.0f, filter->gfx_filter_blur / 1000.0f)) : 0.0f;
+        float noise = filter ? std::min(1.0f, std::max(0.0f, filter->gfx_filter_noise / 1000.0f)) : 0.0f;
+        p_glUniform4f(s_gl_uniform_blur_noise, blur, noise, 0.0f, 0.0f);
+        p_glUniform1f(s_gl_uniform_frame, (GLfloat)s_gl_frame_counter);
+    } else {
+        p_glUseProgram(0);
+    }
+
+    glBegin(GL_QUADS);
+    glTexCoord2f(0.0f, 0.0f);
+    glVertex2f(dst.x, dst.y);
+    glTexCoord2f(1.0f, 0.0f);
+    glVertex2f(dst.x + dst.w, dst.y);
+    glTexCoord2f(1.0f, 1.0f);
+    glVertex2f(dst.x + dst.w, dst.y + dst.h);
+    glTexCoord2f(0.0f, 1.0f);
+    glVertex2f(dst.x, dst.y + dst.h);
+    glEnd();
+    if (shader) {
+        p_glUseProgram(0);
+    }
+}
+
+static bool unix_gl_upload_frame(const struct unix_video_frame *frame)
+{
+    if (!unix_gl_ensure_textures(frame->width, frame->height, frame->pixbytes, frame->backbuffers)) {
+        return false;
+    }
+    if (!s_gl_textures.empty()) {
+        s_texture_index = (s_texture_index + 1) % (int)s_gl_textures.size();
+        s_gl_texture = s_gl_textures[s_texture_index];
+    }
+
+    glBindTexture(GL_TEXTURE_2D, s_gl_texture);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    if (frame->rowbytes == frame->width * frame->pixbytes) {
+        if (frame->pixbytes == 2) {
+            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, frame->width, frame->height,
+                GL_RGB, GL_UNSIGNED_SHORT_5_6_5, frame->pixels);
+        } else {
+            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, frame->width, frame->height,
+                GL_BGRA, GL_UNSIGNED_BYTE, frame->pixels);
+        }
+    } else {
+        std::vector<uae_u8> packed((size_t)frame->width * (size_t)frame->height * (size_t)frame->pixbytes);
+        for (int y = 0; y < frame->height; y++) {
+            memcpy(packed.data() + (size_t)y * (size_t)frame->width * (size_t)frame->pixbytes,
+                frame->pixels + (size_t)y * (size_t)frame->rowbytes,
+                (size_t)frame->width * (size_t)frame->pixbytes);
+        }
+        if (frame->pixbytes == 2) {
+            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, frame->width, frame->height,
+                GL_RGB, GL_UNSIGNED_SHORT_5_6_5, packed.data());
+        } else {
+            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, frame->width, frame->height,
+                GL_BGRA, GL_UNSIGNED_BYTE, packed.data());
+        }
+    }
+    return true;
+}
+
+static void unix_gl_present(const struct unix_video_frame *frame, const struct gfx_filterdata *filter)
+{
+    if (!unix_gl_upload_frame(frame)) {
+        return;
+    }
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
+        filter && filter->gfx_filter_bilinear ? GL_LINEAR : GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER,
+        filter && filter->gfx_filter_bilinear ? GL_LINEAR : GL_NEAREST);
+
+    const int logical_width = frame->width;
+    const int logical_height = frame->height + statusbar_display_height();
+    unix_gl_set_logical_viewport(logical_width, logical_height);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    SDL_FRect frame_dst = filtered_frame_rect(frame, filter);
+    unix_gl_draw_texture(s_gl_texture, frame_dst, true, filter, frame->width, frame->height);
+
+    if (unix_gl_ensure_status_texture(frame->width)) {
+        SDL_FRect status_dst = {
+            0.0f,
+            (float)frame->height,
+            (float)frame->width,
+            (float)statusbar_display_height()
+        };
+        unix_gl_draw_texture(s_gl_status_texture, status_dst, false, NULL,
+            frame->width, statusbar_source_height());
+    }
+
+    SDL_GL_SwapWindow(s_window);
+    s_gl_frame_counter++;
+}
+#endif
 
 static int unix_mouse_button_from_sdl(Uint8 button)
 {
@@ -727,8 +1303,25 @@ bool unix_video_init(int width, int height, int pixbytes)
     if (!s_window) {
         int window_width = clamp_window_dimension(width, 768, 960);
         int window_height = clamp_window_dimension(height + statusbar_display_height(), 576 + statusbar_display_height(), 720 + statusbar_display_height());
+        SDL_WindowFlags base_window_flags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY;
+        SDL_WindowFlags window_flags = base_window_flags;
+#ifdef WINUAE_UNIX_WITH_OPENGL_SHADER_PIPELINE
+        bool tried_gl_window = false;
+        if (!s_gl_failed) {
+            window_flags = (SDL_WindowFlags)(window_flags | SDL_WINDOW_OPENGL);
+            tried_gl_window = true;
+        }
+#endif
         s_window = SDL_CreateWindow("WinUAE Unix", window_width, window_height,
-            SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
+            window_flags);
+#ifdef WINUAE_UNIX_WITH_OPENGL_SHADER_PIPELINE
+        if (!s_window && tried_gl_window) {
+            write_log(_T("OpenGL shader pipeline: window creation failed: %s\n"), SDL_GetError());
+            s_gl_failed = true;
+            s_window = SDL_CreateWindow("WinUAE Unix", window_width, window_height,
+                base_window_flags);
+        }
+#endif
         if (!s_window) {
             write_log(_T("SDL3: failed to create window: %s\n"), SDL_GetError());
             s_available = false;
@@ -736,6 +1329,27 @@ bool unix_video_init(int width, int height, int pixbytes)
         }
         center_window_on_display(get_sdl_display_for_index(s_requested_display_index));
     }
+
+#ifdef WINUAE_UNIX_WITH_OPENGL_SHADER_PIPELINE
+    if (!s_gl_failed) {
+        int window_width = 0;
+        int window_height = 0;
+        SDL_GetWindowSizeInPixels(s_window, &window_width, &window_height);
+        if (unix_gl_ensure_context(window_width, window_height)) {
+            apply_window_mode();
+            return unix_gl_ensure_textures(width, height, pixbytes, 1);
+        }
+        if (!s_renderer && s_window) {
+            SDL_DestroyWindow(s_window);
+            s_window = NULL;
+            return unix_video_init(width, height, pixbytes);
+        }
+    }
+    if (s_gl_active) {
+        apply_window_mode();
+        return unix_gl_ensure_textures(width, height, pixbytes, 1);
+    }
+#endif
 
     if (!s_renderer) {
         s_renderer = SDL_CreateRenderer(s_window, NULL);
@@ -768,6 +1382,18 @@ void unix_video_shutdown(void)
         SDL_DestroyTexture(s_status_texture);
         s_status_texture = NULL;
     }
+#ifdef WINUAE_UNIX_WITH_OPENGL_SHADER_PIPELINE
+    unix_gl_destroy_status_texture();
+    if (s_gl_program) {
+        p_glDeleteProgram(s_gl_program);
+        s_gl_program = 0;
+    }
+    if (s_gl_context) {
+        SDL_GL_DestroyContext(s_gl_context);
+        s_gl_context = NULL;
+    }
+    s_gl_active = false;
+#endif
     s_status_pixels.clear();
     if (s_renderer) {
         SDL_DestroyRenderer(s_renderer);
@@ -894,6 +1520,13 @@ void unix_video_present(const struct unix_video_frame *frame)
     if (!unix_video_init(frame->width, frame->height, frame->pixbytes)) {
         return;
     }
+    const struct gfx_filterdata *filter = filterdata_for_frame(frame);
+#ifdef WINUAE_UNIX_WITH_OPENGL_SHADER_PIPELINE
+    if (s_gl_active) {
+        unix_gl_present(frame, filter);
+        return;
+    }
+#endif
     if (!ensure_texture(frame->width, frame->height, frame->pixbytes, frame->backbuffers)) {
         return;
     }
@@ -902,7 +1535,6 @@ void unix_video_present(const struct unix_video_frame *frame)
         s_texture = s_textures[s_texture_index];
     }
 
-    const struct gfx_filterdata *filter = filterdata_for_frame(frame);
     SDL_SetTextureScaleMode(s_texture,
         filter && filter->gfx_filter_bilinear ? SDL_SCALEMODE_LINEAR : SDL_SCALEMODE_NEAREST);
 
