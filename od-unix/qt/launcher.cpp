@@ -5910,6 +5910,11 @@ private:
     int currentFilterTarget = 0;
     bool filterUpdating = false;
     QLineEdit *outputFile = nullptr;
+    QCheckBox *outputAudio = nullptr;
+    QCheckBox *outputVideo = nullptr;
+    QCheckBox *outputEnabled = nullptr;
+    QComboBox *outputAudioCodec = nullptr;
+    QComboBox *outputVideoCodec = nullptr;
     QCheckBox *outputFrameLimiter = nullptr;
     QCheckBox *outputOriginalSize = nullptr;
     QCheckBox *outputNoSound = nullptr;
@@ -7717,7 +7722,35 @@ private:
         root->setContentsMargins(4, 4, 4, 4);
 
         rtgMem = combo({ QStringLiteral("None"), QStringLiteral("1 MB"), QStringLiteral("2 MB"), QStringLiteral("4 MB"), QStringLiteral("8 MB"), QStringLiteral("16 MB"), QStringLiteral("32 MB"), QStringLiteral("64 MB"), QStringLiteral("128 MB"), QStringLiteral("256 MB") }, QStringLiteral("None"));
-        rtgType = combo({ QStringLiteral("ZorroII"), QStringLiteral("ZorroIII") }, QStringLiteral("ZorroIII"));
+        QStringList rtgTypes = {
+            QStringLiteral("ZorroII"),
+            QStringLiteral("ZorroIII")
+        };
+#if UAE_UNIX_WITH_GFXBOARD
+        rtgTypes << QStringLiteral("A2410")
+            << QStringLiteral("Spectrum28/24_Z2") << QStringLiteral("Spectrum28/24_Z3")
+            << QStringLiteral("Piccolo_Z2") << QStringLiteral("Piccolo_Z3")
+            << QStringLiteral("PiccoloSD64_Z2") << QStringLiteral("PiccoloSD64_Z3")
+            << QStringLiteral("CV64_Z3") << QStringLiteral("CV643D_Z2") << QStringLiteral("CV643D_Z3")
+            << QStringLiteral("PERMEDIA2_PCI")
+            << QStringLiteral("PicassoII") << QStringLiteral("PicassoII+")
+            << QStringLiteral("PicassoIV_Z2") << QStringLiteral("PicassoIV_Z3")
+            << QStringLiteral("Retina_Z2") << QStringLiteral("Retina_Z3")
+            << QStringLiteral("Altais")
+            << QStringLiteral("MerlinZ2") << QStringLiteral("MerlinZ3")
+            << QStringLiteral("GraffityZ2") << QStringLiteral("GraffityZ3")
+            << QStringLiteral("EGS_110_24") << QStringLiteral("Visiona")
+            << QStringLiteral("RainbowIII") << QStringLiteral("Domino")
+            << QStringLiteral("Pixel64")
+            << QStringLiteral("OmnibusET4000") << QStringLiteral("OmnibusET4000W32")
+            << QStringLiteral("Harlequin_PAL") << QStringLiteral("RainbowII")
+            << QStringLiteral("V3_3000")
+            << QStringLiteral("S3VIRGE_PCI") << QStringLiteral("S3TRIO64_PCI")
+            << QStringLiteral("Matrox_Millennium") << QStringLiteral("Matrox_Millennium_II")
+            << QStringLiteral("Matrox_Mystique") << QStringLiteral("Matrox_Mystique220")
+            << QStringLiteral("VGA");
+#endif
+        rtgType = combo(rtgTypes, QStringLiteral("ZorroIII"));
         rtgMonitor = combo({ QStringLiteral("1"), QStringLiteral("2"), QStringLiteral("3"), QStringLiteral("4") }, QStringLiteral("1"));
         disableUnavailable(rtgMonitor, QStringLiteral("The Unix uaegfx.card backend currently exposes a single RTG monitor."));
         rtgScale = new QCheckBox(QStringLiteral("Scale if smaller than display size setting"));
@@ -7727,8 +7760,7 @@ private:
         rtgCenter = new QCheckBox(QStringLiteral("Always center"));
         rtgIntegerScale = new QCheckBox(QStringLiteral("Integer scaling"));
         rtgMultithread = new QCheckBox(QStringLiteral("Multithreaded"));
-        rtgMultithread->setEnabled(false);
-        rtgMultithread->setToolTip(QStringLiteral("Windows RTG render-thread option; the Unix RTG renderer is currently single-threaded."));
+        rtgMultithread->setToolTip(QStringLiteral("Render RTG frame conversion on a Unix worker thread."));
         rtgHardwareSprite = new QCheckBox(QStringLiteral("Hardware sprite emulation"));
         rtgHardwareVBlank = new QCheckBox(QStringLiteral("Hardware vertical blank interrupt"));
         rtgAutoswitch = new QCheckBox(QStringLiteral("Native/RTG autoswitch"));
@@ -7744,7 +7776,7 @@ private:
         rtgRefreshRate = combo({ QStringLiteral("Chipset"), QStringLiteral("Default"), QStringLiteral("50"), QStringLiteral("60"), QStringLiteral("70"), QStringLiteral("75") }, QStringLiteral("Chipset"));
         rtgRefreshRate->setEditable(true);
         rtgBuffers = combo({ QStringLiteral("Double"), QStringLiteral("Triple") }, QStringLiteral("Double"));
-        disableUnavailable(rtgBuffers, QStringLiteral("RTG backbuffer selection is not implemented by the Unix SDL renderer yet."));
+        rtgBuffers->setToolTip(QStringLiteral("Controls the Unix SDL RTG presentation texture queue."));
         rtgAspectRatio = combo(configChoiceDisplays(rtgAspectRatioChoices, int(sizeof(rtgAspectRatioChoices) / sizeof(rtgAspectRatioChoices[0]))), QStringLiteral("Automatic"));
 
         QGridLayout *rtg = new QGridLayout;
@@ -8860,7 +8892,7 @@ private:
         const quint64 rtgBytes = bytesFromMemoryText(rtgMem ? rtgMem->currentText() : QString());
         if (rtgBytes) {
             addHardwareBoardRow(
-                rtgType && rtgType->currentText() == QStringLiteral("ZorroII") ? QStringLiteral("Z2") : QStringLiteral("Z3"),
+                rtgBusName(rtgType ? rtgType->currentText() : QString()),
                 QStringLiteral("RTG graphics card"),
                 QStringLiteral("-"),
                 QStringLiteral("-"),
@@ -9231,29 +9263,27 @@ private:
         outputFile = new QLineEdit;
         outputFile->setReadOnly(true);
         QPushButton *browse = smallButton(QStringLiteral("..."));
-        QCheckBox *audio = new QCheckBox(QStringLiteral("Audio"));
-        QCheckBox *video = new QCheckBox(QStringLiteral("Video"));
-        QLabel *audioCodec = new QLabel(QStringLiteral("no codec selected"));
-        QLabel *videoCodec = new QLabel(QStringLiteral("no codec selected"));
-        audioCodec->setFrameShape(QFrame::StyledPanel);
-        videoCodec->setFrameShape(QFrame::StyledPanel);
+        outputAudio = new QCheckBox(QStringLiteral("Audio"));
+        outputVideo = new QCheckBox(QStringLiteral("Video"));
+        outputAudioCodec = combo(QStringList{
+            QStringLiteral("PCM in AVI (internal)"),
+            QStringLiteral("Wave file (internal)")
+        });
+        outputVideoCodec = combo(QStringList{ QStringLiteral("DIB RGB (internal)") });
         outputFrameLimiter = new QCheckBox(QStringLiteral("Disable frame rate limit"));
         outputOriginalSize = new QCheckBox(QStringLiteral("Capture before filtering"));
         outputNoSound = new QCheckBox(QStringLiteral("Disable sound output"));
         outputNoSoundSync = new QCheckBox(QStringLiteral("Disable sound sync"));
-        QCheckBox *outputEnabled = new QCheckBox(QStringLiteral("AVI output enabled"));
-        disableUnavailable(audio, QStringLiteral("Audio capture codec selection is not implemented in the Unix output backend yet."));
-        disableUnavailable(video, QStringLiteral("Video capture codec selection is not implemented in the Unix output backend yet."));
-        disableUnavailable(outputEnabled, QStringLiteral("AVI output capture is not implemented in the Unix output backend yet."));
+        outputEnabled = new QCheckBox(QStringLiteral("AVI output enabled"));
 
         QGridLayout *properties = new QGridLayout;
         properties->setColumnStretch(1, 1);
         properties->addWidget(outputFile, 0, 0, 1, 3);
         properties->addWidget(browse, 0, 3);
-        properties->addWidget(audio, 1, 0);
-        properties->addWidget(audioCodec, 1, 1, 1, 3);
-        properties->addWidget(video, 2, 0);
-        properties->addWidget(videoCodec, 2, 1, 1, 3);
+        properties->addWidget(outputAudio, 1, 0);
+        properties->addWidget(outputAudioCodec, 1, 1, 1, 3);
+        properties->addWidget(outputVideo, 2, 0);
+        properties->addWidget(outputVideoCodec, 2, 1, 1, 3);
         properties->addWidget(outputFrameLimiter, 3, 0, 1, 2);
         properties->addWidget(outputOriginalSize, 3, 2, 1, 2);
         properties->addWidget(outputNoSound, 4, 0, 1, 2);
@@ -9420,6 +9450,9 @@ private:
                 outputFile->setText(selected);
             }
         });
+        connect(outputAudio, &QCheckBox::toggled, this, [this](bool) { updateOutputControlState(); });
+        connect(outputVideo, &QCheckBox::toggled, this, [this](bool) { updateOutputControlState(); });
+        connect(outputAudioCodec, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) { updateOutputControlState(); });
         connect(outputFrameLimiter, &QCheckBox::toggled, this, [this](bool) { updateOutputControlState(); });
         connect(screenshotOriginalSize, &QCheckBox::toggled, this, [this](bool) { updateOutputControlState(); });
         updateOutputControlState();
@@ -9428,8 +9461,21 @@ private:
 
     void updateOutputControlState()
     {
-        if (!screenshotOriginalSize || !screenshotClip || !outputFrameLimiter || !outputNoSound) {
+        if (!screenshotOriginalSize || !screenshotClip || !outputFrameLimiter || !outputNoSound ||
+            !outputAudio || !outputVideo || !outputEnabled || !outputAudioCodec || !outputVideoCodec) {
             return;
+        }
+        const bool waveOutput = outputAudio->isChecked() && outputAudioCodec->currentIndex() == 1;
+        outputAudioCodec->setEnabled(outputAudio->isChecked());
+        outputVideoCodec->setEnabled(outputVideo->isChecked() && !waveOutput);
+        outputVideo->setEnabled(!waveOutput);
+        if (waveOutput && outputVideo->isChecked()) {
+            outputVideo->setChecked(false);
+        }
+        const bool hasOutputStream = outputAudio->isChecked() || outputVideo->isChecked();
+        outputEnabled->setEnabled(hasOutputStream);
+        if (!hasOutputStream) {
+            outputEnabled->setChecked(false);
         }
         outputNoSound->setEnabled(!outputFrameLimiter->isChecked());
         if (outputFrameLimiter->isChecked()) {
@@ -12379,7 +12425,38 @@ private:
     {
         return rtgMem && rtgType
             && rtgMem->currentText() != QStringLiteral("None")
-            && rtgType->currentText() == QStringLiteral("ZorroIII");
+            && (rtgType->currentText() == QStringLiteral("ZorroIII") ||
+                rtgBusName(rtgType->currentText()) == QStringLiteral("Z3") ||
+                rtgBusName(rtgType->currentText()) == QStringLiteral("PCI"));
+    }
+
+    QString rtgBusName(const QString &type) const
+    {
+        if (type == QStringLiteral("ZorroII") || type.endsWith(QStringLiteral("_Z2")) ||
+            type == QStringLiteral("A2410") || type == QStringLiteral("PicassoII") ||
+            type == QStringLiteral("PicassoII+") || type == QStringLiteral("Domino") ||
+            type == QStringLiteral("Visiona") || type == QStringLiteral("Pixel64") ||
+            type == QStringLiteral("OmnibusET4000") || type == QStringLiteral("OmnibusET4000W32") ||
+            type == QStringLiteral("Harlequin_PAL") || type == QStringLiteral("RainbowII")) {
+            return QStringLiteral("Z2");
+        }
+        if (type == QStringLiteral("ZorroIII") || type.endsWith(QStringLiteral("_Z3")) ||
+            type == QStringLiteral("CV64_Z3") || type == QStringLiteral("Altais") ||
+            type == QStringLiteral("MerlinZ3") || type == QStringLiteral("GraffityZ3") ||
+            type == QStringLiteral("RainbowIII")) {
+            return QStringLiteral("Z3");
+        }
+        if (type.endsWith(QStringLiteral("_PCI")) || type == QStringLiteral("V3_3000") ||
+            type.startsWith(QStringLiteral("Matrox_"))) {
+            return QStringLiteral("PCI");
+        }
+        if (type == QStringLiteral("VGA")) {
+            return QStringLiteral("ISA");
+        }
+        if (type == QStringLiteral("EGS_110_24")) {
+            return QStringLiteral("GVP");
+        }
+        return QStringLiteral("-");
     }
 
     WinUaeQtFilterState defaultFilterState(int target) const
@@ -13132,6 +13209,11 @@ private:
         }
         resetFilterStates();
         outputFile->setText(unixDefaultDataSubPath(QStringLiteral("Videos/output.avi")));
+        outputAudio->setChecked(false);
+        outputVideo->setChecked(true);
+        outputEnabled->setChecked(false);
+        outputAudioCodec->setCurrentIndex(0);
+        outputVideoCodec->setCurrentIndex(0);
         outputFrameLimiter->setChecked(false);
         outputOriginalSize->setChecked(false);
         outputNoSound->setChecked(false);
@@ -14486,15 +14568,21 @@ private:
         if (!miscGuiFontConfig.isEmpty()) {
             settings.insert(QStringLiteral("unix.ui.gui_font"), miscGuiFontConfig);
         }
-        insertLineEditSetting(settings, QStringLiteral("unix.ui.output_file"), outputFile);
-        insertCheckBoxSetting(settings, QStringLiteral("unix.ui.output_frame_limiter_disabled"), outputFrameLimiter);
-        insertCheckBoxSetting(settings, QStringLiteral("unix.ui.output_original_size"), outputOriginalSize);
-        insertCheckBoxSetting(settings, QStringLiteral("unix.ui.output_no_sound"), outputNoSound);
-        insertCheckBoxSetting(settings, QStringLiteral("unix.ui.output_no_sound_sync"), outputNoSoundSync);
-        insertCheckBoxSetting(settings, QStringLiteral("unix.ui.screenshot_original_size"), screenshotOriginalSize);
-        insertCheckBoxSetting(settings, QStringLiteral("unix.ui.screenshot_paletted"), screenshotPaletted);
-        insertCheckBoxSetting(settings, QStringLiteral("unix.ui.screenshot_clip"), screenshotClip);
-        insertCheckBoxSetting(settings, QStringLiteral("unix.ui.screenshot_auto"), screenshotAuto);
+        insertLineEditSetting(settings, QStringLiteral("unix.output_file"), outputFile);
+        settings.insert(QStringLiteral("unix.output_audio_codec"),
+            outputAudioCodec && outputAudioCodec->currentIndex() == 1 ? QStringLiteral("wav") : QStringLiteral("pcm"));
+        settings.insert(QStringLiteral("unix.output_video_codec"), QStringLiteral("dib"));
+        insertCheckBoxSetting(settings, QStringLiteral("unix.output_audio"), outputAudio);
+        insertCheckBoxSetting(settings, QStringLiteral("unix.output_video"), outputVideo);
+        insertCheckBoxSetting(settings, QStringLiteral("unix.output_enabled"), outputEnabled);
+        insertCheckBoxSetting(settings, QStringLiteral("unix.output_frame_limiter_disabled"), outputFrameLimiter);
+        insertCheckBoxSetting(settings, QStringLiteral("unix.output_original_size"), outputOriginalSize);
+        insertCheckBoxSetting(settings, QStringLiteral("unix.output_no_sound"), outputNoSound);
+        insertCheckBoxSetting(settings, QStringLiteral("unix.output_no_sound_sync"), outputNoSoundSync);
+        insertCheckBoxSetting(settings, QStringLiteral("unix.screenshot_original_size"), screenshotOriginalSize);
+        insertCheckBoxSetting(settings, QStringLiteral("unix.screenshot_paletted"), screenshotPaletted);
+        insertCheckBoxSetting(settings, QStringLiteral("unix.screenshot_clip"), screenshotClip);
+        insertCheckBoxSetting(settings, QStringLiteral("unix.screenshot_auto"), screenshotAuto);
         settings.insert(QStringLiteral("kickstart_rom_file"), romFile->currentText());
         if (!extendedRomFile->currentText().isEmpty()) {
             settings.insert(QStringLiteral("kickstart_ext_rom_file"), extendedRomFile->currentText());
@@ -14831,6 +14919,8 @@ private:
         settings.insert(QStringLiteral("gfx_filter_aspect_ratio_rtg"),
             configChoiceValue(rtgAspectRatioChoices, int(sizeof(rtgAspectRatioChoices) / sizeof(rtgAspectRatioChoices[0])), rtgAspectRatio->currentText()));
         settings.insert(QStringLiteral("unix.rtg_vblank"), rtgVBlankConfigValue(rtgRefreshRate->currentText()));
+        settings.insert(QStringLiteral("gfx_backbuffers_rtg"),
+            rtgBuffers->currentText() == QStringLiteral("Triple") ? QStringLiteral("3") : QStringLiteral("2"));
         settings.insert(QStringLiteral("rtg_modes"), QStringLiteral("0x%1").arg(rtgModeMask(), 0, 16));
         const QString cpuBoardConfig = unixCpuBoardBackendAvailable() ? selectedCpuBoardConfigValue() : QString();
         if (cpuBoardConfig.isEmpty()) {
@@ -15039,7 +15129,26 @@ private:
             QStringLiteral("unix.ui.gui_fullscreen"),
             QStringLiteral("unix.ui.gui_dark_mode"),
             QStringLiteral("unix.ui.gui_font"),
+            QStringLiteral("unix.output_file"),
+            QStringLiteral("unix.output_audio_codec"),
+            QStringLiteral("unix.output_video_codec"),
+            QStringLiteral("unix.output_audio"),
+            QStringLiteral("unix.output_video"),
+            QStringLiteral("unix.output_enabled"),
+            QStringLiteral("unix.output_frame_limiter_disabled"),
+            QStringLiteral("unix.output_original_size"),
+            QStringLiteral("unix.output_no_sound"),
+            QStringLiteral("unix.output_no_sound_sync"),
+            QStringLiteral("unix.screenshot_original_size"),
+            QStringLiteral("unix.screenshot_paletted"),
+            QStringLiteral("unix.screenshot_clip"),
+            QStringLiteral("unix.screenshot_auto"),
             QStringLiteral("unix.ui.output_file"),
+            QStringLiteral("unix.ui.output_audio_codec"),
+            QStringLiteral("unix.ui.output_video_codec"),
+            QStringLiteral("unix.ui.output_audio"),
+            QStringLiteral("unix.ui.output_video"),
+            QStringLiteral("unix.ui.output_enabled"),
             QStringLiteral("unix.ui.output_frame_limiter_disabled"),
             QStringLiteral("unix.ui.output_original_size"),
             QStringLiteral("unix.ui.output_no_sound"),
@@ -15778,23 +15887,34 @@ private:
             setGuiDarkModeFromConfig(value);
         } else if (key == QStringLiteral("unix.ui.gui_font")) {
             applyGuiFontConfig(value);
-        } else if (key == QStringLiteral("unix.ui.output_file")) {
+        } else if (key == QStringLiteral("unix.output_file") || key == QStringLiteral("unix.ui.output_file")) {
             outputFile->setText(value);
-        } else if (key == QStringLiteral("unix.ui.output_frame_limiter_disabled")) {
+        } else if (key == QStringLiteral("unix.output_audio_codec") || key == QStringLiteral("unix.ui.output_audio_codec")) {
+            outputAudioCodec->setCurrentIndex(value.compare(QStringLiteral("wav"), Qt::CaseInsensitive) == 0 ? 1 : 0);
+            updateOutputControlState();
+        } else if (key == QStringLiteral("unix.output_video_codec") || key == QStringLiteral("unix.ui.output_video_codec")) {
+            outputVideoCodec->setCurrentIndex(0);
+        } else if (key == QStringLiteral("unix.output_audio") || key == QStringLiteral("unix.ui.output_audio")) {
+            outputAudio->setChecked(configBoolValue(value));
+        } else if (key == QStringLiteral("unix.output_video") || key == QStringLiteral("unix.ui.output_video")) {
+            outputVideo->setChecked(configBoolValue(value));
+        } else if (key == QStringLiteral("unix.output_enabled") || key == QStringLiteral("unix.ui.output_enabled")) {
+            outputEnabled->setChecked(configBoolValue(value));
+        } else if (key == QStringLiteral("unix.output_frame_limiter_disabled") || key == QStringLiteral("unix.ui.output_frame_limiter_disabled")) {
             outputFrameLimiter->setChecked(configBoolValue(value));
-        } else if (key == QStringLiteral("unix.ui.output_original_size")) {
+        } else if (key == QStringLiteral("unix.output_original_size") || key == QStringLiteral("unix.ui.output_original_size")) {
             outputOriginalSize->setChecked(configBoolValue(value));
-        } else if (key == QStringLiteral("unix.ui.output_no_sound")) {
+        } else if (key == QStringLiteral("unix.output_no_sound") || key == QStringLiteral("unix.ui.output_no_sound")) {
             outputNoSound->setChecked(configBoolValue(value));
-        } else if (key == QStringLiteral("unix.ui.output_no_sound_sync")) {
+        } else if (key == QStringLiteral("unix.output_no_sound_sync") || key == QStringLiteral("unix.ui.output_no_sound_sync")) {
             outputNoSoundSync->setChecked(configBoolValue(value));
-        } else if (key == QStringLiteral("unix.ui.screenshot_original_size")) {
+        } else if (key == QStringLiteral("unix.screenshot_original_size") || key == QStringLiteral("unix.ui.screenshot_original_size")) {
             screenshotOriginalSize->setChecked(configBoolValue(value));
-        } else if (key == QStringLiteral("unix.ui.screenshot_paletted")) {
+        } else if (key == QStringLiteral("unix.screenshot_paletted") || key == QStringLiteral("unix.ui.screenshot_paletted")) {
             screenshotPaletted->setChecked(configBoolValue(value));
-        } else if (key == QStringLiteral("unix.ui.screenshot_clip")) {
+        } else if (key == QStringLiteral("unix.screenshot_clip") || key == QStringLiteral("unix.ui.screenshot_clip")) {
             screenshotClip->setChecked(configBoolValue(value));
-        } else if (key == QStringLiteral("unix.ui.screenshot_auto")) {
+        } else if (key == QStringLiteral("unix.screenshot_auto") || key == QStringLiteral("unix.ui.screenshot_auto")) {
             screenshotAuto->setChecked(configBoolValue(value));
         } else if (key == QStringLiteral("kickstart_rom_file")) {
             setPathComboText(romFile, value);

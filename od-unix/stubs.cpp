@@ -71,14 +71,6 @@ void statusline_updated(int) {}
 void bsdsock_fake_int_handler(void) { bsd_int_requested = 0; }
 #endif
 
-uae_u8 *save_screenshot(int, size_t *len)
-{
-    if (len) {
-        *len = 0;
-    }
-    return NULL;
-}
-
 void ldp_render(const char *, int, uae_u8 *, struct vidbuffer *, int, int, int, int)
 {
 }
@@ -113,7 +105,9 @@ void cyberstorm_mk3_ppc_irq(int, int) {}
 void blizzardppc_irq(int, int) {}
 void cyberstorm_mk3_ppc_irq_setonly(int, int) {}
 #endif
+#ifndef WITH_PCI
 void wildfire_ncr815_irq(int, int) {}
+#endif
 
 struct netdriverdata **target_ethernet_enumerate(void)
 {
@@ -133,11 +127,13 @@ void ethernet_pause(int) {}
 void ethernet_reset(void) {}
 #endif
 
+#ifndef WITH_PCI
 bool ariadne2_init(struct autoconfig_info *) { return false; }
 bool hydra_init(struct autoconfig_info *) { return false; }
 bool lanrover_init(struct autoconfig_info *) { return false; }
 bool xsurf_init(struct autoconfig_info *) { return false; }
 bool xsurf100_init(struct autoconfig_info *) { return false; }
+#endif
 
 #ifndef WINUAE_UNIX_WITH_ARCHIVES
 struct zvolume *archive_directory_plain(struct zfile *) { return NULL; }
