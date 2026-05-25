@@ -9103,11 +9103,11 @@ private:
         filterTarget = combo(configChoiceDisplays(filterTargetChoices, int(sizeof(filterTargetChoices) / sizeof(filterTargetChoices[0]))), QStringLiteral("Native"));
         filterEnable = new QCheckBox(QStringLiteral("Enabled"));
         filterMode = combo(configChoiceDisplays(filterModeChoices, int(sizeof(filterModeChoices) / sizeof(filterModeChoices[0]))), QStringLiteral("None"));
-        disableUnavailable(filterMode, QStringLiteral("Native Unix shader/filter backend support is not implemented yet."));
         filterModeH = combo(configChoiceDisplays(filterModeHChoices, int(sizeof(filterModeHChoices) / sizeof(filterModeHChoices[0]))), QStringLiteral("1x"));
         filterModeV = combo(configChoiceDisplays(filterModeVChoices, int(sizeof(filterModeVChoices) / sizeof(filterModeVChoices[0]))), QStringLiteral("-"));
         if (!unixShaderPipelineAvailable()) {
             const QString reason = QStringLiteral("Host shader/filter mode selection is not implemented by the Unix graphics backend yet.");
+            disableUnavailable(filterMode, reason);
             disableUnavailable(filterModeH, reason);
             disableUnavailable(filterModeV, reason);
         }

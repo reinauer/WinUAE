@@ -474,6 +474,7 @@ export WINUAE_SMOKE_LOG=/tmp/winuae_unix_smoke.log
 - Non-gamepad SDL joysticks expose their native axes, hats, and buttons; hats also map to joystick directions by default.
 - Press `F12` to open the integrated Qt settings UI during emulation.
 - The screenshot file input event and integrated runtime Qt Output-page button save under the configured Screenshots directory. Unix uses PNG when libpng is found at configure time and falls back to BMP otherwise. On macOS, libpng must also pass the configured deployment-target check; a newer Homebrew libpng is skipped so release builds stay compatible with the selected minimum macOS. SDL3 builds can also copy the screenshot event output to the host clipboard as BMP data, and clipboard sharing can exchange PNG plus macOS TIFF image data when the matching native codecs are available. The standalone Qt launcher keeps runtime-only buttons disabled. Unix screenshots now cover autoclip, palette-indexed PNG when the framebuffer has 256 or fewer colors, continuous screenshot directories, and the savestate thumbnail byte helper. The Output page can also start internal DIB RGB AVI capture, PCM-in-AVI audio capture, and WAV audio capture.
+- SDL3 builds can enable an OpenGL shader presenter with `WINUAE_UNIX_WITH_OPENGL_SHADER_PIPELINE`. When OpenGL is available, the Filter page's portable color, blur, noise, scanline, bilinear, and geometry controls are applied by a native GLSL path. Direct3D shader preset files, mask/overlay chains, HDR, and Metal/Vulkan backends are still future work.
 - CHD hardfile and CD image support is built by default. CHD FLAC codecs require libFLAC that is compatible with the configured macOS deployment target; otherwise CHD remains enabled without FLAC-compressed CD codecs.
 - Hold `End` and press `F1`-`F4` to change DF0:-DF3:, `F5` to change the CD image, and `F6` to restore a state. Hold `Shift` with those shortcuts to eject the matching floppy/CD image or save state, matching the Windows key map.
 - On MacBook or compact Apple keyboards, `End` is usually `Fn`/Globe + `Right Arrow`. Depending on macOS keyboard settings, function keys may also need `Fn`/Globe, so the MacBook form is `Fn`/Globe + `Right Arrow`, then `F1`-`F6` or `Shift` + `F1`-`F6`. Enabling "Use F1, F2, etc. keys as standard function keys" in macOS makes these closer to the Windows chords.
@@ -496,6 +497,7 @@ export WINUAE_SMOKE_LOG=/tmp/winuae_unix_smoke.log
 -DWINUAE_UNIX_WITH_CHD=ON
 -DWINUAE_UNIX_WITH_CHD_FLAC=ON
 -DWINUAE_UNIX_WITH_JIT=ON
+-DWINUAE_UNIX_WITH_OPENGL_SHADER_PIPELINE=ON
 -DWINUAE_UNIX_WITH_SNDBOARD=ON
 -DWINUAE_UNIX_WITH_PROWIZARD=ON
 -DWINUAE_UNIX_WITH_QT_UI=ON
@@ -511,6 +513,7 @@ export WINUAE_SMOKE_LOG=/tmp/winuae_unix_smoke.log
 `WINUAE_UNIX_WITH_NATIVE_CD` is enabled by default and builds native CD/DVD access on macOS and Linux. `WINUAE_UNIX_WITH_NATIVE_SCSI` is enabled by default on macOS and Linux and adds macOS SCSITaskLib plus Linux SG_IO direct SCSI/tape passthrough through the same device slot Windows uses for SPTI.
 `WINUAE_UNIX_WITH_CHD` is enabled by default and builds CHD hardfile/CD image support. `WINUAE_UNIX_WITH_CHD_FLAC` is also enabled by default, but macOS builds skip FLAC codecs if the available libFLAC was built for a newer deployment target.
 `WINUAE_UNIX_WITH_JIT` is enabled by default where the Unix host backend is wired, including ARM64 and x86_64.
+`WINUAE_UNIX_WITH_OPENGL_SHADER_PIPELINE` is enabled by default when SDL3 and OpenGL development files are available. Runtime OpenGL context or shader setup failure falls back to the SDL renderer.
 `WINUAE_UNIX_WITH_SNDBOARD` is enabled by default and builds the shared Toccata/Prelude/UAESND sound-board backend. PCI sound devices remain part of the future PCI bridgeboard work.
 `WINUAE_UNIX_WITH_PROWIZARD` is enabled by default and builds the same Pro Wizard source set used by the Windows project.
 `WINUAE_UNIX_WITH_QT_UI` is enabled by default, but the `winuae_unix_qt` target is skipped when Qt Widgets is not installed.
