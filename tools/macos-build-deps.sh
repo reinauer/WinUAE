@@ -93,6 +93,11 @@ patch_qtbase_source() {
     if [[ -f "${header}" ]] && grep -q "__yield();" "${header}" && ! grep -q "arm_acle.h" "${header}"; then
         perl -0pi -e 's/(#include <QtCore\/qtconfigmacros\.h>\n)/$1\n#if defined(__has_include)\n#  if __has_include(<arm_acle.h>)\n#    include <arm_acle.h>\n#  endif\n#endif\n/' "${header}"
     fi
+
+    local simd="${qt_source}/src/corelib/global/qsimd.cpp"
+    if [[ -f "${simd}" ]] && grep -q 'sysctlbyname("hw.optional.neon"' "${simd}" && ! grep -q "AArch64 includes Advanced SIMD" "${simd}"; then
+        perl -0pi -e 's/#elif defined\(Q_OS_DARWIN\) && defined\(Q_PROCESSOR_ARM\)\n    unsigned feature;\n    size_t len = sizeof\(feature\);\n    if \(sysctlbyname\("hw\.optional\.neon", &feature, &len, nullptr, 0\) == 0\)\n        features \|= feature \? CpuFeatureNEON : 0;/#elif defined(Q_OS_DARWIN) \&\& defined(Q_PROCESSOR_ARM)\n    unsigned feature;\n    size_t len = sizeof(feature);\n#  if defined(Q_PROCESSOR_ARM_64)\n    \/\/ AArch64 includes Advanced SIMD; some macOS versions no longer\n    \/\/ expose the legacy hw.optional.neon sysctl that Qt probes here.\n    features |= CpuFeatureNEON;\n#  else\n    if (sysctlbyname("hw.optional.neon", \&feature, \&len, nullptr, 0) == 0)\n        features |= feature ? CpuFeatureNEON : 0;\n#  endif/' "${simd}"
+    fi
 }
 
 split_extra_args() {
@@ -206,7 +211,7 @@ if [[ "${WINUAE_SKIP_QT:-0}" != "1" ]]; then
         qt_submodule_args=(-submodules qtbase)
     fi
 
-    if [[ -x "${qt_source}/configure" ]]; then
+    if [[ -x "${qt_source}/configure" && ! -d "${qt_source}/src/corelib" ]]; then
         (
             cd "${qt_build}"
             "${qt_source}/configure" \
@@ -231,6 +236,15 @@ if [[ "${WINUAE_SKIP_QT:-0}" != "1" ]]; then
             -DCMAKE_OSX_DEPLOYMENT_TARGET="${target}" \
             -DQT_BUILD_EXAMPLES=OFF \
             -DQT_BUILD_TESTS=OFF \
+            -DQT_FEATURE_dbus=OFF \
+            -DQT_FEATURE_openssl=OFF \
+            -DQT_FEATURE_glib=OFF \
+            -DQT_FEATURE_icu=OFF \
+            -DQT_FEATURE_cups=OFF \
+            -DQT_FEATURE_fontconfig=OFF \
+            -DQT_FEATURE_gtk=OFF \
+            -DQT_FEATURE_opengl=OFF \
+            -DQT_FEATURE_opengles2=OFF \
             "${qt_cmake_args[@]}"
     fi
 fi
