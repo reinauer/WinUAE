@@ -142,6 +142,17 @@
 typedef long uae_atomic;
 typedef int boolean;
 
+#ifdef WINUAE_UNIX_WITH_GFXBOARD
+typedef int8_t INT8;
+typedef uint8_t UINT8;
+typedef int16_t INT16;
+typedef uint16_t UINT16;
+typedef int32_t INT32;
+typedef uint32_t UINT32;
+typedef int64_t INT64;
+typedef uint64_t UINT64;
+#endif
+
 #define BYTE int8_t
 #define WORD int16_t
 #define UBYTE uint8_t
@@ -164,11 +175,31 @@ typedef int boolean;
 #define PASCAL
 #define _cdecl
 #define _stdcall
+#ifndef TRUE
 #define TRUE 1
+#endif
+#ifndef FALSE
 #define FALSE 0
+#endif
 #define INVALID_HANDLE_VALUE ((HANDLE)-1)
 #define INVALID_SOCKET (-1)
 #define SOCKET_ERROR (-1)
+
+#ifdef WINUAE_UNIX_WITH_PCEM
+#ifndef INFINITE
+#define INFINITE 0xffffffffU
+#endif
+#ifndef WAIT_OBJECT_0
+#define WAIT_OBJECT_0 0
+#endif
+#ifndef WAIT_TIMEOUT
+#define WAIT_TIMEOUT 258
+#endif
+HANDLE CreateSemaphore(void*, int, int, const char*);
+DWORD WaitForSingleObject(HANDLE, DWORD);
+BOOL ReleaseSemaphore(HANDLE, int, void*);
+BOOL CloseHandle(HANDLE);
+#endif
 
 #define Sleep sleep_millis
 #define stricmp strcasecmp

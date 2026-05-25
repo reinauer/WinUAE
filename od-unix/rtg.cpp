@@ -2136,7 +2136,7 @@ void picasso_trigger_vblank(void)
 {
     TrapContext *ctx = NULL;
     if (!unix_uaegfx_abi_interrupt || !unix_uaegfx_base || !unix_uaegfx_interrupt_enabled ||
-        !currprefs.rtg_hardwareinterrupt) {
+        !currprefs.rtg_hardwareinterrupt || currprefs.win32_rtgvblankrate == -2) {
         return;
     }
     trap_put_long(ctx, unix_uaegfx_base + UNIX_CARD_IRQPTR,
@@ -2721,6 +2721,7 @@ void uaegfx_install_code(uaecptr start)
     org(start);
 }
 
+#ifndef GFXBOARD
 bool gfxboard_set(int, bool)
 {
     return false;
@@ -2812,3 +2813,4 @@ int gfxboard_get_devnum(struct uae_prefs *, int index)
 {
     return index;
 }
+#endif

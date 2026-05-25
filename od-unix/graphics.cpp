@@ -2,6 +2,9 @@
 #include "sysdeps.h"
 
 #include "custom.h"
+#ifdef AVIOUTPUT
+#include "avioutput.h"
+#endif
 #include "xwin.h"
 #include "drawing.h"
 #include "options.h"
@@ -12,7 +15,12 @@
 #include "host.h"
 #include "devices.h"
 
+#include <condition_variable>
+#include <mutex>
 #include <stdlib.h>
+#include <thread>
+#include <utility>
+#include <vector>
 
 extern int pause_emulation;
 extern void picasso_trigger_vblank(void);
@@ -26,6 +34,8 @@ struct picasso_vidbuf_description picasso_vidinfo[MAX_AMIGAMONITORS];
 
 static bool unix_graphics_initialized;
 static bool unix_video_debug;
+static bool unix_rtg_render_has_output[MAX_AMIGAMONITORS];
+static void unix_rtg_stop_render_thread(void);
 
 enum {
     UNIX_PICASSO_STATE_SETDISPLAY = 1,
@@ -102,7 +112,8 @@ static void unix_init_display_buffers(void)
 
 static int unix_apmode_index(int monid)
 {
-    if (monid >= 0 && monid < MAX_AMIGADISPLAYS && adisplays[monid].picasso_on) {
+    if (monid >= 0 && monid < MAX_AMIGADISPLAYS &&
+        (adisplays[monid].picasso_on || picasso_vidinfo[monid].picasso_active)) {
         return APMODE_RTG;
     }
     return APMODE_NATIVE;
@@ -158,6 +169,8 @@ static bool unix_runtime_graphics_prefs_changed(int monid)
         currprefs.gfx_apmode[APMODE_RTG].gfx_fullscreen != changed_prefs.gfx_apmode[APMODE_RTG].gfx_fullscreen ||
         currprefs.gfx_apmode[APMODE_NATIVE].gfx_display != changed_prefs.gfx_apmode[APMODE_NATIVE].gfx_display ||
         currprefs.gfx_apmode[APMODE_RTG].gfx_display != changed_prefs.gfx_apmode[APMODE_RTG].gfx_display ||
+        currprefs.gfx_apmode[APMODE_NATIVE].gfx_backbuffers != changed_prefs.gfx_apmode[APMODE_NATIVE].gfx_backbuffers ||
+        currprefs.gfx_apmode[APMODE_RTG].gfx_backbuffers != changed_prefs.gfx_apmode[APMODE_RTG].gfx_backbuffers ||
         currprefs.gfx_apmode[idx].gfx_refreshrate != changed_prefs.gfx_apmode[idx].gfx_refreshrate ||
         currprefs.gfx_monitor[monid].gfx_size_fs.width != changed_prefs.gfx_monitor[monid].gfx_size_fs.width ||
         currprefs.gfx_monitor[monid].gfx_size_fs.height != changed_prefs.gfx_monitor[monid].gfx_size_fs.height ||
@@ -173,6 +186,8 @@ static void unix_copy_runtime_graphics_prefs(int monid)
     currprefs.gfx_apmode[APMODE_RTG].gfx_fullscreen = changed_prefs.gfx_apmode[APMODE_RTG].gfx_fullscreen;
     currprefs.gfx_apmode[APMODE_NATIVE].gfx_display = changed_prefs.gfx_apmode[APMODE_NATIVE].gfx_display;
     currprefs.gfx_apmode[APMODE_RTG].gfx_display = changed_prefs.gfx_apmode[APMODE_RTG].gfx_display;
+    currprefs.gfx_apmode[APMODE_NATIVE].gfx_backbuffers = changed_prefs.gfx_apmode[APMODE_NATIVE].gfx_backbuffers;
+    currprefs.gfx_apmode[APMODE_RTG].gfx_backbuffers = changed_prefs.gfx_apmode[APMODE_RTG].gfx_backbuffers;
     currprefs.gfx_apmode[APMODE_NATIVE].gfx_refreshrate = changed_prefs.gfx_apmode[APMODE_NATIVE].gfx_refreshrate;
     currprefs.gfx_apmode[APMODE_RTG].gfx_refreshrate = changed_prefs.gfx_apmode[APMODE_RTG].gfx_refreshrate;
     currprefs.gfx_monitor[monid].gfx_size_fs = changed_prefs.gfx_monitor[monid].gfx_size_fs;
@@ -205,6 +220,10 @@ int graphics_init(bool)
 
 void graphics_leave(void)
 {
+#ifdef AVIOUTPUT
+    AVIOutput_Release();
+#endif
+    unix_rtg_stop_render_thread();
     struct vidbuf_description *vidinfo = &adisplays[0].gfxvidinfo;
     freevidbuffer(0, &vidinfo->drawbuffer);
     freevidbuffer(0, &vidinfo->tempbuffer);
@@ -382,6 +401,7 @@ void show_screen(int monid, int)
     frame.rowbytes = vb->rowbytes;
     frame.pixbytes = vb->pixbytes;
     frame.filter_index = adisplays[monid].gf_index;
+    frame.backbuffers = currprefs.gfx_apmode[unix_apmode_index(monid)].gfx_backbuffers;
     unix_log_video_frame(vb);
     unix_video_present(&frame);
 }
@@ -448,6 +468,7 @@ void InitPicasso96(int monid)
 
     memset(&picasso96_state[monid], 0, sizeof picasso96_state[monid]);
     memset(&picasso_vidinfo[monid], 0, sizeof picasso_vidinfo[monid]);
+    unix_rtg_render_has_output[monid] = false;
     picasso_vidinfo[monid].rgbformat = RGBFB_B8G8R8A8;
     picasso_vidinfo[monid].selected_rgbformat = RGBFB_B8G8R8A8;
     picasso_vidinfo[monid].host_mode = RGBFB_B8G8R8A8;
@@ -488,7 +509,8 @@ static bool unix_picasso_ensure_buffer(int monid)
     return vidinfo->drawbuffer.bufmem != NULL;
 }
 
-static uae_u32 unix_picasso_convert_pixel(const uae_u8 *src, RGBFTYPE fmt, const uae_u32 *clut)
+static uae_u32 unix_picasso_convert_pixel(const uae_u8 *src, RGBFTYPE fmt,
+    const uae_u32 *clut, const uae_u32 *rgbx16 = p96_rgbx16)
 {
     switch (fmt) {
     case RGBFB_CLUT:
@@ -511,10 +533,474 @@ static uae_u32 unix_picasso_convert_pixel(const uae_u8 *src, RGBFTYPE fmt, const
     case RGBFB_R5G5B5PC:
     case RGBFB_B5G6R5PC:
     case RGBFB_B5G5R5PC:
-        return p96_rgbx16[do_get_mem_word((uae_u16 *)src)];
+        return rgbx16[do_get_mem_word((uae_u16 *)src)];
     default:
         return 0xff000000;
     }
+}
+
+enum {
+    RGBFB_A8R8G8B8_32 = 1,
+    RGBFB_A8B8G8R8_32,
+    RGBFB_R8G8B8A8_32,
+    RGBFB_B8G8R8A8_32,
+    RGBFB_R8G8B8_32,
+    RGBFB_B8G8R8_32,
+    RGBFB_R5G6B5PC_32,
+    RGBFB_R5G5B5PC_32,
+    RGBFB_R5G6B5_32,
+    RGBFB_R5G5B5_32,
+    RGBFB_B5G6R5PC_32,
+    RGBFB_B5G5R5PC_32,
+    RGBFB_CLUT_RGBFB_32,
+    RGBFB_Y4U2V2_32,
+    RGBFB_Y4U1V1_32,
+};
+
+static void unix_picasso_render_pixels(const uae_u8 *srcbase, int width, int height,
+    int srcrowbytes, int srcpixbytes, RGBFTYPE rgbfmt, const uae_u32 *clut,
+    uae_u8 *dstbase, int dstrowbytes, const uae_u32 *rgbx16 = p96_rgbx16);
+
+int getconvert(int rgbformat)
+{
+    switch (rgbformat) {
+    case RGBFB_CLUT:
+        return RGBFB_CLUT_RGBFB_32;
+    case RGBFB_B5G6R5PC:
+        return RGBFB_B5G6R5PC_32;
+    case RGBFB_R5G6B5PC:
+        return RGBFB_R5G6B5PC_32;
+    case RGBFB_R5G5B5PC:
+        return RGBFB_R5G5B5PC_32;
+    case RGBFB_R5G6B5:
+        return RGBFB_R5G6B5_32;
+    case RGBFB_R5G5B5:
+        return RGBFB_R5G5B5_32;
+    case RGBFB_B5G5R5PC:
+        return RGBFB_B5G5R5PC_32;
+    case RGBFB_A8R8G8B8:
+        return RGBFB_A8R8G8B8_32;
+    case RGBFB_R8G8B8:
+        return RGBFB_R8G8B8_32;
+    case RGBFB_B8G8R8:
+        return RGBFB_B8G8R8_32;
+    case RGBFB_A8B8G8R8:
+        return RGBFB_A8B8G8R8_32;
+    case RGBFB_B8G8R8A8:
+        return RGBFB_B8G8R8A8_32;
+    case RGBFB_R8G8B8A8:
+        return RGBFB_R8G8B8A8_32;
+    case RGBFB_Y4U2V2:
+        return RGBFB_Y4U2V2_32;
+    case RGBFB_Y4U1V1:
+        return RGBFB_Y4U1V1_32;
+    default:
+        return 0;
+    }
+}
+
+static uae_u16 unix_yuv_to_rgb16(uae_u8 yx, uae_u8 ux, uae_u8 vx)
+{
+    int y = yx - 16;
+    int u = ux - 128;
+    int v = vx - 128;
+    int r = (298 * y + 409 * v + 128) >> (8 + 3);
+    int g = (298 * y - 100 * u - 208 * v + 128) >> (8 + 3);
+    int b = (298 * y + 516 * u + 128) >> (8 + 3);
+    if (r < 0) {
+        r = 0;
+    } else if (r > 31) {
+        r = 31;
+    }
+    if (g < 0) {
+        g = 0;
+    } else if (g > 31) {
+        g = 31;
+    }
+    if (b < 0) {
+        b = 0;
+    } else if (b > 31) {
+        b = 31;
+    }
+    return (r << 10) | (g << 5) | b;
+}
+
+static bool unix_picasso_colorkey_matches(const uae_u8 *screen, int dx, int screenpixbytes,
+    uae_u32 colorkey)
+{
+    if (!screen || dx < 0 || screenpixbytes <= 0) {
+        return false;
+    }
+    switch (screenpixbytes) {
+    case 1:
+        return screen[dx] == (uae_u8)colorkey;
+    case 2:
+        return do_get_mem_word((uae_u16 *)(screen + dx * 2)) == (uae_u16)colorkey;
+    case 3:
+        return screen[dx * 3 + 0] == (uae_u8)(colorkey >> 16) &&
+            screen[dx * 3 + 1] == (uae_u8)(colorkey >> 8) &&
+            screen[dx * 3 + 2] == (uae_u8)colorkey;
+    case 4:
+        return do_get_mem_long((uae_u32 *)(screen + dx * 4)) == colorkey;
+    default:
+        return false;
+    }
+}
+
+static void unix_picasso_store_scaled_pixel(uae_u8 *dst, int dx, int dstpixbytes, uae_u32 color)
+{
+    switch (dstpixbytes) {
+    case 1:
+        dst[dx] = (uae_u8)color;
+        break;
+    case 2:
+        do_put_mem_word((uae_u16 *)(dst + dx * 2), (uae_u16)color);
+        break;
+    case 3:
+        dst[dx * 3 + 0] = (uae_u8)(color >> 16);
+        dst[dx * 3 + 1] = (uae_u8)(color >> 8);
+        dst[dx * 3 + 2] = (uae_u8)color;
+        break;
+    case 4:
+        do_put_mem_long((uae_u32 *)(dst + dx * 4), color);
+        break;
+    }
+}
+
+static uae_u32 unix_picasso_convert_scaled_pixel(const uae_u8 *src, int x, int sxfrac,
+    int convert_mode, const uae_u32 *rgbx16, const uae_u32 *clut, bool yuv_swap)
+{
+    switch (convert_mode) {
+    case RGBFB_R8G8B8_32:
+        return 0xff000000 | ((uae_u32)src[x * 3 + 0] << 16) |
+            ((uae_u32)src[x * 3 + 1] << 8) | src[x * 3 + 2];
+    case RGBFB_B8G8R8_32:
+        return 0xff000000 | ((uae_u32)src[x * 3 + 2] << 16) |
+            ((uae_u32)src[x * 3 + 1] << 8) | src[x * 3 + 0];
+    case RGBFB_R8G8B8A8_32:
+        return 0xff000000 | ((uae_u32)src[x * 4 + 0] << 16) |
+            ((uae_u32)src[x * 4 + 1] << 8) | src[x * 4 + 2];
+    case RGBFB_A8R8G8B8_32:
+        return ((uae_u32)src[x * 4 + 0] << 24) | ((uae_u32)src[x * 4 + 1] << 16) |
+            ((uae_u32)src[x * 4 + 2] << 8) | src[x * 4 + 3];
+    case RGBFB_A8B8G8R8_32:
+        return ((uae_u32)src[x * 4 + 0] << 24) | ((uae_u32)src[x * 4 + 3] << 16) |
+            ((uae_u32)src[x * 4 + 2] << 8) | src[x * 4 + 1];
+    case RGBFB_B8G8R8A8_32:
+        return ((uae_u32)src[x * 4 + 3] << 24) | ((uae_u32)src[x * 4 + 2] << 16) |
+            ((uae_u32)src[x * 4 + 1] << 8) | src[x * 4 + 0];
+    case RGBFB_R5G6B5PC_32:
+    case RGBFB_R5G5B5PC_32:
+    case RGBFB_R5G6B5_32:
+    case RGBFB_R5G5B5_32:
+    case RGBFB_B5G6R5PC_32:
+    case RGBFB_B5G5R5PC_32:
+        return rgbx16 ? rgbx16[do_get_mem_word((uae_u16 *)(src + x * 2))] : 0xff000000;
+    case RGBFB_CLUT_RGBFB_32:
+        return clut ? clut[src[x]] : (0xff000000 | src[x] | ((uae_u32)src[x] << 8) |
+            ((uae_u32)src[x] << 16));
+    case RGBFB_Y4U2V2_32:
+    {
+        uae_u32 val = do_get_mem_long((uae_u32 *)(src + x * 4));
+        if (yuv_swap) {
+            val = ((val & 0xff00ff00) >> 8) | ((val & 0x00ff00ff) << 8);
+        }
+        uae_u8 y = (sxfrac & 0x80) ? (uae_u8)(val >> 24) : (uae_u8)(val >> 8);
+        uae_u8 u = (uae_u8)val;
+        uae_u8 v = (uae_u8)(val >> 16);
+        uae_u16 rgb = unix_yuv_to_rgb16(y, u, v);
+        return rgbx16 ? rgbx16[rgb] : 0xff000000;
+    }
+    case RGBFB_Y4U1V1_32:
+    {
+        uae_u32 val = do_get_mem_long((uae_u32 *)(src + x * 4));
+        if (yuv_swap) {
+            val = ((val & 0xff00ff00) >> 8) | ((val & 0x00ff00ff) << 8);
+        }
+        uae_u8 y[4] = {
+            (uae_u8)(val >> 24), (uae_u8)(val >> 18),
+            (uae_u8)(val >> 12), (uae_u8)(val >> 6)
+        };
+        uae_u8 u = (uae_u8)((val >> 3) & 7);
+        uae_u8 v = (uae_u8)(val & 7);
+        uae_u16 rgb = unix_yuv_to_rgb16(y[(sxfrac >> 6) & 3], u << 5, v << 5);
+        return rgbx16 ? rgbx16[rgb] : 0xff000000;
+    }
+    default:
+        return 0xff000000;
+    }
+}
+
+void copyrow_scale(int, uae_u8 *src, uae_u8 *src_screen, uae_u8 *dst,
+    int sx, int sy, int sxadd, int width, int srcbytesperrow, int,
+    int screenbytesperrow, int screenpixbytes,
+    int dx, int dy, int dstwidth, int dstheight, int dstbytesperrow, int dstpixbytes,
+    bool ck, uae_u32 colorkey, int convert_mode, uae_u32 *p96_rgbx16p,
+    uae_u32 *clut, bool yuv_swap)
+{
+    if (!src || !dst || sxadd <= 0 || width <= 0 || dx < 0 || dy < 0 ||
+        dx >= dstwidth || dy >= dstheight || dstpixbytes <= 0) {
+        return;
+    }
+
+    uae_u8 *srcrow = src + sy * srcbytesperrow;
+    uae_u8 *dstrow = dst + dy * dstbytesperrow;
+    uae_u8 *screenrow = src_screen ? src_screen + dy * screenbytesperrow : NULL;
+    int endx = (sx + width) << 8;
+
+    if (convert_mode == RGBFB_Y4U2V2_32) {
+        endx /= 2;
+        sxadd /= 2;
+    } else if (convert_mode == RGBFB_Y4U1V1_32) {
+        endx /= 4;
+        sxadd /= 4;
+    }
+
+    while (sx < endx && dx < dstwidth) {
+        int x = sx >> 8;
+        if (!ck || unix_picasso_colorkey_matches(screenrow, dx, screenpixbytes, colorkey)) {
+            uae_u32 color = unix_picasso_convert_scaled_pixel(srcrow, x, sx & 255,
+                convert_mode, p96_rgbx16p, clut, yuv_swap);
+            unix_picasso_store_scaled_pixel(dstrow, dx, dstpixbytes, color);
+        }
+        sx += sxadd;
+        dx++;
+    }
+}
+
+uae_u8 *uaegfx_getrtgbuffer(int monid, int *widthp, int *heightp, int *pitch, int *depth,
+    uae_u8 *palette)
+{
+    if (monid < 0 || monid >= MAX_AMIGAMONITORS) {
+        monid = 0;
+    }
+    int bankid = monid < MAX_RTG_BOARDS && gfxmem_banks[monid] ? monid : 0;
+    addrbank *bank = gfxmem_banks[bankid];
+    struct picasso96_state_struct *state = &picasso96_state[monid];
+    struct picasso_vidbuf_description *pvidinfo = &picasso_vidinfo[monid];
+    int width = state->VirtualWidth ? state->VirtualWidth : state->Width;
+    int height = state->VirtualHeight ? state->VirtualHeight : state->Height;
+    int srcpixbytes = unix_picasso_bytes_per_pixel((RGBFTYPE)state->RGBFormat);
+    int dstpixbytes = state->BytesPerPixel == 1 && palette ? 1 : 4;
+
+    if (!bank || !bank->baseaddr || width <= 0 || height <= 0 || srcpixbytes <= 0 ||
+        state->BytesPerRow <= 0 || dstpixbytes <= 0 || (uae_u32)state->XYOffset < bank->start) {
+        return NULL;
+    }
+    uae_u32 offset = (uae_u32)state->XYOffset - bank->start;
+    uae_u32 needed = offset + (height - 1) * state->BytesPerRow + width * srcpixbytes;
+    if (needed > bank->allocated_size) {
+        return NULL;
+    }
+
+    uae_u8 *dst = xmalloc(uae_u8, (size_t)width * (size_t)height * (size_t)dstpixbytes);
+    if (!dst) {
+        return NULL;
+    }
+    if (dstpixbytes == 1) {
+        for (int y = 0; y < height; y++) {
+            memcpy(dst + (size_t)y * (size_t)width,
+                bank->baseaddr + offset + (size_t)y * (size_t)state->BytesPerRow,
+                (size_t)width);
+        }
+        for (int i = 0; i < 256; i++) {
+            palette[i * 3 + 0] = state->CLUT[i].Red;
+            palette[i * 3 + 1] = state->CLUT[i].Green;
+            palette[i * 3 + 2] = state->CLUT[i].Blue;
+        }
+    } else {
+        alloc_colors_picasso(8, 8, 8, 16, 8, 0, (RGBFTYPE)state->RGBFormat, p96_rgbx16);
+        unix_picasso_render_pixels(bank->baseaddr + offset, width, height, state->BytesPerRow,
+            srcpixbytes, (RGBFTYPE)state->RGBFormat, pvidinfo->clut, dst, width * dstpixbytes);
+    }
+
+    *widthp = width;
+    *heightp = height;
+    *pitch = width * dstpixbytes;
+    *depth = dstpixbytes * 8;
+    return dst;
+}
+
+void uaegfx_freertgbuffer(int, uae_u8 *dst)
+{
+    xfree(dst);
+}
+
+static void unix_picasso_render_pixels(const uae_u8 *srcbase, int width, int height,
+    int srcrowbytes, int srcpixbytes, RGBFTYPE rgbfmt, const uae_u32 *clut,
+    uae_u8 *dstbase, int dstrowbytes, const uae_u32 *rgbx16)
+{
+    for (int y = 0; y < height; y++) {
+        const uae_u8 *src = srcbase + y * srcrowbytes;
+        uae_u32 *dst = (uae_u32 *)(dstbase + y * dstrowbytes);
+        for (int x = 0; x < width; x++) {
+            dst[x] = unix_picasso_convert_pixel(src + x * srcpixbytes, rgbfmt, clut, rgbx16);
+        }
+    }
+}
+
+struct unix_rtg_render_job
+{
+    int monid;
+    int width;
+    int height;
+    int srcrowbytes;
+    int srcpixbytes;
+    RGBFTYPE rgbfmt;
+    uae_u32 clut[256];
+    std::vector<uae_u8> src;
+    std::vector<uae_u32> rgbx16;
+};
+
+struct unix_rtg_render_result
+{
+    int monid;
+    int width;
+    int height;
+    std::vector<uae_u8> pixels;
+};
+
+static std::thread unix_rtg_render_thread;
+static std::mutex unix_rtg_render_mutex;
+static std::condition_variable unix_rtg_render_cv;
+static bool unix_rtg_render_stop;
+static bool unix_rtg_render_has_job;
+static bool unix_rtg_render_busy;
+static bool unix_rtg_render_ready;
+static unix_rtg_render_job unix_rtg_pending_job;
+static unix_rtg_render_result unix_rtg_ready_result;
+
+static void unix_rtg_render_worker(void)
+{
+    for (;;) {
+        unix_rtg_render_job job;
+        {
+            std::unique_lock<std::mutex> lock(unix_rtg_render_mutex);
+            unix_rtg_render_cv.wait(lock, [] {
+                return unix_rtg_render_stop || unix_rtg_render_has_job;
+            });
+            if (unix_rtg_render_stop && !unix_rtg_render_has_job) {
+                return;
+            }
+            job = std::move(unix_rtg_pending_job);
+            unix_rtg_render_has_job = false;
+            unix_rtg_render_busy = true;
+        }
+
+        unix_rtg_render_result result;
+        result.monid = job.monid;
+        result.width = job.width;
+        result.height = job.height;
+        result.pixels.assign((size_t)job.width * (size_t)job.height * sizeof(uae_u32), 0);
+        unix_picasso_render_pixels(job.src.data(), job.width, job.height, job.srcrowbytes,
+            job.srcpixbytes, job.rgbfmt, job.clut, result.pixels.data(),
+            job.width * (int)sizeof(uae_u32),
+            job.rgbx16.empty() ? p96_rgbx16 : job.rgbx16.data());
+
+        {
+            std::lock_guard<std::mutex> lock(unix_rtg_render_mutex);
+            unix_rtg_ready_result = std::move(result);
+            unix_rtg_render_ready = true;
+            unix_rtg_render_busy = false;
+        }
+    }
+}
+
+static bool unix_rtg_start_render_thread_locked(void)
+{
+    if (unix_rtg_render_thread.joinable()) {
+        return true;
+    }
+    try {
+        unix_rtg_render_stop = false;
+        unix_rtg_render_thread = std::thread(unix_rtg_render_worker);
+    } catch (...) {
+        return false;
+    }
+    return true;
+}
+
+static void unix_rtg_stop_render_thread(void)
+{
+    {
+        std::lock_guard<std::mutex> lock(unix_rtg_render_mutex);
+        unix_rtg_render_stop = true;
+        unix_rtg_render_has_job = false;
+    }
+    unix_rtg_render_cv.notify_all();
+    if (unix_rtg_render_thread.joinable()) {
+        unix_rtg_render_thread.join();
+    }
+    {
+        std::lock_guard<std::mutex> lock(unix_rtg_render_mutex);
+        unix_rtg_pending_job = unix_rtg_render_job();
+        unix_rtg_ready_result = unix_rtg_render_result();
+        unix_rtg_render_ready = false;
+        unix_rtg_render_busy = false;
+    }
+    memset(unix_rtg_render_has_output, 0, sizeof unix_rtg_render_has_output);
+}
+
+static bool unix_rtg_collect_render_result(int monid, struct vidbuffer *vb)
+{
+    unix_rtg_render_result result;
+    {
+        std::lock_guard<std::mutex> lock(unix_rtg_render_mutex);
+        if (!unix_rtg_render_ready || unix_rtg_ready_result.monid != monid) {
+            return false;
+        }
+        result = std::move(unix_rtg_ready_result);
+        unix_rtg_render_ready = false;
+    }
+    if (!vb || !vb->bufmem || result.width != vb->outwidth || result.height != vb->outheight) {
+        return false;
+    }
+    for (int y = 0; y < result.height; y++) {
+        memcpy(vb->bufmem + y * vb->rowbytes,
+            result.pixels.data() + (size_t)y * (size_t)result.width * sizeof(uae_u32),
+            (size_t)result.width * sizeof(uae_u32));
+    }
+    unix_rtg_overlay_sprite(monid, (uae_u32 *)vb->bufmem, result.width, result.height,
+        vb->rowbytes / sizeof(uae_u32));
+    unix_rtg_render_has_output[monid] = true;
+    return true;
+}
+
+static bool unix_rtg_submit_render_job(int monid, const uae_u8 *srcbase, int width, int height,
+    int srcrowbytes, int srcpixbytes, RGBFTYPE rgbfmt, const uae_u32 *clut)
+{
+    if (!srcbase || width <= 0 || height <= 0 || srcrowbytes <= 0 || srcpixbytes <= 0) {
+        return false;
+    }
+
+    unix_rtg_render_job job;
+    job.monid = monid;
+    job.width = width;
+    job.height = height;
+    job.srcrowbytes = width * srcpixbytes;
+    job.srcpixbytes = srcpixbytes;
+    job.rgbfmt = rgbfmt;
+    memcpy(job.clut, clut, sizeof job.clut);
+    if (srcpixbytes == 2) {
+        job.rgbx16.assign(p96_rgbx16, p96_rgbx16 + 65536);
+    }
+    job.src.assign((size_t)job.srcrowbytes * (size_t)height, 0);
+    for (int y = 0; y < height; y++) {
+        memcpy(job.src.data() + (size_t)y * (size_t)job.srcrowbytes,
+            srcbase + (size_t)y * (size_t)srcrowbytes, (size_t)job.srcrowbytes);
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(unix_rtg_render_mutex);
+        if (!unix_rtg_start_render_thread_locked() || unix_rtg_render_has_job ||
+            unix_rtg_render_busy || unix_rtg_render_ready) {
+            return false;
+        }
+        unix_rtg_pending_job = std::move(job);
+        unix_rtg_render_has_job = true;
+    }
+    unix_rtg_render_cv.notify_one();
+    return true;
 }
 
 static void unix_picasso_render(int monid)
@@ -545,14 +1031,20 @@ static void unix_picasso_render(int monid)
 
     alloc_colors_picasso(8, 8, 8, 16, 8, 0, (RGBFTYPE)state->RGBFormat, p96_rgbx16);
     const uae_u8 *srcbase = bank->baseaddr + offset;
-    for (int y = 0; y < state->Height; y++) {
-        const uae_u8 *src = srcbase + y * state->BytesPerRow;
-        uae_u32 *dst = (uae_u32 *)(vb->bufmem + y * vb->rowbytes);
-        for (int x = 0; x < state->Width; x++) {
-            dst[x] = unix_picasso_convert_pixel(src + x * srcpixbytes, (RGBFTYPE)state->RGBFormat, pvidinfo->clut);
+    if (currprefs.rtg_multithread) {
+        bool collected = unix_rtg_collect_render_result(monid, vb);
+        bool submitted = unix_rtg_submit_render_job(monid, srcbase, state->Width, state->Height,
+            state->BytesPerRow, srcpixbytes, (RGBFTYPE)state->RGBFormat, pvidinfo->clut);
+        if (collected || submitted) {
+            if (unix_rtg_render_has_output[monid]) {
+                return;
+            }
         }
     }
+    unix_picasso_render_pixels(srcbase, state->Width, state->Height, state->BytesPerRow,
+        srcpixbytes, (RGBFTYPE)state->RGBFormat, pvidinfo->clut, vb->bufmem, vb->rowbytes);
     unix_rtg_overlay_sprite(monid, (uae_u32 *)vb->bufmem, state->Width, state->Height, vb->rowbytes / sizeof(uae_u32));
+    unix_rtg_render_has_output[monid] = true;
 }
 
 void picasso_enablescreen(int monid, int on)
@@ -561,6 +1053,7 @@ void picasso_enablescreen(int monid, int on)
         return;
     }
     picasso_vidinfo[monid].picasso_active = on != 0;
+    unix_apply_video_mode_from_prefs(&currprefs, monid);
     if (on) {
         picasso_refresh(monid);
     }
@@ -573,6 +1066,9 @@ void picasso_refresh(int monid)
     }
     unix_picasso_render(monid);
     if (adisplays[monid].picasso_on || picasso_vidinfo[monid].picasso_active) {
+#ifdef AVIOUTPUT
+        frame_drawn(monid);
+#endif
         show_screen(monid, 0);
     }
 }

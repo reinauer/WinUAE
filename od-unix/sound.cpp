@@ -3,6 +3,9 @@
 
 #include "options.h"
 #include "audio.h"
+#ifdef AVIOUTPUT
+#include "avioutput.h"
+#endif
 #include "custom.h"
 #include "events.h"
 #include "gui.h"
@@ -366,6 +369,19 @@ void finish_sound_buffer(void)
     }
 
     paula_sndbufpt = paula_sndbuffer;
+
+#ifdef AVIOUTPUT
+    if (avioutput_audio) {
+        if (AVIOutput_WriteAudio((uae_u8 *)paula_sndbuffer, bufsize)) {
+            if (avioutput_nosoundsync) {
+                sound_setadjust(0);
+            }
+        }
+    }
+    if (avioutput_enabled && (!avioutput_framelimiter || avioutput_nosoundoutput)) {
+        return;
+    }
+#endif
 
 #ifdef UAE_UNIX_WITH_SDL3
     if (!have_sound || !audio_stream) {
