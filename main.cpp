@@ -30,6 +30,9 @@
 #include "gui.h"
 #ifdef UAE_TARGET_UNIX
 #include "gui_unix.h"
+#ifdef WINUAE_UNIX_WITH_INTEGRATED_QT_UI
+#include "od-unix/qt/launcher_bridge.h"
+#endif
 #endif
 #include "zfile.h"
 #include "autoconf.h"
@@ -1177,6 +1180,14 @@ void leave_program (void)
 
 static int real_main2 (int argc, TCHAR **argv)
 {
+
+#if defined(UAE_TARGET_UNIX) && defined(WINUAE_UNIX_WITH_INTEGRATED_QT_UI)
+	for (int i = 1; i < argc; i++) {
+		if (!_tcscmp(argv[i], _T("--qt-board-catalog"))) {
+			return runWinUaeQtBoardCatalogDump();
+		}
+	}
+#endif
 
 #ifdef USE_SDL
 	SDL_Init (SDL_INIT_TIMER | SDL_INIT_AUDIO | SDL_INIT_JOYSTICK | SDL_INIT_NOPARACHUTE);
