@@ -35,8 +35,73 @@ struct WinUaeQtHardwareBoard {
     bool movable = false;
 };
 
+enum class WinUaeQtBoardSettingType {
+    CheckBox,
+    Multi,
+    String
+};
+
+enum WinUaeQtExpansionCategoryFlag {
+    WinUaeQtExpansionCategoryInternal = 1 << 0,
+    WinUaeQtExpansionCategoryScsi = 1 << 1,
+    WinUaeQtExpansionCategoryIde = 1 << 2,
+    WinUaeQtExpansionCategorySasi = 1 << 3,
+    WinUaeQtExpansionCategoryCustom = 1 << 4,
+    WinUaeQtExpansionCategoryPciBridge = 1 << 5,
+    WinUaeQtExpansionCategoryX86Bridge = 1 << 6,
+    WinUaeQtExpansionCategoryRtg = 1 << 7,
+    WinUaeQtExpansionCategorySound = 1 << 8,
+    WinUaeQtExpansionCategoryNet = 1 << 9,
+    WinUaeQtExpansionCategoryFloppy = 1 << 10,
+    WinUaeQtExpansionCategoryX86Expansion = 1 << 11
+};
+
+struct WinUaeQtBoardSetting {
+    QString display;
+    QString configValue;
+    WinUaeQtBoardSettingType type = WinUaeQtBoardSettingType::CheckBox;
+    QStringList multiDisplays;
+    QStringList multiValues;
+};
+
+struct WinUaeQtBoardSubtype {
+    QString display;
+    QString configValue;
+    int deviceFlags = 0;
+};
+
+struct WinUaeQtExpansionBoardCatalogItem {
+    QString key;
+    QString display;
+    int deviceFlags = 0;
+    int categoryMask = 0;
+    int zorro = 0;
+    bool singleOnly = false;
+    bool dma24Bit = false;
+    bool pcmcia = false;
+    bool autobootJumper = false;
+    bool idJumper = false;
+    QVector<WinUaeQtBoardSubtype> subtypes;
+    QVector<WinUaeQtBoardSetting> settings;
+};
+
+struct WinUaeQtCpuBoardCatalogItem {
+    QString type;
+    QString display;
+    QString configValue;
+    int maxMemoryMb = 0;
+    bool ppc = false;
+    QVector<WinUaeQtBoardSetting> settings;
+};
+
+struct WinUaeQtBoardCatalog {
+    QVector<WinUaeQtExpansionBoardCatalogItem> expansionBoards;
+    QVector<WinUaeQtCpuBoardCatalogItem> cpuBoards;
+};
+
 struct WinUaeQtHardwareInfoProvider {
     void *context = nullptr;
+    WinUaeQtBoardCatalog (*boardCatalog)(void *context) = nullptr;
     QVector<WinUaeQtHardwareBoard> (*boards)(void *context) = nullptr;
     bool (*customOrder)(void *context) = nullptr;
     void (*setCustomOrder)(void *context, bool enabled) = nullptr;
