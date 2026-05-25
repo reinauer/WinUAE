@@ -233,6 +233,15 @@ into a WinUAE build directory:
 tools/build-qemu-uae.sh ../qemu-uae-v11.0 /tmp/winuae_cmake_build/qemu-uae.so
 ```
 
+On macOS release builds, build GLib and libslirp into the private dependency
+prefix first so the plugin does not inherit newer Homebrew dylibs:
+
+```sh
+WINUAE_GLIB_SOURCE=/path/to/glib-2.88.1 \
+WINUAE_LIBSLIRP_SOURCE=/path/to/libslirp-v4.9.1 \
+tools/macos-build-qemu-deps.sh ../winuae-macos-deps
+```
+
 CMake also exposes this as:
 
 ```sh
@@ -241,7 +250,9 @@ cmake --build /tmp/winuae_cmake_build --target winuae_unix_qemu_uae_plugin -j
 
 `WINUAE_UNIX_BUILD_QEMU_UAE_PLUGIN` controls whether the sibling plugin target
 is enabled, and `WINUAE_QEMU_UAE_SOURCE_DIR` can point at a different
-`qemu-uae` source tree. Set `QEMU_UAE_NINJA=/path/to/ninja` if QEMU configure
+`qemu-uae` source tree. `WINUAE_QEMU_UAE_DEPS_PREFIX` defaults to the private
+macOS dependency prefix and is passed to the plugin helper as
+`QEMU_UAE_DEPS_PREFIX`. Set `QEMU_UAE_NINJA=/path/to/ninja` if QEMU configure
 cannot find Ninja itself. On macOS, the app bundler copies `qemu-uae.so` into
 `WinUAE.app/Contents/PlugIns/` before dependency deployment.
 
@@ -547,6 +558,7 @@ export WINUAE_SMOKE_LOG=/tmp/winuae_unix_smoke.log
 `WINUAE_UNIX_WITH_CHD` is enabled by default and builds CHD hardfile/CD image support. `WINUAE_UNIX_WITH_CHD_FLAC` is also enabled by default, but macOS builds skip FLAC codecs if the available libFLAC was built for a newer deployment target.
 `WINUAE_UNIX_WITH_JIT` is enabled by default where the Unix host backend is wired, including ARM64 and x86_64.
 `WINUAE_UNIX_WITH_PPC_QEMU` is enabled by default and builds the WinUAE side of the PPC accelerator/QEMU plugin ABI. `WINUAE_UNIX_BUILD_QEMU_UAE_PLUGIN` is enabled by default when a sibling `qemu-uae-v11.0` tree is present and builds/copies `qemu-uae.so` for the executable or app bundle.
+`WINUAE_QEMU_UAE_DEPS_PREFIX` defaults to the private macOS dependency prefix and points the plugin helper at the deployment-target-compatible GLib/libslirp build.
 `WINUAE_UNIX_WITH_OPENGL_SHADER_PIPELINE` is enabled by default when SDL3 and OpenGL development files are available. Runtime OpenGL context or shader setup failure falls back to the SDL renderer.
 `WINUAE_UNIX_WITH_SNDBOARD` is enabled by default and builds the shared Toccata/Prelude/UAESND sound-board backend. PCI sound devices remain part of the future PCI bridgeboard work.
 `WINUAE_UNIX_WITH_PROWIZARD` is enabled by default and builds the same Pro Wizard source set used by the Windows project.

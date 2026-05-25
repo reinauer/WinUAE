@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.20)
 if(CMAKE_HOST_APPLE)
     set(WINUAE_UNIX_DEFAULT_MACOS_DEPLOYMENT_TARGET "13.0")
     set(WINUAE_UNIX_MACOS_DEPS_PREFIX "${CMAKE_CURRENT_SOURCE_DIR}/../winuae-macos-deps" CACHE PATH "Private macOS dependency prefix built by tools/macos-build-deps.sh")
+    set(WINUAE_QEMU_UAE_DEPS_PREFIX "${WINUAE_UNIX_MACOS_DEPS_PREFIX}" CACHE PATH "Private macOS GLib/libslirp prefix for the QEMU-UAE plugin")
     if(NOT DEFINED CMAKE_OSX_DEPLOYMENT_TARGET)
         set(CMAKE_OSX_DEPLOYMENT_TARGET "${WINUAE_UNIX_DEFAULT_MACOS_DEPLOYMENT_TARGET}" CACHE STRING "Minimum macOS version for WinUAE Unix builds")
     elseif(CMAKE_OSX_DEPLOYMENT_TARGET STREQUAL "")
@@ -1306,6 +1307,14 @@ if(APPLE)
         COMMENT "Building private macOS dependencies for deployment target ${CMAKE_OSX_DEPLOYMENT_TARGET}"
         VERBATIM
     )
+    add_custom_target(winuae_unix_macos_qemu_deps
+        COMMAND "${CMAKE_COMMAND}" -E env
+            "WINUAE_MACOS_DEPLOYMENT_TARGET=${CMAKE_OSX_DEPLOYMENT_TARGET}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tools/macos-build-qemu-deps.sh" "${WINUAE_QEMU_UAE_DEPS_PREFIX}"
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+        COMMENT "Building private macOS QEMU-UAE dependencies for deployment target ${CMAKE_OSX_DEPLOYMENT_TARGET}"
+        VERBATIM
+    )
 endif()
 
 set(WINUAE_QEMU_UAE_PLUGIN_PATH "${CMAKE_BINARY_DIR}/qemu-uae.so")
@@ -1316,6 +1325,7 @@ if(UNIX
     add_custom_target(winuae_unix_qemu_uae_plugin
         COMMAND "${CMAKE_COMMAND}" -E env
             "WINUAE_MACOS_DEPLOYMENT_TARGET=${CMAKE_OSX_DEPLOYMENT_TARGET}"
+            "QEMU_UAE_DEPS_PREFIX=${WINUAE_QEMU_UAE_DEPS_PREFIX}"
             "${CMAKE_CURRENT_SOURCE_DIR}/tools/build-qemu-uae.sh"
             "${WINUAE_QEMU_UAE_SOURCE_DIR}"
             "${WINUAE_QEMU_UAE_PLUGIN_PATH}"
