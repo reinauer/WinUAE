@@ -104,6 +104,7 @@ option(WINUAE_UNIX_WITH_NATIVE_CD "Build Unix native CD/DVD drive access" ON)
 option(WINUAE_UNIX_WITH_NATIVE_SCSI "Build native SCSI/tape passthrough (macOS SCSITaskLib, Linux SG_IO)" ON)
 option(WINUAE_UNIX_WITH_MIDI "Build native Unix MIDI support" ON)
 option(WINUAE_UNIX_WITH_CPUBOARD "Build shared non-PPC CPU accelerator board support" ON)
+option(WINUAE_UNIX_WITH_PPC_QEMU "Build Unix PPC accelerator support through the qemu-uae plugin ABI" ON)
 option(WINUAE_UNIX_WITH_SNDBOARD "Build shared Toccata/Prelude/UAESND sound-board support" ON)
 option(WINUAE_UNIX_WITH_GFXBOARD "Build shared hardware RTG graphics board, PCI, QEMU VGA and PCem Voodoo support" ON)
 option(WINUAE_UNIX_WITH_AVIOUTPUT "Build Unix screenshot and video/audio capture output support" ON)
@@ -205,6 +206,7 @@ set(WINUAE_UNIX_ENABLE_NATIVE_CD OFF)
 set(WINUAE_UNIX_ENABLE_NATIVE_SCSI OFF)
 set(WINUAE_UNIX_ENABLE_MIDI OFF)
 set(WINUAE_UNIX_ENABLE_CPUBOARD OFF)
+set(WINUAE_UNIX_ENABLE_PPC OFF)
 set(WINUAE_UNIX_ENABLE_SNDBOARD OFF)
 set(WINUAE_UNIX_ENABLE_GFXBOARD OFF)
 set(WINUAE_UNIX_ENABLE_JIT OFF)
@@ -455,6 +457,16 @@ if(WINUAE_UNIX_WITH_CPUBOARD)
     list(APPEND WINUAE_UNIX_EXTRA_SOURCES cpuboard.cpp)
 endif()
 
+if(WINUAE_UNIX_WITH_PPC_QEMU)
+    set(WINUAE_UNIX_ENABLE_PPC ON)
+    target_compile_definitions(winuae_core PRIVATE WITH_PPC=1 WITH_QEMU_CPU=1)
+    list(APPEND WINUAE_UNIX_EXTRA_SOURCES
+        ppc/ppc.cpp
+        ppc/ppcd.cpp
+        qemuvga/qemu.cpp
+    )
+endif()
+
 if(WINUAE_UNIX_WITH_SNDBOARD)
     set(WINUAE_UNIX_ENABLE_SNDBOARD ON)
     target_compile_definitions(winuae_core PRIVATE WITH_SNDBOARD=1 WITH_TOCCATA=1)
@@ -470,7 +482,6 @@ if(WINUAE_UNIX_WITH_GFXBOARD)
     else()
         set(WINUAE_UNIX_ENABLE_GFXBOARD ON)
         target_compile_definitions(winuae_core PRIVATE
-            UAE=
             GFXBOARD=1
             WITH_PCI=1
             WINUAE_UNIX_WITH_GFXBOARD=1
@@ -522,6 +533,10 @@ if(WINUAE_UNIX_WITH_GFXBOARD)
             qemuvga/vga.cpp
         )
     endif()
+endif()
+
+if(WINUAE_UNIX_ENABLE_PPC OR WINUAE_UNIX_ENABLE_GFXBOARD)
+    target_compile_definitions(winuae_core PRIVATE UAE=)
 endif()
 
 if(WINUAE_UNIX_WITH_AVIOUTPUT)
@@ -1175,6 +1190,7 @@ if(WINUAE_UNIX_WITH_QT_UI OR WINUAE_UNIX_WITH_INTEGRATED_QT_UI)
             UAE_UNIX_WITH_NATIVE_SCSI=$<BOOL:${WINUAE_UNIX_ENABLE_NATIVE_SCSI}>
             UAE_UNIX_WITH_MIDI=$<BOOL:${WINUAE_UNIX_ENABLE_MIDI}>
             UAE_UNIX_WITH_CPUBOARD=$<BOOL:${WINUAE_UNIX_ENABLE_CPUBOARD}>
+            UAE_UNIX_WITH_PPC=$<BOOL:${WINUAE_UNIX_ENABLE_PPC}>
             UAE_UNIX_WITH_SNDBOARD=$<BOOL:${WINUAE_UNIX_ENABLE_SNDBOARD}>
             UAE_UNIX_WITH_GFXBOARD=$<BOOL:${WINUAE_UNIX_ENABLE_GFXBOARD}>
             UAE_UNIX_WITH_JIT=$<BOOL:${WINUAE_UNIX_ENABLE_JIT}>
