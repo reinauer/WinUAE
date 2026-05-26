@@ -229,6 +229,14 @@ static WinUaeQtBoardCatalog winUaeQtLoadExternalBoardCatalog()
                     board->settings.append(setting);
                 }
             }
+        } else if (recordType == "G" && fields.size() >= 4) {
+            WinUaeQtRtgBoardCatalogItem board;
+            board.display = winUaeQtDecodeCatalogField(fields, 1);
+            board.configValue = winUaeQtDecodeCatalogField(fields, 2);
+            board.configType = fields.value(3).toInt();
+            if (!board.display.isEmpty() && !board.configValue.isEmpty()) {
+                catalog.rtgBoards.append(board);
+            }
         }
     }
     return catalog;
@@ -7658,34 +7666,13 @@ private:
         root->setContentsMargins(4, 4, 4, 4);
 
         rtgMem = combo({ QStringLiteral("None"), QStringLiteral("1 MB"), QStringLiteral("2 MB"), QStringLiteral("4 MB"), QStringLiteral("8 MB"), QStringLiteral("16 MB"), QStringLiteral("32 MB"), QStringLiteral("64 MB"), QStringLiteral("128 MB"), QStringLiteral("256 MB") }, QStringLiteral("None"));
-        QStringList rtgTypes = {
-            QStringLiteral("ZorroII"),
-            QStringLiteral("ZorroIII")
-        };
-#if UAE_UNIX_WITH_GFXBOARD
-        rtgTypes << QStringLiteral("A2410")
-            << QStringLiteral("Spectrum28/24_Z2") << QStringLiteral("Spectrum28/24_Z3")
-            << QStringLiteral("Piccolo_Z2") << QStringLiteral("Piccolo_Z3")
-            << QStringLiteral("PiccoloSD64_Z2") << QStringLiteral("PiccoloSD64_Z3")
-            << QStringLiteral("CV64_Z3") << QStringLiteral("CV643D_Z2") << QStringLiteral("CV643D_Z3")
-            << QStringLiteral("PERMEDIA2_PCI")
-            << QStringLiteral("PicassoII") << QStringLiteral("PicassoII+")
-            << QStringLiteral("PicassoIV_Z2") << QStringLiteral("PicassoIV_Z3")
-            << QStringLiteral("Retina_Z2") << QStringLiteral("Retina_Z3")
-            << QStringLiteral("Altais")
-            << QStringLiteral("MerlinZ2") << QStringLiteral("MerlinZ3")
-            << QStringLiteral("GraffityZ2") << QStringLiteral("GraffityZ3")
-            << QStringLiteral("EGS_110_24") << QStringLiteral("Visiona")
-            << QStringLiteral("RainbowIII") << QStringLiteral("Domino")
-            << QStringLiteral("Pixel64")
-            << QStringLiteral("OmnibusET4000") << QStringLiteral("OmnibusET4000W32")
-            << QStringLiteral("Harlequin_PAL") << QStringLiteral("RainbowII")
-            << QStringLiteral("V3_3000")
-            << QStringLiteral("S3VIRGE_PCI") << QStringLiteral("S3TRIO64_PCI")
-            << QStringLiteral("Matrox_Millennium") << QStringLiteral("Matrox_Millennium_II")
-            << QStringLiteral("Matrox_Mystique") << QStringLiteral("Matrox_Mystique220")
-            << QStringLiteral("VGA");
-#endif
+        QStringList rtgTypes;
+        for (const WinUaeQtRtgBoardCatalogItem &board : boardCatalog.rtgBoards) {
+            rtgTypes.append(board.configValue);
+        }
+        if (rtgTypes.isEmpty()) {
+            rtgTypes = { QStringLiteral("ZorroII"), QStringLiteral("ZorroIII") };
+        }
         rtgType = combo(rtgTypes, QStringLiteral("ZorroIII"));
         rtgMonitor = combo({ QStringLiteral("1"), QStringLiteral("2"), QStringLiteral("3"), QStringLiteral("4") }, QStringLiteral("1"));
         disableUnavailable(rtgMonitor, QStringLiteral("The Unix uaegfx.card backend currently exposes a single RTG monitor."));
@@ -12371,38 +12358,44 @@ private:
 
     bool rtgNeeds32BitAddressSpace() const
     {
+        const int configType = rtgConfigType(rtgType ? rtgType->currentText() : QString());
         return rtgMem && rtgType
             && rtgMem->currentText() != QStringLiteral("None")
-            && (rtgType->currentText() == QStringLiteral("ZorroIII") ||
-                rtgBusName(rtgType->currentText()) == QStringLiteral("Z3") ||
-                rtgBusName(rtgType->currentText()) == QStringLiteral("PCI"));
+            && (configType == 3 || configType == 7);
+    }
+
+    int rtgConfigType(const QString &type) const
+    {
+        for (const WinUaeQtRtgBoardCatalogItem &board : boardCatalog.rtgBoards) {
+            if (type.compare(board.configValue, Qt::CaseInsensitive) == 0) {
+                return board.configType;
+            }
+        }
+        if (type.compare(QStringLiteral("ZorroII"), Qt::CaseInsensitive) == 0
+            || type.endsWith(QStringLiteral("_Z2"), Qt::CaseInsensitive)) {
+            return 2;
+        }
+        if (type.compare(QStringLiteral("ZorroIII"), Qt::CaseInsensitive) == 0
+            || type.endsWith(QStringLiteral("_Z3"), Qt::CaseInsensitive)) {
+            return 3;
+        }
+        if (type.endsWith(QStringLiteral("_PCI"), Qt::CaseInsensitive)) {
+            return 7;
+        }
+        return 0;
     }
 
     QString rtgBusName(const QString &type) const
     {
-        if (type == QStringLiteral("ZorroII") || type.endsWith(QStringLiteral("_Z2")) ||
-            type == QStringLiteral("A2410") || type == QStringLiteral("PicassoII") ||
-            type == QStringLiteral("PicassoII+") || type == QStringLiteral("Domino") ||
-            type == QStringLiteral("Visiona") || type == QStringLiteral("Pixel64") ||
-            type == QStringLiteral("OmnibusET4000") || type == QStringLiteral("OmnibusET4000W32") ||
-            type == QStringLiteral("Harlequin_PAL") || type == QStringLiteral("RainbowII")) {
-            return QStringLiteral("Z2");
-        }
-        if (type == QStringLiteral("ZorroIII") || type.endsWith(QStringLiteral("_Z3")) ||
-            type == QStringLiteral("CV64_Z3") || type == QStringLiteral("Altais") ||
-            type == QStringLiteral("MerlinZ3") || type == QStringLiteral("GraffityZ3") ||
-            type == QStringLiteral("RainbowIII")) {
-            return QStringLiteral("Z3");
-        }
-        if (type.endsWith(QStringLiteral("_PCI")) || type == QStringLiteral("V3_3000") ||
-            type.startsWith(QStringLiteral("Matrox_"))) {
-            return QStringLiteral("PCI");
-        }
-        if (type == QStringLiteral("VGA")) {
-            return QStringLiteral("ISA");
-        }
-        if (type == QStringLiteral("EGS_110_24")) {
-            return QStringLiteral("GVP");
+        switch (rtgConfigType(type)) {
+            case 2:
+                return QStringLiteral("Z2");
+            case 3:
+                return QStringLiteral("Z3");
+            case 7:
+                return QStringLiteral("PCI");
+            default:
+                break;
         }
         return QStringLiteral("-");
     }
