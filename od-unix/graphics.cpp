@@ -14,6 +14,7 @@
 #include "video.h"
 #include "host.h"
 #include "devices.h"
+#include "gfxboard.h"
 
 #include <condition_variable>
 #include <mutex>
@@ -1149,6 +1150,7 @@ void picasso_handle_vsync(void)
             picasso_refresh(monid);
         }
     }
+    gfxboard_vsync_handler(false, true);
 }
 
 void fb_copyrow(int monid, uae_u8 *src, uae_u8 *dst, int x, int, int width, int srcpixbytes, int dy)
