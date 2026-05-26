@@ -94,9 +94,16 @@ struct WinUaeQtCpuBoardCatalogItem {
     QVector<WinUaeQtBoardSetting> settings;
 };
 
+struct WinUaeQtRtgBoardCatalogItem {
+    QString display;
+    QString configValue;
+    int configType = 0;
+};
+
 struct WinUaeQtBoardCatalog {
     QVector<WinUaeQtExpansionBoardCatalogItem> expansionBoards;
     QVector<WinUaeQtCpuBoardCatalogItem> cpuBoards;
+    QVector<WinUaeQtRtgBoardCatalogItem> rtgBoards;
 };
 
 struct WinUaeQtHardwareInfoProvider {

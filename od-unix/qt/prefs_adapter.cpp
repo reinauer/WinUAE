@@ -155,13 +155,16 @@ static bool parseChipsetCompatible(const QString &value, int *out)
 
 static bool parseGfxCardType(const QString &value, int *out)
 {
-    if (value.compare(QStringLiteral("ZorroII"), Qt::CaseInsensitive) == 0) {
-        *out = GFXBOARD_UAE_Z2;
-        return true;
-    }
-    if (value.compare(QStringLiteral("ZorroIII"), Qt::CaseInsensitive) == 0) {
-        *out = GFXBOARD_UAE_Z3;
-        return true;
+    for (int index = 0;; index++) {
+        const int id = gfxboard_get_id_from_index(index);
+        if (id < 0) {
+            break;
+        }
+        const TCHAR *name = gfxboard_get_configname(id);
+        if (name && value.compare(QString::fromLocal8Bit(name), Qt::CaseInsensitive) == 0) {
+            *out = id;
+            return true;
+        }
     }
     return false;
 }

@@ -12,9 +12,35 @@
 #include "audio.h"
 #include "custom.h"
 #include "disk.h"
+#include "gfxboard.h"
 #include "options.h"
 
 static QStringList parsedLines;
+
+int gfxboard_get_id_from_index(int index)
+{
+    static const int ids[] = {
+        GFXBOARD_UAE_Z2,
+        GFXBOARD_UAE_Z3,
+        GFXBOARD_ID_PICASSO4_Z3,
+        -1
+    };
+    return index >= 0 && index < int(sizeof(ids) / sizeof(ids[0])) ? ids[index] : -1;
+}
+
+const TCHAR *gfxboard_get_configname(int id)
+{
+    switch (id) {
+        case GFXBOARD_UAE_Z2:
+            return _T("ZorroII");
+        case GFXBOARD_UAE_Z3:
+            return _T("ZorroIII");
+        case GFXBOARD_ID_PICASSO4_Z3:
+            return _T("PicassoIV_Z3");
+        default:
+            return nullptr;
+    }
+}
 
 static bool configBoolValue(const char *value)
 {
@@ -153,7 +179,7 @@ static bool testRepresentativeConfig()
     settings.insert(QStringLiteral("floppy0soundvolume_empty"), QStringLiteral("34"));
     settings.insert(QStringLiteral("floppy0soundvolume_disk"), QStringLiteral("22"));
     settings.insert(QStringLiteral("gfxcard_size"), QStringLiteral("16"));
-    settings.insert(QStringLiteral("gfxcard_type"), QStringLiteral("ZorroIII"));
+    settings.insert(QStringLiteral("gfxcard_type"), QStringLiteral("PicassoIV_Z3"));
     settings.insert(QStringLiteral("gfx_width_windowed"), QStringLiteral("800"));
     settings.insert(QStringLiteral("gfx_height_windowed"), QStringLiteral("600"));
     settings.insert(QStringLiteral("gfx_width_fullscreen"), QStringLiteral("native"));
@@ -235,7 +261,7 @@ static bool testRepresentativeConfig()
     ok = require(!parsedLines.contains(QStringLiteral("sound_channels=mixed")), "sound_channels was delegated") && ok;
     ok = require(!parsedLines.contains(QStringLiteral("floppy0sound=1")), "floppy0sound was delegated") && ok;
     ok = require(!parsedLines.contains(QStringLiteral("gfxcard_size=16")), "gfxcard_size was delegated") && ok;
-    ok = require(!parsedLines.contains(QStringLiteral("gfxcard_type=ZorroIII")), "gfxcard_type was delegated") && ok;
+    ok = require(!parsedLines.contains(QStringLiteral("gfxcard_type=PicassoIV_Z3")), "gfxcard_type was delegated") && ok;
     ok = require(!parsedLines.contains(QStringLiteral("gfx_width_windowed=800")), "gfx_width_windowed was delegated") && ok;
     ok = require(!parsedLines.contains(QStringLiteral("gfx_height_windowed=600")), "gfx_height_windowed was delegated") && ok;
     ok = require(!parsedLines.contains(QStringLiteral("gfx_fullscreen_amiga=fullwindow")), "gfx_fullscreen_amiga was delegated") && ok;
@@ -293,7 +319,7 @@ static bool testRepresentativeConfig()
     ok = requireInt(prefs->win32_uaescsimode, UAESCSI_SPTI, "win32_uaescsimode") && ok;
     ok = requireInt(prefs->win32_rtgvblankrate, -1, "win32_rtgvblankrate") && ok;
     ok = requireUnsigned(prefs->rtgboards[0].rtgmem_size, 16 * 0x100000, "rtgmem_size") && ok;
-    ok = requireInt(prefs->rtgboards[0].rtgmem_type, 1, "rtgmem_type") && ok;
+    ok = requireInt(prefs->rtgboards[0].rtgmem_type, GFXBOARD_ID_PICASSO4_Z3, "rtgmem_type") && ok;
     ok = requireInt(prefs->gfx_monitor[0].gfx_size_win.width, 800, "gfx width") && ok;
     ok = requireInt(prefs->gfx_monitor[0].gfx_size_win.height, 600, "gfx height") && ok;
     ok = requireInt(prefs->gfx_monitor[0].gfx_size_fs.special, WH_NATIVE, "gfx fullscreen native") && ok;

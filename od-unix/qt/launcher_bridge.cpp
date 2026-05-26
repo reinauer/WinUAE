@@ -24,6 +24,7 @@
 #include "savestate.h"
 #include "newcpu.h"
 #include "zfile.h"
+#include "gfxboard.h"
 #ifdef PROWIZARD
 #include "moduleripper.h"
 #endif
@@ -239,6 +240,23 @@ static WinUaeQtBoardCatalog bridgeBoardCatalog(void *)
         }
     }
 
+    for (int index = 0;; index++) {
+        const int id = gfxboard_get_id_from_index(index);
+        if (id < 0) {
+            break;
+        }
+        WinUaeQtRtgBoardCatalogItem item;
+        item.display = bridgeBoardDisplay(gfxboard_get_name(id), gfxboard_get_manufacturername(id));
+        item.configValue = bridgeText(gfxboard_get_configname(id));
+        struct rtgboardconfig rbc = {};
+        rbc.rtgmem_type = id;
+        rbc.rtgmem_size = 4 * 1024 * 1024;
+        item.configType = gfxboard_get_configtype(&rbc);
+        if (!item.display.isEmpty() && !item.configValue.isEmpty()) {
+            catalog.rtgBoards.append(item);
+        }
+    }
+
     return catalog;
 }
 
@@ -279,6 +297,12 @@ int runWinUaeQtBoardCatalogDump(void)
         for (const WinUaeQtBoardSetting &setting : board.settings) {
             bridgeCatalogPrintSetting('C', board.configValue, setting);
         }
+    }
+    for (const WinUaeQtRtgBoardCatalogItem &board : catalog.rtgBoards) {
+        fputc('G', stdout);
+        bridgeCatalogPrintField(board.display);
+        bridgeCatalogPrintField(board.configValue);
+        fprintf(stdout, "\t%d\n", board.configType);
     }
     fflush(stdout);
     return 0;
