@@ -753,7 +753,7 @@ static bool unix_gl_build_program(void)
         "#version 120\n"
         "varying vec2 v_tex;\n"
         "void main(void) {\n"
-        "    gl_Position = gl_Vertex;\n"
+        "    gl_Position = gl_ModelViewProjectionMatrix * gl_Vertex;\n"
         "    v_tex = gl_MultiTexCoord0.xy;\n"
         "}\n";
     static const char *fragment_shader =
