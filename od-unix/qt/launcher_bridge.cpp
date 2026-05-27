@@ -210,12 +210,15 @@ static WinUaeQtBoardCatalog bridgeBoardCatalog(void *)
         item.pcmcia = rom->deviceflags & EXPANSIONTYPE_PCMCIA;
         item.autobootJumper = rom->autoboot_jumper;
         item.idJumper = rom->id_jumper;
+        item.noRomFile = rom->romtype & ROMTYPE_NOT;
         if (rom->subtypes) {
             for (int j = 0; rom->subtypes[j].name; j++) {
                 WinUaeQtBoardSubtype subtype;
                 subtype.display = bridgeText(rom->subtypes[j].name);
                 subtype.configValue = bridgeText(rom->subtypes[j].configname);
                 subtype.deviceFlags = rom->subtypes[j].deviceflags;
+                subtype.hasRomTypeOverride = rom->subtypes[j].romtype != 0;
+                subtype.noRomFile = rom->subtypes[j].romtype & ROMTYPE_NOT;
                 item.subtypes.append(subtype);
             }
         }
@@ -273,7 +276,7 @@ int runWinUaeQtBoardCatalogDump(void)
         fputc('E', stdout);
         bridgeCatalogPrintField(board.key);
         bridgeCatalogPrintField(board.display);
-        fprintf(stdout, "\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d",
+        fprintf(stdout, "\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d",
             board.deviceFlags,
             board.categoryMask,
             board.zorro,
@@ -281,14 +284,18 @@ int runWinUaeQtBoardCatalogDump(void)
             board.dma24Bit ? 1 : 0,
             board.pcmcia ? 1 : 0,
             board.autobootJumper ? 1 : 0,
-            board.idJumper ? 1 : 0);
+            board.idJumper ? 1 : 0,
+            board.noRomFile ? 1 : 0);
         fputc('\n', stdout);
         for (const WinUaeQtBoardSubtype &subtype : board.subtypes) {
             fputc('S', stdout);
             bridgeCatalogPrintField(board.key);
             bridgeCatalogPrintField(subtype.display);
             bridgeCatalogPrintField(subtype.configValue);
-            fprintf(stdout, "\t%d\n", subtype.deviceFlags);
+            fprintf(stdout, "\t%d\t%d\t%d\n",
+                subtype.deviceFlags,
+                subtype.hasRomTypeOverride ? 1 : 0,
+                subtype.noRomFile ? 1 : 0);
         }
         for (const WinUaeQtBoardSetting &setting : board.settings) {
             bridgeCatalogPrintSetting('E', board.key, setting);
