@@ -10,7 +10,7 @@ deployment target. The resulting prefix is intended for the QEMU-UAE plugin
 build and keeps the plugin from linking against newer Homebrew libraries.
 
 Arguments:
-  prefix  Install prefix for GLib and libslirp. Defaults to
+  prefix  Install prefix for GLib. Defaults to
           WINUAE_QEMU_DEPS_PREFIX, WINUAE_DEPS_PREFIX, or
           <repo>/../winuae-macos-deps.
 
@@ -20,13 +20,11 @@ Environment:
                                   <prefix>/build/qemu-deps.
   WINUAE_DEPS_JOBS                Parallel build jobs. Defaults to hw.ncpu.
   WINUAE_GLIB_SOURCE              GLib source tree. Required.
-  WINUAE_LIBSLIRP_SOURCE          libslirp source tree. Required.
   WINUAE_MESON                    meson executable. Defaults to meson in PATH
                                   or ../qemu-uae-v11.0/build/pyvenv/bin/meson.
   WINUAE_NINJA                    ninja executable. Defaults to ninja in PATH
                                   or /private/tmp/qemu-build-tools/bin/ninja.
   WINUAE_GLIB_MESON_ARGS          Extra arguments passed to GLib Meson.
-  WINUAE_LIBSLIRP_MESON_ARGS      Extra arguments passed to libslirp Meson.
 EOF
 }
 
@@ -41,7 +39,6 @@ target="${WINUAE_MACOS_DEPLOYMENT_TARGET:-13.0}"
 prefix="${1:-${WINUAE_QEMU_DEPS_PREFIX:-${WINUAE_DEPS_PREFIX:-${source_dir}/../winuae-macos-deps}}}"
 build_dir="${WINUAE_QEMU_DEPS_BUILD_DIR:-${prefix}/build/qemu-deps}"
 glib_source="${WINUAE_GLIB_SOURCE:-}"
-libslirp_source="${WINUAE_LIBSLIRP_SOURCE:-}"
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
     echo "error: macOS QEMU dependency builds require Darwin/macOS" >&2
@@ -114,7 +111,6 @@ run_meson_build() {
 }
 
 require_source "GLib" "${glib_source}"
-require_source "libslirp" "${libslirp_source}"
 
 meson_fallback="${source_dir}/../qemu-uae-v11.0/build/pyvenv/bin/meson"
 ninja_fallback="/private/tmp/qemu-build-tools/bin/ninja"
@@ -158,12 +154,6 @@ split_extra_args "${WINUAE_GLIB_MESON_ARGS:-}"
 glib_args+=("${extra_args[@]}")
 
 run_meson_build "${glib_source}" "${build_dir}/glib" "${glib_args[@]}"
-
-libslirp_args=("${common_meson_args[@]}")
-split_extra_args "${WINUAE_LIBSLIRP_MESON_ARGS:-}"
-libslirp_args+=("${extra_args[@]}")
-
-run_meson_build "${libslirp_source}" "${build_dir}/libslirp" "${libslirp_args[@]}"
 
 "${script_dir}/macos-check-deployment-target.sh" "${prefix}" "${target}"
 
