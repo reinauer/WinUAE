@@ -538,6 +538,7 @@ export WINUAE_SMOKE_LOG=/tmp/winuae_unix_smoke.log
 -DWINUAE_UNIX_WITH_NATIVE_SCSI=ON
 -DWINUAE_UNIX_WITH_CHD=ON
 -DWINUAE_UNIX_WITH_CHD_FLAC=ON
+-DWINUAE_LZMA_SDK_FETCH=ON
 -DWINUAE_UNIX_WITH_JIT=ON
 -DWINUAE_UNIX_WITH_PPC_QEMU=ON
 -DWINUAE_UNIX_BUILD_QEMU_UAE_PLUGIN=ON
@@ -556,6 +557,7 @@ export WINUAE_SMOKE_LOG=/tmp/winuae_unix_smoke.log
 `WINUAE_UNIX_WITH_BSDSOCKET`, `WINUAE_UNIX_WITH_UAESCSI`, and `WINUAE_UNIX_WITH_UAESERIAL` are enabled by default and build the shared Amiga-side devices against Unix host backends.
 `WINUAE_UNIX_WITH_NATIVE_CD` is enabled by default and builds native CD/DVD access on macOS and Linux. `WINUAE_UNIX_WITH_NATIVE_SCSI` is enabled by default on macOS and Linux and adds macOS SCSITaskLib plus Linux SG_IO direct SCSI/tape passthrough through the same device slot Windows uses for SPTI.
 `WINUAE_UNIX_WITH_CHD` is enabled by default and builds CHD hardfile/CD image support. `WINUAE_UNIX_WITH_CHD_FLAC` is also enabled by default, but macOS builds skip FLAC codecs if the available libFLAC was built for a newer deployment target.
+`WINUAE_LZMA_SDK_FETCH` is enabled by default. When archive or CHD support needs the 7-Zip/LZMA SDK, CMake uses `WINUAE_LZMA_SDK_DIR`, defaulting to the ignored `.deps/lzma-sdk/16.04` cache, and fetches `WINUAE_LZMA_SDK_URL` if that cache is missing.
 `WINUAE_UNIX_WITH_JIT` is enabled by default where the Unix host backend is wired, including ARM64 and x86_64.
 `WINUAE_UNIX_WITH_PPC_QEMU` is enabled by default and builds the WinUAE side of the PPC accelerator/QEMU plugin ABI. `WINUAE_UNIX_BUILD_QEMU_UAE_PLUGIN` is enabled by default when a sibling `qemu-uae-v11.0` tree is present and builds/copies `qemu-uae.so` for the executable or app bundle.
 `WINUAE_QEMU_UAE_DEPS_PREFIX` defaults to the private macOS dependency prefix and points the plugin helper at the deployment-target-compatible GLib/libslirp build.
