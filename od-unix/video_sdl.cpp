@@ -1312,13 +1312,13 @@ bool unix_video_init(int width, int height, int pixbytes)
             tried_gl_window = true;
         }
 #endif
-        s_window = SDL_CreateWindow("WinUAE Unix", window_width, window_height,
+        s_window = SDL_CreateWindow(WINUAE_UNIX_WINDOW_TITLE, window_width, window_height,
             window_flags);
 #ifdef WINUAE_UNIX_WITH_OPENGL_SHADER_PIPELINE
         if (!s_window && tried_gl_window) {
             write_log(_T("OpenGL shader pipeline: window creation failed: %s\n"), SDL_GetError());
             s_gl_failed = true;
-            s_window = SDL_CreateWindow("WinUAE Unix", window_width, window_height,
+            s_window = SDL_CreateWindow(WINUAE_UNIX_WINDOW_TITLE, window_width, window_height,
                 base_window_flags);
         }
 #endif
