@@ -20,6 +20,13 @@
 #define MAX_AMIGADISPLAYS 4
 #define NATMEM_OFFSET natmem_offset
 #define PACKAGE_STRING "WinUAE Unix"
+#if defined(UAE_HOST_DARWIN)
+#define WINUAE_UNIX_WINDOW_TITLE "WinUAE for macOS"
+#elif defined(UAE_HOST_LINUX)
+#define WINUAE_UNIX_WINDOW_TITLE "WinUAE for Linux"
+#else
+#define WINUAE_UNIX_WINDOW_TITLE "WinUAE for Unix"
+#endif
 
 #define GFXFILTER 1
 #define FILESYS 1
