@@ -361,6 +361,12 @@ static QVector<WinUaeQtHardwareBoard> bridgeHardwareBoards(void *context)
     return boards;
 }
 
+static bool bridgeApplyHardwareConfig(void *context, const WinUaeQtConfig &config)
+{
+    struct uae_prefs *prefs = static_cast<struct uae_prefs *>(context);
+    return applyWinUaeQtConfigToPrefs(config, prefs);
+}
+
 static bool bridgeHardwareCustomOrder(void *context)
 {
     struct uae_prefs *prefs = static_cast<struct uae_prefs *>(context);
@@ -551,6 +557,7 @@ static WinUaeQtHardwareInfoProvider bridgeHardwareProvider(struct uae_prefs *pre
     WinUaeQtHardwareInfoProvider provider;
     provider.context = prefs;
     provider.boardCatalog = bridgeBoardCatalog;
+    provider.applyConfig = bridgeApplyHardwareConfig;
     provider.boards = bridgeHardwareBoards;
     provider.customOrder = bridgeHardwareCustomOrder;
     provider.setCustomOrder = bridgeSetHardwareCustomOrder;

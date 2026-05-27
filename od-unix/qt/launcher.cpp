@@ -8938,6 +8938,9 @@ private:
         hardwareBoardList->clear();
 
         if (hasHardwareInfoProvider()) {
+            if (hardwareProvider.applyConfig) {
+                hardwareProvider.applyConfig(hardwareProvider.context, mergedConfig());
+            }
             if (hardwareCustomBoardOrder) {
                 QSignalBlocker blocker(hardwareCustomBoardOrder);
                 hardwareCustomBoardOrder->setChecked(hardwareCustomOrderEnabled());
@@ -15978,8 +15981,8 @@ private:
         updateOutputControlState();
         updateMountButtons();
         refreshInputMappingList();
-        refreshHardwareInfoPage();
         loadedConfig = config;
+        refreshHardwareInfoPage();
         configPath->setText(expandedPath);
         configName->setCurrentText(QFileInfo(expandedPath).completeBaseName());
         refreshConfigList();

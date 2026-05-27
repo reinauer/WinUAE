@@ -109,6 +109,7 @@ struct WinUaeQtBoardCatalog {
 struct WinUaeQtHardwareInfoProvider {
     void *context = nullptr;
     WinUaeQtBoardCatalog (*boardCatalog)(void *context) = nullptr;
+    bool (*applyConfig)(void *context, const WinUaeQtConfig &config) = nullptr;
     QVector<WinUaeQtHardwareBoard> (*boards)(void *context) = nullptr;
     bool (*customOrder)(void *context) = nullptr;
     void (*setCustomOrder)(void *context, bool enabled) = nullptr;
