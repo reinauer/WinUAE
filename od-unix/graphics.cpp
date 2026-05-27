@@ -458,7 +458,7 @@ int debuggable(void) { return 0; }
 
 void refreshtitle(void)
 {
-    unix_video_set_title(_T("WinUAE Unix"));
+    unix_video_set_title(_T(WINUAE_UNIX_WINDOW_TITLE));
 }
 
 void InitPicasso96(int monid)
