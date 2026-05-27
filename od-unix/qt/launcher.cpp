@@ -814,6 +814,7 @@ struct WinUaeQtExpansionBoardState {
     QString rawOptions;
     QString subtype;
     QMap<QString, bool> optionBools;
+    QMap<QString, QString> optionValues;
     bool autobootDisabled = false;
     bool dma24Bit = false;
     bool inserted = false;
@@ -3525,6 +3526,16 @@ static QStringList expansionOptionTokens(const QString &options)
     return tokens;
 }
 
+static bool expansionOptionContains(const QString &options, const QString &name)
+{
+    for (const QString &token : expansionOptionTokens(options)) {
+        if (token.compare(name, Qt::CaseInsensitive) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static bool expansionOptionBool(const QString &options, const QString &name)
 {
     const QString prefix = name + QLatin1Char('=');
@@ -3598,8 +3609,19 @@ static QString expansionBoardOptionsValue(
         }
         if (board) {
             for (const WinUaeQtBoardSetting &choice : board->settings) {
-                if (choice.type == WinUaeQtBoardSettingType::CheckBox
-                    && name.compare(choice.configValue, Qt::CaseInsensitive) == 0) {
+                if (choice.type == WinUaeQtBoardSettingType::CheckBox) {
+                    known = name.compare(choice.configValue, Qt::CaseInsensitive) == 0;
+                } else if (choice.type == WinUaeQtBoardSettingType::String) {
+                    known = name.compare(choice.configValue, Qt::CaseInsensitive) == 0;
+                } else if (choice.type == WinUaeQtBoardSettingType::Multi) {
+                    for (const QString &value : choice.multiValues) {
+                        if (name.compare(value, Qt::CaseInsensitive) == 0) {
+                            known = true;
+                            break;
+                        }
+                    }
+                }
+                if (known) {
                     known = true;
                     break;
                 }
@@ -3624,9 +3646,23 @@ static QString expansionBoardOptionsValue(
     if (state.id != 7 || !expansionOptionValue(state.rawOptions, QStringLiteral("id")).isEmpty()) {
         tokens.append(QStringLiteral("id=%1").arg(qBound(0, state.id, 7)));
     }
-    for (auto it = state.optionBools.constBegin(); it != state.optionBools.constEnd(); ++it) {
-        if (it.value()) {
-            tokens.append(it.key());
+    if (board) {
+        for (const WinUaeQtBoardSetting &choice : board->settings) {
+            if (choice.type == WinUaeQtBoardSettingType::CheckBox) {
+                if (state.optionBools.value(choice.configValue, false)) {
+                    tokens.append(choice.configValue);
+                }
+            } else if (choice.type == WinUaeQtBoardSettingType::String) {
+                const QString value = state.optionValues.value(choice.configValue).trimmed();
+                if (!value.isEmpty()) {
+                    tokens.append(QStringLiteral("%1=%2").arg(choice.configValue, value));
+                }
+            } else if (choice.type == WinUaeQtBoardSettingType::Multi) {
+                const QString value = state.optionValues.value(choice.configValue);
+                if (!value.isEmpty()) {
+                    tokens.append(value);
+                }
+            }
         }
     }
     return tokens.join(QLatin1Char(','));
@@ -5749,6 +5785,8 @@ private:
     QComboBox *expansionRomId = nullptr;
     QComboBox *expansionRomFile = nullptr;
     QComboBox *expansionBoardOption = nullptr;
+    QComboBox *expansionBoardSelector = nullptr;
+    QLineEdit *expansionBoardString = nullptr;
     QCheckBox *expansionRom24BitDma = nullptr;
     QCheckBox *expansionRomEnabled = nullptr;
     QCheckBox *expansionRomAutobootDisabled = nullptr;
@@ -7794,6 +7832,12 @@ private:
         expansionRomFile = pathCombo();
         expansionBoardOption = combo({ QStringLiteral("None") });
         expansionBoardOption->setEnabled(false);
+        expansionBoardSelector = combo({ QStringLiteral("None") });
+        expansionBoardSelector->setEnabled(false);
+        expansionBoardSelector->setVisible(false);
+        expansionBoardString = new QLineEdit;
+        expansionBoardString->setEnabled(false);
+        expansionBoardString->setVisible(false);
         expansionRom24BitDma = new QCheckBox(QStringLiteral("24-bit DMA"));
         expansionRomEnabled = new QCheckBox(QStringLiteral("Enable board"));
         expansionRomEnabled->setToolTip(QStringLiteral("Adds the selected expansion board to the configuration."));
@@ -7816,8 +7860,10 @@ private:
         board->addWidget(expansionRomAutobootDisabled, 2, 2);
         board->addWidget(expansionRomPcmciaInserted, 2, 3, 1, 2);
         board->addWidget(expansionBoardOption, 3, 0, 1, 2);
-        board->addWidget(expansionRomEnabled, 3, 2);
-        board->addWidget(expansionBoardOptionCheck, 3, 3, 1, 2);
+        board->addWidget(expansionBoardSelector, 3, 2, 1, 2);
+        board->addWidget(expansionBoardString, 3, 2, 1, 2);
+        board->addWidget(expansionBoardOptionCheck, 3, 2, 1, 2);
+        board->addWidget(expansionRomEnabled, 3, 4);
         root->addWidget(groupBox(QStringLiteral("Expansion Board Settings"), board));
         populateExpansionBoardChoices();
         loadExpansionBoardUiState(QString(), 0);
@@ -7849,9 +7895,10 @@ private:
         connect(expansionRomId, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this]() { storeCurrentExpansionBoardUiState(); });
         connect(expansionRomSubtype, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this]() { storeCurrentExpansionBoardUiState(); });
         connect(expansionBoardOption, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this]() {
-            storeCurrentExpansionBoardUiState();
             updateExpansionBoardOptionCheck();
         });
+        connect(expansionBoardSelector, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this]() { storeCurrentExpansionBoardUiState(); });
+        connect(expansionBoardString, &QLineEdit::textChanged, this, [this]() { storeCurrentExpansionBoardUiState(); });
         connect(expansionBoardOptionCheck, &QCheckBox::toggled, this, [this]() { storeCurrentExpansionBoardUiState(); });
         connect(expansionRomBrowse, &QPushButton::clicked, this, [this]() {
             addBrowse(expansionRomFile, this, QStringLiteral("Expansion board ROM file"), QStringLiteral("ROM images (*.rom *.bin);;All files (*)"));
@@ -8032,6 +8079,65 @@ private:
         expansionRomSubtype->setEnabled(true);
     }
 
+    bool expansionBoardOptionIsMulti(const WinUaeQtBoardSetting *choice) const
+    {
+        return choice
+            && choice->type == WinUaeQtBoardSettingType::Multi
+            && !choice->multiValues.isEmpty();
+    }
+
+    bool expansionBoardMultiValueConfigured(const WinUaeQtExpansionBoardState &state, const WinUaeQtBoardSetting &choice) const
+    {
+        if (state.optionValues.contains(choice.configValue)) {
+            return true;
+        }
+        for (const QString &value : choice.multiValues) {
+            if (expansionOptionContains(state.rawOptions, value)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    QString expansionBoardSelectedMultiValue(const WinUaeQtExpansionBoardState &state, const WinUaeQtBoardSetting *choice) const
+    {
+        if (!choice) {
+            return QString();
+        }
+        const QString stored = state.optionValues.value(choice->configValue);
+        if (!stored.isEmpty()) {
+            return stored;
+        }
+        for (const QString &value : choice->multiValues) {
+            if (expansionOptionContains(state.rawOptions, value)) {
+                return value;
+            }
+        }
+        return choice->multiValues.value(0);
+    }
+
+    QString expansionBoardStringValue(const WinUaeQtExpansionBoardState &state, const WinUaeQtBoardSetting *choice) const
+    {
+        if (!choice) {
+            return QString();
+        }
+        if (state.optionValues.contains(choice->configValue)) {
+            return state.optionValues.value(choice->configValue);
+        }
+        return expansionOptionValue(state.rawOptions, choice->configValue);
+    }
+
+    bool expansionBoardSettingHasStoredValue(const WinUaeQtExpansionBoardState &state, const WinUaeQtBoardSetting &choice) const
+    {
+        if (choice.type == WinUaeQtBoardSettingType::CheckBox) {
+            return state.optionBools.value(choice.configValue, false);
+        }
+        if (choice.type == WinUaeQtBoardSettingType::String) {
+            return !expansionBoardStringValue(state, &choice).isEmpty();
+        }
+        return expansionBoardMultiValueConfigured(state, choice);
+    }
+
     void populateExpansionOptionChoices(const QString &boardKey)
     {
         if (!expansionBoardOption) {
@@ -8046,13 +8152,10 @@ private:
         int selectedIndex = 0;
         if (const WinUaeQtExpansionBoardCatalogItem *board = expansionBoardChoiceByKey(boardCatalog, boardKey)) {
             for (const WinUaeQtBoardSetting &choice : board->settings) {
-                if (choice.type != WinUaeQtBoardSettingType::CheckBox) {
-                    continue;
-                }
                 expansionBoardOption->addItem(choice.display, choice.configValue);
                 if (requested.compare(choice.configValue, Qt::CaseInsensitive) == 0) {
                     selectedIndex = expansionBoardOption->count() - 1;
-                } else if (selectedIndex == 0 && requested.isEmpty() && state.optionBools.value(choice.configValue, false)) {
+                } else if (selectedIndex == 0 && requested.isEmpty() && expansionBoardSettingHasStoredValue(state, choice)) {
                     selectedIndex = expansionBoardOption->count() - 1;
                 }
             }
@@ -8064,20 +8167,50 @@ private:
 
     void updateExpansionBoardOptionCheck()
     {
-        if (!expansionBoardOption || !expansionBoardOptionCheck) {
+        if (!expansionBoardOption || !expansionBoardOptionCheck || !expansionBoardSelector || !expansionBoardString) {
             return;
         }
         const QString option = expansionBoardOption->currentData().toString();
         int slot = 0;
         const QString boardKey = expansionBoardBaseKey(currentExpansionBoardConfigName, &slot);
+        const WinUaeQtExpansionBoardCatalogItem *board = expansionBoardChoiceByKey(boardCatalog, boardKey);
+        const WinUaeQtBoardSetting *choice = board ? boardSettingChoiceByConfig(board->settings, option) : nullptr;
         const bool enabled = !expansionBoardUpdating
             && !currentExpansionBoardConfigName.isEmpty()
-            && expansionBoardChoiceByKey(boardCatalog, boardKey)
-            && !option.isEmpty();
+            && board
+            && choice;
         const WinUaeQtExpansionBoardState state = expansionBoardStates.value(currentExpansionBoardConfigName);
-        const QSignalBlocker blocker(expansionBoardOptionCheck);
-        expansionBoardOptionCheck->setEnabled(enabled);
-        expansionBoardOptionCheck->setChecked(enabled && state.optionBools.value(option, false));
+        const QSignalBlocker checkBlocker(expansionBoardOptionCheck);
+        const QSignalBlocker selectorBlocker(expansionBoardSelector);
+        const QSignalBlocker stringBlocker(expansionBoardString);
+
+        expansionBoardOptionCheck->setVisible(choice && choice->type == WinUaeQtBoardSettingType::CheckBox);
+        expansionBoardSelector->setVisible(expansionBoardOptionIsMulti(choice));
+        expansionBoardString->setVisible(choice && choice->type == WinUaeQtBoardSettingType::String);
+
+        expansionBoardOptionCheck->setEnabled(enabled && choice->type == WinUaeQtBoardSettingType::CheckBox);
+        expansionBoardOptionCheck->setChecked(enabled && choice->type == WinUaeQtBoardSettingType::CheckBox && state.optionBools.value(option, false));
+
+        expansionBoardSelector->clear();
+        if (enabled && expansionBoardOptionIsMulti(choice)) {
+            const QStringList displays = choice->multiDisplays;
+            const QStringList values = choice->multiValues;
+            for (int i = 0; i < values.size(); i++) {
+                expansionBoardSelector->addItem(displays.value(i, values[i]), values[i]);
+            }
+            const QString selected = expansionBoardSelectedMultiValue(state, choice);
+            const int index = expansionBoardSelector->findData(selected);
+            expansionBoardSelector->setCurrentIndex(index >= 0 ? index : 0);
+        } else {
+            expansionBoardSelector->addItem(QStringLiteral("None"), QString());
+            expansionBoardSelector->setCurrentIndex(0);
+        }
+        expansionBoardSelector->setEnabled(enabled && expansionBoardOptionIsMulti(choice));
+
+        expansionBoardString->setText(enabled && choice->type == WinUaeQtBoardSettingType::String
+            ? expansionBoardStringValue(state, choice)
+            : QString());
+        expansionBoardString->setEnabled(enabled && choice->type == WinUaeQtBoardSettingType::String);
     }
 
     void loadExpansionBoardUiState(const QString &boardKey, int slot)
@@ -8156,10 +8289,18 @@ private:
         state.subtype = expansionRomSubtype && expansionRomSubtype->isEnabled()
             ? expansionRomSubtype->currentData().toString()
             : QString();
-        if (expansionBoardOption && expansionBoardOptionCheck) {
+        if (expansionBoardOption && expansionBoardOptionCheck && expansionBoardSelector && expansionBoardString) {
             const QString option = expansionBoardOption->currentData().toString();
-            if (!option.isEmpty()) {
+            int slot = 0;
+            const QString boardKey = expansionBoardBaseKey(currentExpansionBoardConfigName, &slot);
+            const WinUaeQtExpansionBoardCatalogItem *board = expansionBoardChoiceByKey(boardCatalog, boardKey);
+            const WinUaeQtBoardSetting *choice = board ? boardSettingChoiceByConfig(board->settings, option) : nullptr;
+            if (choice && choice->type == WinUaeQtBoardSettingType::CheckBox) {
                 state.optionBools.insert(option, expansionBoardOptionCheck->isChecked());
+            } else if (choice && choice->type == WinUaeQtBoardSettingType::Multi) {
+                state.optionValues.insert(option, expansionBoardSelector->currentData().toString());
+            } else if (choice && choice->type == WinUaeQtBoardSettingType::String) {
+                state.optionValues.insert(option, expansionBoardString->text().trimmed());
             }
         }
         if (state.present) {
@@ -8248,6 +8389,15 @@ private:
                 if (choice.type == WinUaeQtBoardSettingType::CheckBox) {
                     const QString option = choice.configValue;
                     state.optionBools.insert(option, expansionOptionBool(value, option));
+                } else if (choice.type == WinUaeQtBoardSettingType::String) {
+                    state.optionValues.insert(choice.configValue, expansionOptionValue(value, choice.configValue));
+                } else if (choice.type == WinUaeQtBoardSettingType::Multi) {
+                    for (const QString &option : choice.multiValues) {
+                        if (expansionOptionContains(value, option)) {
+                            state.optionValues.insert(choice.configValue, option);
+                            break;
+                        }
+                    }
                 }
             }
         } else {

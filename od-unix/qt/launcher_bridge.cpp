@@ -25,9 +25,12 @@
 #include "newcpu.h"
 #include "zfile.h"
 #include "gfxboard.h"
+#include "ethernet.h"
 #ifdef PROWIZARD
 #include "moduleripper.h"
 #endif
+
+extern struct netdriverdata **target_ethernet_enumerate(void);
 
 static QString bridgeText(const TCHAR *text)
 {
@@ -187,6 +190,9 @@ static int bridgeExpansionCategoryMask(int deviceFlags)
 static WinUaeQtBoardCatalog bridgeBoardCatalog(void *)
 {
     WinUaeQtBoardCatalog catalog;
+
+    target_ethernet_enumerate();
+    ethernet_updateselection();
 
     for (int i = 0; expansionroms[i].name; i++) {
         const struct expansionromtype *rom = &expansionroms[i];
