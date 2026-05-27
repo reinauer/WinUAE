@@ -55,7 +55,7 @@ The system zlib is normally enough on macOS.
 
 The macOS build defaults to `CMAKE_OSX_DEPLOYMENT_TARGET=13.0` so the app is not accidentally tied to the build machine's current macOS release. Bundled libraries and frameworks must support the same or an older deployment target. The packaging script checks every bundled Mach-O file and fails if, for example, Homebrew SDL3 was built with a newer `minos` than the app target. The current Homebrew Qt on this machine reports `minos 14.0`, so packaged Qt builds made with it require macOS 14 or newer unless you use the private dependency build below.
 
-For repeatable release builds, build SDL3, QtBase, and optional libraries such as libpng and libFLAC into a private prefix with the same deployment target instead of using Homebrew bottles. The helper defaults QtBase to bundled third-party libraries so Homebrew dylibs with newer deployment targets are not pulled into the release app. If SDL3's CMake or pkg-config metadata is missing from the private prefix, the WinUAE CMake build can still use a matching `include/SDL3` and `libSDL3.0.dylib` pair from `CMAKE_PREFIX_PATH`. Supplying `WINUAE_LIBPNG_SOURCE` gives the Unix screenshot backend a deployment-target-compatible PNG library; without it, CMake may skip a too-new Homebrew libpng and fall back to BMP screenshots. Supplying `WINUAE_FLAC_SOURCE` gives CHD support deployment-target-compatible FLAC codecs; without it, CMake may skip a too-new Homebrew libFLAC and keep CHD enabled without FLAC-compressed CD codecs. PPC release packages also need deployment-target-compatible QEMU-UAE dependencies such as pixman, libslirp, GLib, libgcrypt, gettext, and PCRE2; Homebrew bottles built for a newer macOS will be rejected by the bundle verifier.
+For repeatable release builds, build SDL3, QtBase, and optional libraries such as libpng and libFLAC into a private prefix with the same deployment target instead of using Homebrew bottles. The helper defaults QtBase to bundled third-party libraries so Homebrew dylibs with newer deployment targets are not pulled into the release app. If SDL3's CMake or pkg-config metadata is missing from the private prefix, the WinUAE CMake build can still use a matching `include/SDL3` and `libSDL3.0.dylib` pair from `CMAKE_PREFIX_PATH`. Supplying `WINUAE_LIBPNG_SOURCE` gives the Unix screenshot backend a deployment-target-compatible PNG library; without it, CMake may skip a too-new Homebrew libpng and fall back to BMP screenshots. Supplying `WINUAE_FLAC_SOURCE` gives CHD support deployment-target-compatible FLAC codecs; without it, CMake may skip a too-new Homebrew libFLAC and keep CHD enabled without FLAC-compressed CD codecs. PPC release packages also need deployment-target-compatible QEMU-UAE dependencies such as GLib, gettext, and PCRE2; Homebrew bottles built for a newer macOS will be rejected by the bundle verifier.
 
 ```sh
 WINUAE_MACOS_DEPLOYMENT_TARGET=13.0 \
@@ -233,12 +233,11 @@ into a WinUAE build directory:
 tools/build-qemu-uae.sh ../qemu-uae-v11.0 /tmp/winuae_cmake_build/qemu-uae.so
 ```
 
-On macOS release builds, build GLib and libslirp into the private dependency
-prefix first so the plugin does not inherit newer Homebrew dylibs:
+On macOS release builds, build GLib into the private dependency prefix first so
+the plugin does not inherit newer Homebrew dylibs:
 
 ```sh
 WINUAE_GLIB_SOURCE=/path/to/glib-2.88.1 \
-WINUAE_LIBSLIRP_SOURCE=/path/to/libslirp-v4.9.1 \
 tools/macos-build-qemu-deps.sh ../winuae-macos-deps
 ```
 
@@ -560,7 +559,7 @@ export WINUAE_SMOKE_LOG=/tmp/winuae_unix_smoke.log
 `WINUAE_LZMA_SDK_FETCH` is enabled by default. When archive or CHD support needs the 7-Zip/LZMA SDK, CMake uses `WINUAE_LZMA_SDK_DIR`, defaulting to the ignored `.deps/lzma-sdk/16.04` cache, and fetches `WINUAE_LZMA_SDK_URL` if that cache is missing.
 `WINUAE_UNIX_WITH_JIT` is enabled by default where the Unix host backend is wired, including ARM64 and x86_64.
 `WINUAE_UNIX_WITH_PPC_QEMU` is enabled by default and builds the WinUAE side of the PPC accelerator/QEMU plugin ABI. `WINUAE_UNIX_BUILD_QEMU_UAE_PLUGIN` is enabled by default when a sibling `qemu-uae-v11.0` tree is present and builds/copies `qemu-uae.so` for the executable or app bundle.
-`WINUAE_QEMU_UAE_DEPS_PREFIX` defaults to the private macOS dependency prefix and points the plugin helper at the deployment-target-compatible GLib/libslirp build.
+`WINUAE_QEMU_UAE_DEPS_PREFIX` defaults to the private macOS dependency prefix and points the plugin helper at the deployment-target-compatible GLib build.
 `WINUAE_UNIX_WITH_OPENGL_SHADER_PIPELINE` is enabled by default when SDL3 and OpenGL development files are available. Runtime OpenGL context or shader setup failure falls back to the SDL renderer.
 `WINUAE_UNIX_WITH_SNDBOARD` is enabled by default and builds the shared Toccata/Prelude/UAESND sound-board backend. PCI sound devices remain part of the future PCI bridgeboard work.
 `WINUAE_UNIX_WITH_PROWIZARD` is enabled by default and builds the same Pro Wizard source set used by the Windows project.
