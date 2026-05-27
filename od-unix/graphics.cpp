@@ -503,6 +503,8 @@ static bool unix_picasso_ensure_buffer(int monid)
     pvidinfo->depth = state->GC_Depth ? (state->GC_Depth + 7) / 8 : 0;
     pvidinfo->pixbytes = 4;
     pvidinfo->rowbytes = vidinfo->drawbuffer.rowbytes;
+    pvidinfo->maxwidth = vidinfo->drawbuffer.width_allocated;
+    pvidinfo->maxheight = vidinfo->drawbuffer.height_allocated;
     pvidinfo->rgbformat = state->RGBFormat;
     pvidinfo->selected_rgbformat = state->RGBFormat;
     pvidinfo->host_mode = RGBFB_B8G8R8A8;
@@ -1065,6 +1067,10 @@ void picasso_refresh(int monid)
     if (monid < 0 || monid >= MAX_AMIGAMONITORS) {
         return;
     }
+    if (currprefs.rtgboards[0].rtgmem_type >= GFXBOARD_HARDWARE) {
+        gfxboard_refresh(monid);
+        return;
+    }
     unix_picasso_render(monid);
     if (adisplays[monid].picasso_on || picasso_vidinfo[monid].picasso_active) {
 #ifdef AVIOUTPUT
@@ -1131,6 +1137,7 @@ void picasso_handle_vsync(void)
         struct amigadisplay *ad = &adisplays[monid];
         struct picasso_vidbuf_description *vidinfo = &picasso_vidinfo[monid];
         int state = vidinfo->picasso_state_change;
+        bool uaegfx = currprefs.rtgboards[0].rtgmem_type < GFXBOARD_HARDWARE;
 
         if (state) {
             atomic_and(&vidinfo->picasso_state_change, ~state);
@@ -1145,6 +1152,10 @@ void picasso_handle_vsync(void)
                 vidinfo->full_refresh = 1;
             }
         }
+        if (!uaegfx) {
+            continue;
+        }
+
         if (ad->picasso_on || vidinfo->picasso_active) {
             picasso_trigger_vblank();
             picasso_refresh(monid);
