@@ -423,6 +423,7 @@ static ApplySettingResult applyTypedSetting(const WinUaeQtConfig::Settings &sett
         || applyBool("genlock", &prefs->genlock)
         || applyBool("genlock_alpha", &prefs->genlock_alpha)
         || applyBool("keyboard_nkro", &prefs->keyboard_nkro)
+        || applyBool("df0idhw", &prefs->cs_df0idhw)
         || applyBool("sana2", &prefs->sana2)
         || applyBool("bsdsocket_emu", &prefs->socket_emu)
         || applyBool("uaeserial", &prefs->uaeserial)
