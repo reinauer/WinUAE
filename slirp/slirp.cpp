@@ -114,8 +114,11 @@ static int get_dns_addr(struct in_addr *pdns_addr)
         }
     }
     fclose(f);
-    if (!found)
-        return -1;
+    if (!found) {
+        if (!inet_aton("8.8.8.8", pdns_addr))
+            return -1;
+        write_log("SLIRP: no IPv4 DNS server found, using %s\n", inet_ntoa(*pdns_addr));
+    }
     return 0;
 }
 
