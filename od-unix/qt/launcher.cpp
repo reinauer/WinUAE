@@ -192,6 +192,7 @@ static WinUaeQtBoardCatalog winUaeQtLoadExternalBoardCatalog()
             board.pcmcia = fields.value(8).toInt() != 0;
             board.autobootJumper = fields.value(9).toInt() != 0;
             board.idJumper = fields.value(10).toInt() != 0;
+            board.noRomFile = fields.size() >= 12 && fields.value(11).toInt() != 0;
             if (!board.key.isEmpty() && !board.display.isEmpty()) {
                 catalog.expansionBoards.append(board);
             }
@@ -201,6 +202,8 @@ static WinUaeQtBoardCatalog winUaeQtLoadExternalBoardCatalog()
                 subtype.display = winUaeQtDecodeCatalogField(fields, 2);
                 subtype.configValue = winUaeQtDecodeCatalogField(fields, 3);
                 subtype.deviceFlags = fields.value(4).toInt();
+                subtype.hasRomTypeOverride = fields.size() >= 7 && fields.value(5).toInt() != 0;
+                subtype.noRomFile = fields.size() >= 7 && fields.value(6).toInt() != 0;
                 if (!subtype.display.isEmpty() && !subtype.configValue.isEmpty()) {
                     board->subtypes.append(subtype);
                 }
@@ -3457,6 +3460,19 @@ static const WinUaeQtExpansionBoardCatalogItem *expansionBoardChoiceByDisplay(co
         }
     }
     return nullptr;
+}
+
+static bool expansionBoardNoRomFile(const WinUaeQtExpansionBoardCatalogItem *board, const QString &subtype)
+{
+    if (!board) {
+        return false;
+    }
+    for (const WinUaeQtBoardSubtype &choice : board->subtypes) {
+        if (subtype.compare(choice.configValue, Qt::CaseInsensitive) == 0 && choice.hasRomTypeOverride) {
+            return choice.noRomFile;
+        }
+    }
+    return board->noRomFile;
 }
 
 static const WinUaeQtCpuBoardCatalogItem *cpuBoardSubtypeChoiceByConfig(const WinUaeQtBoardCatalog &catalog, const QString &configValue)
@@ -8226,6 +8242,7 @@ private:
         const bool hasBoard = !boardKey.isEmpty();
         const WinUaeQtExpansionBoardCatalogItem *choice = expansionBoardChoiceByKey(boardCatalog, boardKey);
         const bool supported = hasBoard && choice;
+        const bool noRomFile = expansionBoardNoRomFile(choice, state.subtype);
 
         const QList<QWidget*> controls {
             expansionRomSlot,
@@ -8263,7 +8280,18 @@ private:
         populateExpansionOptionChoices(hasBoard ? boardKey : QString());
         expansionBoardOption->setEnabled(supported && expansionBoardOption->count() > 1);
 
-        setPathComboText(expansionRomFile, state.romFile == QStringLiteral(":ENABLED") ? QString() : state.romFile);
+        if (expansionRomFile) {
+            expansionRomFile->setVisible(!noRomFile);
+            expansionRomFile->setEnabled(supported && !noRomFile);
+        }
+        if (expansionRomBrowse) {
+            expansionRomBrowse->setVisible(!noRomFile);
+            expansionRomBrowse->setEnabled(supported && !noRomFile);
+        }
+        if (expansionRomEnabled) {
+            expansionRomEnabled->setText(noRomFile ? QStringLiteral("Enabled") : QStringLiteral("Enable board"));
+        }
+        setPathComboText(expansionRomFile, noRomFile || state.romFile == QStringLiteral(":ENABLED") ? QString() : state.romFile);
         expansionRomEnabled->setChecked(hasBoard && state.present);
         expansionRomAutobootDisabled->setChecked(hasBoard && state.autobootDisabled);
         expansionRom24BitDma->setChecked(hasBoard && state.dma24Bit);
@@ -8280,8 +8308,6 @@ private:
         }
 
         WinUaeQtExpansionBoardState state = expansionBoardStates.value(currentExpansionBoardConfigName);
-        state.present = expansionRomEnabled->isChecked() || !expansionRomFile->currentText().trimmed().isEmpty();
-        state.romFile = expansionRomFile->currentText().trimmed();
         state.autobootDisabled = expansionRomAutobootDisabled->isChecked();
         state.dma24Bit = expansionRom24BitDma->isChecked();
         state.inserted = expansionRomPcmciaInserted->isChecked();
@@ -8289,6 +8315,17 @@ private:
         state.subtype = expansionRomSubtype && expansionRomSubtype->isEnabled()
             ? expansionRomSubtype->currentData().toString()
             : QString();
+        int currentSlot = 0;
+        const QString currentBoardKey = expansionBoardBaseKey(currentExpansionBoardConfigName, &currentSlot);
+        const WinUaeQtExpansionBoardCatalogItem *currentBoard = expansionBoardChoiceByKey(boardCatalog, currentBoardKey);
+        const bool noRomFile = expansionBoardNoRomFile(currentBoard, state.subtype);
+        if (noRomFile) {
+            state.present = expansionRomEnabled->isChecked();
+            state.romFile = state.present ? QStringLiteral(":ENABLED") : QString();
+        } else {
+            state.present = expansionRomEnabled->isChecked() || !expansionRomFile->currentText().trimmed().isEmpty();
+            state.romFile = expansionRomFile->currentText().trimmed();
+        }
         if (expansionBoardOption && expansionBoardOptionCheck && expansionBoardSelector && expansionBoardString) {
             const QString option = expansionBoardOption->currentData().toString();
             int slot = 0;
@@ -8308,6 +8345,7 @@ private:
         } else {
             expansionBoardStates.remove(currentExpansionBoardConfigName);
         }
+        refreshHardwareInfoPage();
     }
 
     void clearExpansionBoardStates()
@@ -8420,7 +8458,9 @@ private:
             if (!board) {
                 continue;
             }
-            const QString romFile = state.romFile.trimmed().isEmpty() ? QStringLiteral(":ENABLED") : state.romFile.trimmed();
+            const QString romFile = expansionBoardNoRomFile(board, state.subtype)
+                ? QStringLiteral(":ENABLED")
+                : (state.romFile.trimmed().isEmpty() ? QStringLiteral(":ENABLED") : state.romFile.trimmed());
             settings.insert(it.key() + QStringLiteral("_rom_file"), romFile);
             const QString options = expansionBoardOptionsValue(state, board);
             if (!options.isEmpty()) {

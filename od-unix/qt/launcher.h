@@ -68,6 +68,8 @@ struct WinUaeQtBoardSubtype {
     QString display;
     QString configValue;
     int deviceFlags = 0;
+    bool hasRomTypeOverride = false;
+    bool noRomFile = false;
 };
 
 struct WinUaeQtExpansionBoardCatalogItem {
@@ -81,6 +83,7 @@ struct WinUaeQtExpansionBoardCatalogItem {
     bool pcmcia = false;
     bool autobootJumper = false;
     bool idJumper = false;
+    bool noRomFile = false;
     QVector<WinUaeQtBoardSubtype> subtypes;
     QVector<WinUaeQtBoardSetting> settings;
 };
