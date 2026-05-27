@@ -10,6 +10,10 @@
 #define UAENET_TAP 4
 #define UAENET_TUN 5
 
+#ifndef MAX_TOTAL_NET_DEVICES
+#define MAX_TOTAL_NET_DEVICES 30
+#endif
+
 struct netdriverdata
 {
 	int type;

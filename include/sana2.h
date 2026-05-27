@@ -11,7 +11,9 @@
 
 #include "uae/types.h"
 
+#ifndef MAX_TOTAL_NET_DEVICES
 #define MAX_TOTAL_NET_DEVICES 30
+#endif
 
 uaecptr netdev_startup(TrapContext*, uaecptr resaddr);
 void netdev_install(void);

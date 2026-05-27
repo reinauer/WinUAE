@@ -381,6 +381,12 @@ static void gotfunc2(void *devv, const uae_u8 *databuf, int len)
 				(d[12] << 8) | d[13], len);
 		}
 	}
+	if (len > 0 && len < 60) {
+		if (log_a2065 && log_receive)
+			write_log (_T("7990: padding short receive %d -> 60\n"), len);
+		memset (tmp + len, 0, 60 - len);
+		len = 60;
+	}
 
 	// winpcap does not include checksum bytes
 	if (!(csr[4] & 0x0400)) { // ASTRP_RCV
@@ -534,12 +540,6 @@ static void do_transmit (void)
 			for (i = 0; i < size; i++) {
 				transmitbuffer[outsize++] = pm[(i ^ abyteswap) & RAM_MASK];
 			}
-			if (size < 60 && (csr[4] & 0x0800)) { // APAD_XMT
-				while (size < 60) {
-					size++;
-					transmitbuffer[outsize++] = 0;
-				}	
-			}
 			tdr_offset++;
 		}
 		put_ram_word(off + 2, tmd1);
@@ -547,20 +547,16 @@ static void do_transmit (void)
 		if ((tmd1 & TX_ENP) || err)
 			break;
 	}
-	if (!err && outsize < 60) {
-		tmd3 |= TX_BUFF | TX_UFLO;
-		tmd1 |= TX_ERR;
-		csr[0] &= ~CSR0_TXON;
-		write_log (_T("7990: TRANSMIT UNDERFLOW %d\n"), outsize);
-		err = 1;
-		put_ram_word(off + 2, tmd1);
-		put_ram_word(off + 6, tmd3);
-	}
-
 	if (!err) {
 		uae_u8 *d = transmitbuffer;
-		if ((am_mode & MODE_DTCR) && !add_fcs)
+		if ((am_mode & MODE_DTCR) && !add_fcs && outsize >= 64)
 			outsize -= 4; // do not include checksum bytes
+		if (outsize > 0 && outsize < 60) {
+			if (log_a2065 && log_transmit)
+				write_log (_T("7990: padding short transmit %d -> 60\n"), outsize);
+			memset (transmitbuffer + outsize, 0, 60 - outsize);
+			outsize = 60;
+		}
 		if (log_a2065 && log_transmit) {
 			write_log (_T("7990->DST:%02X.%02X.%02X.%02X.%02X.%02X SRC:%02X.%02X.%02X.%02X.%02X.%02X E=%04X S=%d ADDR=%04X\n"),
 				d[0], d[1], d[2], d[3], d[4], d[5],
@@ -1112,7 +1108,9 @@ static bool a2065_config (struct autoconfig_info *aci)
 	}
 
 	td = NULL;
-	if (ethernet_enumerate (&td, romtype)) {
+	struct netdriverdata *tds[MAX_TOTAL_NET_DEVICES] = {};
+	if (ethernet_enumerate (tds, romtype)) {
+		td = tds[0];
 		if (!ethernet_getmac(realmac, aci->rc->configtext)) {
 			memcpy (realmac, td->mac, sizeof realmac);
 		}
