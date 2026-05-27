@@ -5351,9 +5351,24 @@ static QString expandedPathText(const QString &path)
     return winUaeQtExpandedPathText(path);
 }
 
+static QString fileDialogInitialPath(const QString &path)
+{
+    return winUaeQtFileDialogInitialPath(path);
+}
+
+static QString fileDialogInitialDirectory(const QString &path)
+{
+    return winUaeQtFileDialogInitialDirectory(path);
+}
+
+static QString fileDialogInitialSavePath(const QString &path, const QString &fallbackName)
+{
+    return winUaeQtFileDialogInitialSavePath(path, fallbackName);
+}
+
 static void addBrowse(QComboBox *field, QWidget *parent, const QString &caption, const QString &filter)
 {
-    const QString path = QFileDialog::getOpenFileName(parent, caption, expandedPathText(field->currentText()), filter);
+    const QString path = QFileDialog::getOpenFileName(parent, caption, fileDialogInitialPath(field->currentText()), filter);
     if (!path.isEmpty()) {
         setPathComboText(field, path);
     }
@@ -7068,7 +7083,7 @@ private:
         connect(customRomEnd, &QLineEdit::textChanged, this, [this](const QString &) { storeCurrentCustomRomBoard(); });
         connect(customRomFile, &QLineEdit::textChanged, this, [this](const QString &) { storeCurrentCustomRomBoard(); });
         connect(customRomBrowse, &QPushButton::clicked, this, [this]() {
-            const QString selected = QFileDialog::getOpenFileName(this, QStringLiteral("Select custom ROM file"), expandedPathText(customRomFile->text()), QStringLiteral("ROM files (*.rom *.bin);;All files (*)"));
+            const QString selected = QFileDialog::getOpenFileName(this, QStringLiteral("Select custom ROM file"), fileDialogInitialPath(customRomFile->text()), QStringLiteral("ROM files (*.rom *.bin);;All files (*)"));
             if (selected.isEmpty()) {
                 return;
             }
@@ -7490,7 +7505,7 @@ private:
 
     void browseDiskSwapperImage(int slot)
     {
-        const QString selected = QFileDialog::getOpenFileName(this, QStringLiteral("Select floppy image"), expandedPathText(diskSwapperPathAt(slot)), floppyDiskImageFilter());
+        const QString selected = QFileDialog::getOpenFileName(this, QStringLiteral("Select floppy image"), fileDialogInitialPath(diskSwapperPathAt(slot)), floppyDiskImageFilter());
         if (!selected.isEmpty()) {
             setPathComboText(diskSwapperPath, selected);
             setDiskSwapperPath(slot, selected);
@@ -7629,7 +7644,7 @@ private:
             }
         });
         connect(selectCdImage, &QPushButton::clicked, this, [this]() {
-            const QString initialPath = cdSlotPath->currentText().isEmpty() ? QDir::homePath() : expandedPathText(cdSlotPath->currentText());
+            const QString initialPath = fileDialogInitialPath(cdSlotPath->currentText());
             const QString selected = QFileDialog::getOpenFileName(this, QStringLiteral("Select CD image"), initialPath, cdImageFilter());
             if (!selected.isEmpty()) {
                 setPathComboText(cdSlotPath, selected);
@@ -9381,7 +9396,7 @@ private:
         root->addStretch(1);
 
         connect(browse, &QPushButton::clicked, this, [this]() {
-            const QString selected = QFileDialog::getSaveFileName(this, QStringLiteral("Select output file"), expandedPathText(outputFile->text()), QStringLiteral("Video Clip (*.avi);;Wave Sound (*.wav);;All files (*)"));
+            const QString selected = QFileDialog::getSaveFileName(this, QStringLiteral("Select output file"), fileDialogInitialPath(outputFile->text()), QStringLiteral("Video Clip (*.avi);;Wave Sound (*.wav);;All files (*)"));
             if (!selected.isEmpty()) {
                 outputFile->setText(selected);
             }
@@ -11349,7 +11364,7 @@ private:
         const QString path = QFileDialog::getSaveFileName(
             this,
             QStringLiteral("Save debug information"),
-            QDir::home().filePath(defaultName),
+            fileDialogInitialSavePath(QString(), defaultName),
             QStringLiteral("Zip files (*.zip);;All files (*)"));
         if (path.isEmpty()) {
             return;
@@ -11491,7 +11506,7 @@ private:
         root->addLayout(right, 1);
 
         const auto selectStateFile = [this]() {
-            const QString selected = QFileDialog::getOpenFileName(this, QStringLiteral("Select state file"), expandedPathText(stateFileName->currentText()), QStringLiteral("WinUAE state files (*.uss);;All files (*)"));
+            const QString selected = QFileDialog::getOpenFileName(this, QStringLiteral("Select state file"), fileDialogInitialPath(stateFileName->currentText()), QStringLiteral("WinUAE state files (*.uss);;All files (*)"));
             if (!selected.isEmpty()) {
                 setPathComboText(stateFileName, selected);
                 stateFileClear->setChecked(false);
@@ -12098,7 +12113,9 @@ private:
         layout->addWidget(field, row, 1);
         layout->addWidget(browse, row, 2);
         connect(browse, &QPushButton::clicked, this, [this, field, directory, caption]() {
-            const QString initialPath = expandedPathText(field->text());
+            const QString initialPath = directory
+                ? fileDialogInitialDirectory(field->text())
+                : fileDialogInitialPath(field->text());
             QString path;
             if (directory) {
                 path = QFileDialog::getExistingDirectory(this, caption, initialPath);
@@ -13487,7 +13504,7 @@ private:
 
     void addHardfileMountDialog()
     {
-        const QString path = QFileDialog::getOpenFileName(this, QStringLiteral("Add hardfile"), QDir::homePath(), hardfileImageFilter());
+        const QString path = QFileDialog::getOpenFileName(this, QStringLiteral("Add hardfile"), fileDialogInitialPath(QString()), hardfileImageFilter());
         if (path.isEmpty()) {
             return;
         }
@@ -13925,7 +13942,7 @@ private:
         };
 
         connect(selectDirectory, &QPushButton::clicked, this, [this, path, volume, readOnly, updateReadOnlyForPath]() {
-            const QString initialPath = path->text().isEmpty() ? QDir::homePath() : expandedPathText(path->text());
+            const QString initialPath = fileDialogInitialDirectory(path->text());
             const QString selected = QFileDialog::getExistingDirectory(this, QStringLiteral("Select directory"), initialPath);
             if (!selected.isEmpty()) {
                 path->setText(selected);
@@ -13938,7 +13955,7 @@ private:
         });
         if (selectArchive) {
             connect(selectArchive, &QPushButton::clicked, this, [this, path, volume, updateReadOnlyForPath]() {
-                const QString initialPath = path->text().isEmpty() ? QDir::homePath() : expandedPathText(path->text());
+                const QString initialPath = fileDialogInitialPath(path->text());
                 const QString selected = QFileDialog::getOpenFileName(this, QStringLiteral("Select directory archive"), initialPath, directoryArchiveFilter());
                 if (!selected.isEmpty()) {
                     path->setText(selected);
@@ -14182,21 +14199,21 @@ private:
         updateNativeDriveControls();
 
         connect(browse, &QPushButton::clicked, this, [this, path]() {
-            const QString initialPath = path->text().isEmpty() ? QDir::homePath() : expandedPathText(path->text());
+            const QString initialPath = fileDialogInitialPath(path->text());
             const QString selected = QFileDialog::getOpenFileName(this, QStringLiteral("Select hardfile"), initialPath, hardfileImageFilter());
             if (!selected.isEmpty()) {
                 path->setText(selected);
             }
         });
         connect(geometryBrowse, &QPushButton::clicked, this, [this, geometryFile]() {
-            const QString initialPath = geometryFile->text().isEmpty() ? QDir::homePath() : expandedPathText(geometryFile->text());
+            const QString initialPath = fileDialogInitialPath(geometryFile->text());
             const QString selected = QFileDialog::getOpenFileName(this, QStringLiteral("Select geometry file"), initialPath, QStringLiteral("Geometry files (*.geo);;All files (*)"));
             if (!selected.isEmpty()) {
                 geometryFile->setText(selected);
             }
         });
         connect(filesysBrowse, &QPushButton::clicked, this, [this, filesys]() {
-            const QString initialPath = filesys->text().isEmpty() ? QDir::homePath() : expandedPathText(filesys->text());
+            const QString initialPath = fileDialogInitialPath(filesys->text());
             const QString selected = QFileDialog::getOpenFileName(this, QStringLiteral("Select filesystem"), initialPath, QStringLiteral("Filesystem files (*.fs *.filesystem);;All files (*)"));
             if (!selected.isEmpty()) {
                 filesys->setText(selected);
@@ -14392,14 +14409,14 @@ private:
         root->addWidget(buttons);
 
         connect(selectFile, &QPushButton::clicked, this, [this, path]() {
-            const QString initialPath = path->text().isEmpty() ? QDir::homePath() : expandedPathText(path->text());
+            const QString initialPath = fileDialogInitialPath(path->text());
             const QString selected = QFileDialog::getOpenFileName(this, QStringLiteral("Select tape image"), initialPath, QStringLiteral("Tape images (*.tap *.raw);;All files (*)"));
             if (!selected.isEmpty()) {
                 path->setText(selected);
             }
         });
         connect(selectDirectory, &QPushButton::clicked, this, [this, path]() {
-            const QString initialPath = path->text().isEmpty() ? QDir::homePath() : expandedPathText(path->text());
+            const QString initialPath = fileDialogInitialDirectory(path->text());
             const QString selected = QFileDialog::getExistingDirectory(this, QStringLiteral("Select tape directory"), initialPath);
             if (!selected.isEmpty()) {
                 path->setText(selected);
@@ -15624,7 +15641,7 @@ private:
         if (configsPath && !configsPath->text().trimmed().isEmpty()) {
             return expandedPathText(configsPath->text());
         }
-        return QDir::homePath();
+        return fileDialogInitialPath(QString());
     }
 
     QString normalizedConfigName() const
@@ -16934,25 +16951,12 @@ WinUaeQtLauncherResult runWinUaeQtLauncherForConfig(int argc, char **argv, const
 
 static QString runtimeDialogDirectory(const QString &initialPath)
 {
-    const QString expandedPath = expandedPathText(initialPath);
-    if (expandedPath.isEmpty()) {
-        return QDir::homePath();
-    }
-    QFileInfo info(expandedPath);
-    if (info.isDir()) {
-        return info.absoluteFilePath();
-    }
-    const QString parent = info.absolutePath();
-    return parent.isEmpty() ? QDir::homePath() : parent;
+    return fileDialogInitialDirectory(initialPath);
 }
 
 static QString runtimeDialogSavePath(const QString &initialPath, const QString &fallbackName)
 {
-    const QString expandedPath = expandedPathText(initialPath);
-    if (!expandedPath.isEmpty()) {
-        return expandedPath;
-    }
-    return QDir(QDir::homePath()).filePath(fallbackName);
+    return fileDialogInitialSavePath(initialPath, fallbackName);
 }
 
 WinUaeQtRuntimeFileDialogResult runWinUaeQtRuntimeFileDialog(QApplication &app, int shortcut, const QString &initialPath)
