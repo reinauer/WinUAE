@@ -2779,6 +2779,7 @@ static const AdvancedCheckChoice advancedCheckChoices[] = {
     { "CD32 CD", "cd32cd", false },
     { "CDTV CD", "cdtvcd", false },
     { "ROM Mirror (E0)", "ksmirror_e0", true },
+    { "DF0: ID Hardware", "df0idhw", true },
     { "KB Reset Warning", "resetwarning", true },
     { "CIA TOD bug", "cia_todbug", false },
     { "1M Chip / 0.5M+0.5M", "1mchipjumper", false },
@@ -6879,7 +6880,7 @@ private:
         features->addWidget(featureCheck(QStringLiteral("Z3 Autoconfig"), QStringLiteral("z3_autoconfig")), 5, 1);
         features->addWidget(disabledFeature(QStringLiteral("Custom register byte write bug")), 6, 1);
         features->addWidget(featureCheck(QStringLiteral("KS ROM has Chip RAM speed"), QStringLiteral("rom_is_slow")), 7, 1);
-        features->addWidget(disabledFeature(QStringLiteral("DF0: ID Hardware")), 0, 2);
+        features->addWidget(featureCheck(QStringLiteral("DF0: ID Hardware"), QStringLiteral("df0idhw")), 0, 2);
         features->addWidget(featureCheck(QStringLiteral("CD32 NVRAM"), QStringLiteral("cd32nvram")), 1, 2);
         features->addWidget(featureCheck(QStringLiteral("CDTV-CR"), QStringLiteral("cdtv-cr")), 2, 2);
         features->addWidget(featureCheck(QStringLiteral("PCMCIA"), QStringLiteral("pcmcia")), 3, 2);
@@ -12897,6 +12898,7 @@ private:
             advancedUnmappedAddress->setCurrentText(QStringLiteral("All zeros"));
             advancedCiaSync->setCurrentText(QStringLiteral("Gayle"));
         } else if (value == QStringLiteral("A500")) {
+            setAdvancedCheck(QStringLiteral("df0idhw"), false);
             setAdvancedCheck(QStringLiteral("resetwarning"), false);
             setAdvancedCheck(QStringLiteral("cia_todbug"), true);
         } else if (value == QStringLiteral("A500+")) {
@@ -15229,6 +15231,7 @@ private:
             QStringLiteral("cd32cd"),
             QStringLiteral("cdtvcd"),
             QStringLiteral("ksmirror_e0"),
+            QStringLiteral("df0idhw"),
             QStringLiteral("resetwarning"),
             QStringLiteral("cia_todbug"),
             QStringLiteral("1mchipjumper"),
