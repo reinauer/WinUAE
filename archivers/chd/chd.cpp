@@ -12,7 +12,12 @@
 #include "chd.h"
 #include "avhuff.h"
 #include "hashing.h"
+#ifndef WITH_CHD_FLAC
+#define WITH_CHD_FLAC 1
+#endif
+#if WITH_CHD_FLAC
 #include "flac.h"
+#endif
 #include "chdcdrom.h"
 #include "coretmpl.h"
 #include "chdcodec.h"

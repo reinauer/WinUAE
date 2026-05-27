@@ -17,14 +17,19 @@
 #include "coretmpl.h"
 #include "bitmap.h"
 #include "huffman.h"
+#ifndef WITH_CHD_FLAC
+#define WITH_CHD_FLAC 1
+#endif
+#if WITH_CHD_FLAC
 #include "flac.h"
+#endif
 
 
 //**************************************************************************
 //  CONSTANTS
 //**************************************************************************
 
-#define AVHUFF_USE_FLAC     (1)
+#define AVHUFF_USE_FLAC     (WITH_CHD_FLAC)
 
 
 // errors
