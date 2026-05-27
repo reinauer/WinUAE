@@ -1356,6 +1356,13 @@ int main (int argc, TCHAR **argv)
 {
 #ifdef UAE_TARGET_UNIX
 	unix_gui_set_main_args(argc, argv);
+#if defined(WINUAE_UNIX_WITH_INTEGRATED_QT_UI)
+	for (int i = 1; i < argc; i++) {
+		if (!_tcscmp(argv[i], _T("--qt-board-catalog"))) {
+			return runWinUaeQtBoardCatalogDump();
+		}
+	}
+#endif
 #endif
 	real_main (argc, argv);
 	return 0;
