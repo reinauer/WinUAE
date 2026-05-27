@@ -2,6 +2,7 @@
 
 #include <QByteArray>
 #include <QDir>
+#include <QFileInfo>
 
 QString winUaeQtEnvString(const char *name)
 {
@@ -16,6 +17,11 @@ QString winUaeQtDefaultDataPath()
 QString winUaeQtDefaultDataSubPath(const QString &name)
 {
     return QDir(winUaeQtDefaultDataPath()).filePath(name);
+}
+
+QString winUaeQtDefaultFileDialogPath()
+{
+    return winUaeQtExpandedPathText(winUaeQtDefaultDataPath());
 }
 
 QString winUaeQtExpandUnixPath(QString path)
@@ -73,4 +79,33 @@ QString winUaeQtExpandUnixPath(QString path)
 QString winUaeQtExpandedPathText(const QString &path)
 {
     return winUaeQtExpandUnixPath(path.trimmed());
+}
+
+QString winUaeQtFileDialogInitialPath(const QString &path)
+{
+    const QString expandedPath = winUaeQtExpandedPathText(path);
+    return expandedPath.isEmpty() ? winUaeQtDefaultFileDialogPath() : expandedPath;
+}
+
+QString winUaeQtFileDialogInitialDirectory(const QString &path)
+{
+    const QString expandedPath = winUaeQtExpandedPathText(path);
+    if (expandedPath.isEmpty()) {
+        return winUaeQtDefaultFileDialogPath();
+    }
+    QFileInfo info(expandedPath);
+    if (info.isDir()) {
+        return info.absoluteFilePath();
+    }
+    const QString parent = info.absolutePath();
+    return parent.isEmpty() ? winUaeQtDefaultFileDialogPath() : parent;
+}
+
+QString winUaeQtFileDialogInitialSavePath(const QString &path, const QString &fallbackName)
+{
+    const QString expandedPath = winUaeQtExpandedPathText(path);
+    if (!expandedPath.isEmpty()) {
+        return expandedPath;
+    }
+    return QDir(winUaeQtDefaultFileDialogPath()).filePath(fallbackName);
 }
