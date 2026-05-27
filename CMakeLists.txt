@@ -83,6 +83,80 @@ function(winuae_unix_macos_find_qt_frameworks out_var)
     set("${out_var}" "" PARENT_SCOPE)
 endfunction()
 
+function(winuae_unix_find_lzma_sdk out_var)
+    set(WINUAE_LZMA_SDK_CANDIDATES
+        "${WINUAE_LZMA_SDK_DIR}/C"
+        "${WINUAE_LZMA_SDK_DIR}"
+    )
+    foreach(candidate IN LISTS WINUAE_LZMA_SDK_CANDIDATES)
+        if(EXISTS "${candidate}/7z/7zVersion.h")
+            set(WINUAE_LZMA_SDK_SOURCE_DIR "${candidate}")
+            break()
+        endif()
+    endforeach()
+
+    if(NOT WINUAE_LZMA_SDK_SOURCE_DIR)
+        if(NOT WINUAE_LZMA_SDK_FETCH)
+            message(FATAL_ERROR
+                "7-Zip/LZMA SDK ${WINUAE_LZMA_SDK_VERSION} was not found in "
+                "${WINUAE_LZMA_SDK_DIR}. Enable WINUAE_LZMA_SDK_FETCH or "
+                "pre-seed WINUAE_LZMA_SDK_DIR with the SDK archive contents."
+            )
+        endif()
+
+        message(STATUS
+            "Fetching 7-Zip/LZMA SDK ${WINUAE_LZMA_SDK_VERSION} into "
+            "${WINUAE_LZMA_SDK_DIR}"
+        )
+        execute_process(
+            COMMAND sh "${CMAKE_CURRENT_SOURCE_DIR}/tools/fetch-lzma-sdk.sh"
+                    "${WINUAE_LZMA_SDK_DIR}"
+                    "${WINUAE_LZMA_SDK_URL}"
+                    "${WINUAE_LZMA_SDK_VERSION}"
+            RESULT_VARIABLE WINUAE_LZMA_SDK_FETCH_RESULT
+            OUTPUT_VARIABLE WINUAE_LZMA_SDK_FETCH_OUTPUT
+            ERROR_VARIABLE WINUAE_LZMA_SDK_FETCH_ERROR
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_STRIP_TRAILING_WHITESPACE
+        )
+        if(NOT WINUAE_LZMA_SDK_FETCH_RESULT EQUAL 0)
+            message(FATAL_ERROR
+                "Failed to fetch 7-Zip/LZMA SDK "
+                "${WINUAE_LZMA_SDK_VERSION}: "
+                "${WINUAE_LZMA_SDK_FETCH_ERROR}\n"
+                "${WINUAE_LZMA_SDK_FETCH_OUTPUT}"
+            )
+        endif()
+
+        foreach(candidate IN LISTS WINUAE_LZMA_SDK_CANDIDATES)
+            if(EXISTS "${candidate}/7z/7zVersion.h")
+                set(WINUAE_LZMA_SDK_SOURCE_DIR "${candidate}")
+                break()
+            endif()
+        endforeach()
+    endif()
+
+    if(NOT WINUAE_LZMA_SDK_SOURCE_DIR)
+        message(FATAL_ERROR
+            "7-Zip/LZMA SDK ${WINUAE_LZMA_SDK_VERSION} was fetched, but "
+            "no 7z/7zVersion.h was found in ${WINUAE_LZMA_SDK_DIR}."
+        )
+    endif()
+
+    file(STRINGS "${WINUAE_LZMA_SDK_SOURCE_DIR}/7z/7zVersion.h"
+        WINUAE_LZMA_SDK_VERSION_LINES
+        REGEX "^#define MY_VERSION \"${WINUAE_LZMA_SDK_VERSION}\""
+    )
+    if(NOT WINUAE_LZMA_SDK_VERSION_LINES)
+        message(FATAL_ERROR
+            "Expected 7-Zip/LZMA SDK ${WINUAE_LZMA_SDK_VERSION}, but "
+            "${WINUAE_LZMA_SDK_SOURCE_DIR}/7z/7zVersion.h did not match."
+        )
+    endif()
+
+    set("${out_var}" "${WINUAE_LZMA_SDK_SOURCE_DIR}" PARENT_SCOPE)
+endfunction()
+
 option(WINUAE_UNIX_BUILD_EXECUTABLE "Link the initial Unix command-line executable" ON)
 option(WINUAE_UNIX_WITH_SDL3 "Build the Unix SDL3 video/audio backend" ON)
 option(WINUAE_UNIX_WITH_SLIRP "Build built-in SLIRP user-mode networking and A2065 Ethernet support" ON)
@@ -111,6 +185,13 @@ option(WINUAE_UNIX_WITH_SNDBOARD "Build shared Toccata/Prelude/UAESND sound-boar
 option(WINUAE_UNIX_WITH_GFXBOARD "Build shared hardware RTG graphics board, PCI, QEMU VGA and PCem Voodoo support" ON)
 option(WINUAE_UNIX_WITH_AVIOUTPUT "Build Unix screenshot and video/audio capture output support" ON)
 option(WINUAE_UNIX_WITH_OPENGL_SHADER_PIPELINE "Build OpenGL-backed Unix shader/filter presentation support" ON)
+option(WINUAE_LZMA_SDK_FETCH "Fetch the 7-Zip/LZMA SDK into WINUAE_LZMA_SDK_DIR when missing" ON)
+
+set(WINUAE_LZMA_SDK_VERSION "16.04" CACHE STRING "7-Zip/LZMA SDK version used by archive and CHD support")
+set(WINUAE_LZMA_SDK_URL "https://www.7-zip.org/a/lzma1604.7z"
+    CACHE STRING "URL for the 7-Zip/LZMA SDK archive")
+set(WINUAE_LZMA_SDK_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.deps/lzma-sdk/${WINUAE_LZMA_SDK_VERSION}"
+    CACHE PATH "Local cache directory for the 7-Zip/LZMA SDK")
 
 set(WINUAE_QEMU_UAE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../qemu-uae-v11.0"
     CACHE PATH "QEMU-UAE plugin source directory")
@@ -186,6 +267,16 @@ target_include_directories(winuae_core PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/archivers/wrp"
     "${CMAKE_CURRENT_SOURCE_DIR}/archivers/zip"
 )
+
+if(WINUAE_UNIX_WITH_ARCHIVES OR WINUAE_UNIX_WITH_CHD)
+    winuae_unix_find_lzma_sdk(WINUAE_LZMA_SDK_SOURCE_DIR)
+    set(WINUAE_LZMA_SDK_7Z_DIR "${WINUAE_LZMA_SDK_SOURCE_DIR}/7z")
+    target_include_directories(winuae_core PRIVATE "${WINUAE_LZMA_SDK_SOURCE_DIR}")
+    target_compile_definitions(winuae_core PRIVATE
+        _7ZIP_ST=1
+        UAE_7Z_SDK_1604=1
+    )
+endif()
 
 target_compile_options(winuae_core PRIVATE
     $<$<COMPILE_LANGUAGE:CXX>:-Wno-c++11-narrowing>
@@ -276,6 +367,7 @@ if(WINUAE_UNIX_WITH_ARCHIVES)
     target_compile_definitions(winuae_core PRIVATE
         WINUAE_UNIX_WITH_ARCHIVES=1
         A_ZIP=1
+        A_7Z=1
         A_LHA=1
         A_LZX=1
         A_DMS=1
@@ -286,6 +378,43 @@ if(WINUAE_UNIX_WITH_ARCHIVES)
         archivers/zip/ioapi.cpp
         archivers/zip/unzip.cpp
         archivers/zip/zip.cpp
+        "${WINUAE_LZMA_SDK_7Z_DIR}/7zAlloc.c"
+        "${WINUAE_LZMA_SDK_7Z_DIR}/7zArcIn.c"
+        "${WINUAE_LZMA_SDK_7Z_DIR}/7zBuf.c"
+        "${WINUAE_LZMA_SDK_7Z_DIR}/7zBuf2.c"
+        "${WINUAE_LZMA_SDK_7Z_DIR}/7zCrc.c"
+        "${WINUAE_LZMA_SDK_7Z_DIR}/7zCrcOpt.c"
+        "${WINUAE_LZMA_SDK_7Z_DIR}/7zDec.c"
+        "${WINUAE_LZMA_SDK_7Z_DIR}/7zFile.c"
+        "${WINUAE_LZMA_SDK_7Z_DIR}/7zStream.c"
+        "${WINUAE_LZMA_SDK_7Z_DIR}/Aes.c"
+        "${WINUAE_LZMA_SDK_7Z_DIR}/AesOpt.c"
+        "${WINUAE_LZMA_SDK_7Z_DIR}/Alloc.c"
+        "${WINUAE_LZMA_SDK_7Z_DIR}/Bcj2.c"
+        "${WINUAE_LZMA_SDK_7Z_DIR}/Bra.c"
+        "${WINUAE_LZMA_SDK_7Z_DIR}/Bra86.c"
+        "${WINUAE_LZMA_SDK_7Z_DIR}/BraIA64.c"
+        "${WINUAE_LZMA_SDK_7Z_DIR}/CpuArch.c"
+        "${WINUAE_LZMA_SDK_7Z_DIR}/Delta.c"
+        "${WINUAE_LZMA_SDK_7Z_DIR}/LzFind.c"
+        "${WINUAE_LZMA_SDK_7Z_DIR}/Lzma2Dec.c"
+        "${WINUAE_LZMA_SDK_7Z_DIR}/Lzma2Enc.c"
+        "${WINUAE_LZMA_SDK_7Z_DIR}/Lzma86Dec.c"
+        "${WINUAE_LZMA_SDK_7Z_DIR}/Lzma86Enc.c"
+        "${WINUAE_LZMA_SDK_7Z_DIR}/LzmaDec.c"
+        "${WINUAE_LZMA_SDK_7Z_DIR}/LzmaEnc.c"
+        "${WINUAE_LZMA_SDK_7Z_DIR}/LzmaLib.c"
+        "${WINUAE_LZMA_SDK_7Z_DIR}/Ppmd7.c"
+        "${WINUAE_LZMA_SDK_7Z_DIR}/Ppmd7Dec.c"
+        "${WINUAE_LZMA_SDK_7Z_DIR}/Ppmd7Enc.c"
+        "${WINUAE_LZMA_SDK_7Z_DIR}/Sha256.c"
+        "${WINUAE_LZMA_SDK_7Z_DIR}/Sort.c"
+        "${WINUAE_LZMA_SDK_7Z_DIR}/Xz.c"
+        "${WINUAE_LZMA_SDK_7Z_DIR}/XzCrc64.c"
+        "${WINUAE_LZMA_SDK_7Z_DIR}/XzCrc64Opt.c"
+        "${WINUAE_LZMA_SDK_7Z_DIR}/XzDec.c"
+        "${WINUAE_LZMA_SDK_7Z_DIR}/XzEnc.c"
+        "${WINUAE_LZMA_SDK_7Z_DIR}/XzIn.c"
         archivers/lha/crcio.cpp
         archivers/lha/dhuf.cpp
         archivers/lha/header.cpp
@@ -330,12 +459,16 @@ if(WINUAE_UNIX_WITH_CHD)
         archivers/chd/huffman.cpp
         archivers/chd/md5.cpp
         archivers/chd/sha1.cpp
-        archivers/7z/LzmaDec.c
-        archivers/7z/LzmaEnc.c
-        archivers/7z/LzFind.c
         od-unix/chd_unix_time.cpp
         od-unix/chd_unix_work.cpp
     )
+    if(NOT WINUAE_UNIX_WITH_ARCHIVES)
+        list(APPEND WINUAE_UNIX_EXTRA_SOURCES
+            "${WINUAE_LZMA_SDK_7Z_DIR}/LzmaDec.c"
+            "${WINUAE_LZMA_SDK_7Z_DIR}/LzmaEnc.c"
+            "${WINUAE_LZMA_SDK_7Z_DIR}/LzFind.c"
+        )
+    endif()
 
     set(WINUAE_UNIX_CHD_FLAC_OK OFF)
     if(WINUAE_UNIX_WITH_CHD_FLAC AND PkgConfig_FOUND)
