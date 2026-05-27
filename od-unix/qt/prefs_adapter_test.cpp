@@ -178,6 +178,7 @@ static bool testRepresentativeConfig()
     settings.insert(QStringLiteral("floppy0sound"), QStringLiteral("1"));
     settings.insert(QStringLiteral("floppy0soundvolume_empty"), QStringLiteral("34"));
     settings.insert(QStringLiteral("floppy0soundvolume_disk"), QStringLiteral("22"));
+    settings.insert(QStringLiteral("df0idhw"), QStringLiteral("false"));
     settings.insert(QStringLiteral("gfxcard_size"), QStringLiteral("16"));
     settings.insert(QStringLiteral("gfxcard_type"), QStringLiteral("PicassoIV_Z3"));
     settings.insert(QStringLiteral("gfx_width_windowed"), QStringLiteral("800"));
@@ -260,6 +261,7 @@ static bool testRepresentativeConfig()
     ok = require(!parsedLines.contains(QStringLiteral("sound_auto=true")), "sound_auto was delegated") && ok;
     ok = require(!parsedLines.contains(QStringLiteral("sound_channels=mixed")), "sound_channels was delegated") && ok;
     ok = require(!parsedLines.contains(QStringLiteral("floppy0sound=1")), "floppy0sound was delegated") && ok;
+    ok = require(!parsedLines.contains(QStringLiteral("df0idhw=false")), "df0idhw was delegated") && ok;
     ok = require(!parsedLines.contains(QStringLiteral("gfxcard_size=16")), "gfxcard_size was delegated") && ok;
     ok = require(!parsedLines.contains(QStringLiteral("gfxcard_type=PicassoIV_Z3")), "gfxcard_type was delegated") && ok;
     ok = require(!parsedLines.contains(QStringLiteral("gfx_width_windowed=800")), "gfx_width_windowed was delegated") && ok;
@@ -293,6 +295,7 @@ static bool testRepresentativeConfig()
     ok = require(prefs->floppyslots[2].forcedwriteprotect, "floppy2wp") && ok;
     ok = require(prefs->floppyslots[3].forcedwriteprotect, "floppy3wp") && ok;
     ok = requireInt(prefs->nr_floppies, 2, "nr_floppies") && ok;
+    ok = require(!prefs->cs_df0idhw, "df0idhw") && ok;
     ok = requireInt(prefs->cs_compatible, CP_A1200, "cs_compatible") && ok;
     ok = requireInt(prefs->cpu_model, 68020, "cpu_model") && ok;
     ok = requireInt(prefs->fpu_model, 68882, "fpu_model") && ok;
