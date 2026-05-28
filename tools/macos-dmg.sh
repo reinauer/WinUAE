@@ -230,7 +230,7 @@ dmg_codesign_identity="${WINUAE_DMG_CODESIGN_IDENTITY:-${WINUAE_CODESIGN_IDENTIT
 if [[ -n "${dmg_codesign_identity}" && "${dmg_codesign_identity}" != "-" ]] && command -v codesign >/dev/null 2>&1; then
     dmg_codesign_args=(--force --sign "${dmg_codesign_identity}")
     split_extra_args "${WINUAE_DMG_CODESIGN_OPTIONS:-}"
-    dmg_codesign_args+=("${extra_args[@]}")
+    dmg_codesign_args+=(${extra_args[@]+"${extra_args[@]}"})
     codesign "${dmg_codesign_args[@]}" "${final_dmg}"
 fi
 
