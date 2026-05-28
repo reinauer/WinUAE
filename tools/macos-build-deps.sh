@@ -198,7 +198,7 @@ if [[ "${WINUAE_SKIP_QT:-0}" != "1" ]]; then
     )
     if [[ -n "${WINUAE_QT_CONFIGURE_ARGS:-}" ]]; then
         split_extra_args "${WINUAE_QT_CONFIGURE_ARGS}"
-        qt_configure_args+=("${extra_args[@]}")
+        qt_configure_args+=(${extra_args[@]+"${extra_args[@]}"})
     fi
 
     qt_cmake_args=()
@@ -207,7 +207,7 @@ if [[ "${WINUAE_SKIP_QT:-0}" != "1" ]]; then
     fi
     if [[ -n "${WINUAE_QT_CMAKE_ARGS:-}" ]]; then
         split_extra_args "${WINUAE_QT_CMAKE_ARGS}"
-        qt_cmake_args+=("${extra_args[@]}")
+        qt_cmake_args+=(${extra_args[@]+"${extra_args[@]}"})
     fi
 
     qt_submodule_args=()
@@ -225,11 +225,11 @@ if [[ "${WINUAE_SKIP_QT:-0}" != "1" ]]; then
                 -confirm-license \
                 -nomake examples \
                 -nomake tests \
-                "${qt_submodule_args[@]}" \
-                "${qt_configure_args[@]}" \
+                ${qt_submodule_args[@]+"${qt_submodule_args[@]}"} \
+                ${qt_configure_args[@]+"${qt_configure_args[@]}"} \
                 -- \
                 -DCMAKE_OSX_DEPLOYMENT_TARGET="${target}" \
-                "${qt_cmake_args[@]}"
+                ${qt_cmake_args[@]+"${qt_cmake_args[@]}"}
         )
         cmake --build "${qt_build}" -j "${jobs}"
         cmake --install "${qt_build}"
@@ -249,7 +249,7 @@ if [[ "${WINUAE_SKIP_QT:-0}" != "1" ]]; then
             -DQT_FEATURE_gtk=OFF \
             -DQT_FEATURE_opengl=OFF \
             -DQT_FEATURE_opengles2=OFF \
-            "${qt_cmake_args[@]}"
+            ${qt_cmake_args[@]+"${qt_cmake_args[@]}"}
     fi
 fi
 
