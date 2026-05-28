@@ -272,7 +272,10 @@ if(WINUAE_UNIX_WITH_ARCHIVES OR WINUAE_UNIX_WITH_CHD)
     winuae_unix_find_lzma_sdk(WINUAE_LZMA_SDK_SOURCE_DIR)
     set(WINUAE_LZMA_SDK_7Z_DIR "${WINUAE_LZMA_SDK_SOURCE_DIR}/7z")
     target_include_directories(winuae_core PRIVATE "${WINUAE_LZMA_SDK_SOURCE_DIR}")
-    target_compile_definitions(winuae_core PRIVATE _7ZIP_ST=1)
+    target_compile_definitions(winuae_core PRIVATE
+        _7ZIP_ST=1
+        UAE_7Z_SDK_1604=1
+    )
 endif()
 
 target_compile_options(winuae_core PRIVATE

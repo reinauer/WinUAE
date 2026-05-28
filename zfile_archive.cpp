@@ -576,6 +576,7 @@ static void init_7z (void)
 
 static TCHAR *sevenzip_get_name(const CSzArEx *db, UInt32 index)
 {
+#ifdef UAE_7Z_SDK_1604
 	size_t len = SzArEx_GetFileNameUtf16(db, index, NULL);
 	UInt16 *src = xcalloc(UInt16, len > 0 ? len : 1);
 	TCHAR *out;
@@ -615,6 +616,9 @@ static TCHAR *sevenzip_get_name(const CSzArEx *db, UInt32 index)
 #endif
 	xfree(src);
 	return out;
+#else
+	return (TCHAR*)(db->FileNames.data + db->FileNameOffsets[index] * 2);
+#endif
 }
 
 struct SevenZContext
@@ -667,6 +671,7 @@ struct zvolume *archive_directory_7z (struct zfile *z)
 		return NULL;
 	}
 	zv = zvolume_alloc (z, ArchiveFormat7Zip, ctx, NULL);
+#ifdef UAE_7Z_SDK_1604
 	for (i = 0; i < ctx->db.NumFiles; i++) {
 		TCHAR *name = sevenzip_get_name(&ctx->db, i);
 		struct zarchive_info zai;
@@ -692,6 +697,32 @@ struct zvolume *archive_directory_7z (struct zfile *z)
 		}
 		xfree(name);
 	}
+#else
+	for (i = 0; i < ctx->db.db.NumFiles; i++) {
+		CSzFileItem *f = ctx->db.db.Files + i;
+		TCHAR *name = sevenzip_get_name(&ctx->db, i);
+		struct zarchive_info zai;
+
+		memset(&zai, 0, sizeof zai);
+		zai.name = name;
+		zai.flags = f->AttribDefined ? f->Attrib : -1;
+		zai.size = f->Size;
+		if (f->MTimeDefined) {
+			uae_u64 t = (((uae_u64)f->MTime.High) << 32) | f->MTime.Low;
+			if (t >= EPOCH_DIFF) {
+				zai.tv.tv_sec = (t - EPOCH_DIFF) / RATE_DIFF;
+				zai.tv.tv_sec -= _timezone;
+				if (_daylight)
+					zai.tv.tv_sec += 1 * 60 * 60;
+			}
+		}
+		if (!f->IsDir) {
+			struct znode *zn = zvolume_addfile_abs (zv, &zai);
+			if (zn)
+				zn->offset = i;
+		}
+	}
+#endif
 	zv->method = ArchiveFormat7Zip;
 	return zv;
 }
