@@ -158,6 +158,20 @@ cmake --build /tmp/winuae_cmake_build --target package
 
 This currently produces a `.tar.gz` package and, when Debian packaging tools are available, a `.deb` package with shared-library dependencies inferred by `dpkg-shlibdeps`.
 
+For a Debian/Ubuntu package build from a clean CMake directory, use:
+
+```sh
+tools/debian-build-package.sh --build-dir /tmp/winuae_deb_build
+```
+
+The helper checks the Linux desktop/MIME/icon packaging metadata, builds the
+CPack `DEB` package, and prints the generated `.deb` path and package fields.
+Extra CMake options can be passed after `--`, for example:
+
+```sh
+tools/debian-build-package.sh -- -DWINUAE_UNIX_WITH_QT_UI=OFF
+```
+
 The Linux install/package metadata can be checked on any Unix host:
 
 ```sh

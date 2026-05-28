@@ -1516,7 +1516,15 @@ if(NOT APPLE)
         set(CPACK_DEBIAN_PACKAGE_HOMEPAGE "https://www.winuae.net/")
         set(CPACK_DEBIAN_PACKAGE_MAINTAINER "WinUAE")
         set(CPACK_DEBIAN_PACKAGE_SECTION "emulators")
+        set(CPACK_DEBIAN_PACKAGE_PRIORITY "optional")
+        set(CPACK_DEBIAN_PACKAGE_RECOMMENDS
+            "desktop-file-utils, shared-mime-info, hicolor-icon-theme"
+        )
         set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
+        set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA
+            "${CMAKE_CURRENT_SOURCE_DIR}/packaging/debian/postinst"
+            "${CMAKE_CURRENT_SOURCE_DIR}/packaging/debian/postrm"
+        )
     endif()
     include(CPack)
 endif()

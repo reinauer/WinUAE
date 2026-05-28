@@ -8,6 +8,9 @@ mime="${source_dir}/od-unix/share/mime/packages/net.winuae.WinUAE.xml"
 icon="${source_dir}/od-win32/resources/amiga.png"
 cmake="${source_dir}/CMakeLists.txt"
 readme="${source_dir}/README_unix.md"
+deb_builder="${source_dir}/tools/debian-build-package.sh"
+deb_postinst="${source_dir}/packaging/debian/postinst"
+deb_postrm="${source_dir}/packaging/debian/postrm"
 
 require_file() {
     local path="$1"
@@ -33,6 +36,9 @@ require_file "${mime}" "MIME package"
 require_file "${icon}" "Linux icon source"
 require_file "${cmake}" "CMake package rules"
 require_file "${readme}" "README package documentation"
+require_file "${deb_builder}" "Debian package builder"
+require_file "${deb_postinst}" "Debian postinst control script"
+require_file "${deb_postrm}" "Debian postrm control script"
 
 require_match '^\[Desktop Entry\]$' "${desktop}" "desktop header"
 require_match '^Type=Application$' "${desktop}" "desktop application type"
@@ -58,8 +64,12 @@ require_match 'icons/hicolor/256x256/mimetypes' "${cmake}" "MIME icon install ru
 require_match 'set\(CPACK_GENERATOR "TGZ"\)' "${cmake}" "CPack TGZ generator"
 require_match 'list\(APPEND CPACK_GENERATOR "DEB"\)' "${cmake}" "CPack DEB generator"
 require_match 'CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON' "${cmake}" "CPack Debian shlibdeps"
+require_match 'CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA' "${cmake}" "CPack Debian control scripts"
+require_match 'packaging/debian/postinst' "${cmake}" "Debian postinst registration"
+require_match 'packaging/debian/postrm' "${cmake}" "Debian postrm registration"
 
 require_match 'cmake --install /tmp/winuae_cmake_build --prefix /opt/winuae' "${readme}" "Linux install instructions"
 require_match 'cmake --build /tmp/winuae_cmake_build --target package' "${readme}" "Linux package instructions"
+require_match 'tools/debian-build-package.sh' "${readme}" "Debian package helper instructions"
 
 echo "verified Linux package metadata"
