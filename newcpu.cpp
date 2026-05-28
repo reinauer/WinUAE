@@ -4375,8 +4375,9 @@ int cpu_sleep_millis(int ms)
 	int ret = 0;
 #ifdef WITH_PPC
 	int state = ppc_state;
+	int ppc_spinlock_depth = 0;
 	if (state)
-		uae_ppc_spinlock_release();
+		ppc_spinlock_depth = uae_ppc_spinlock_release_all();
 #endif
 #ifdef WITH_X86
 //	if (x86_turbo_on) {
@@ -4387,7 +4388,7 @@ int cpu_sleep_millis(int ms)
 #endif
 #ifdef WITH_PPC
 	if (state)
-		uae_ppc_spinlock_get();
+		uae_ppc_spinlock_get_depth(ppc_spinlock_depth);
 #endif
 	return ret;
 }

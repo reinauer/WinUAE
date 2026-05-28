@@ -48,11 +48,24 @@ static CRITICAL_SECTION ppc_cs1, ppc_cs2;
 static bool ppc_cs_initialized;
 #else
 #include <mutex>
-static std::mutex ppc_mutex, ppc_mutex2;
+static std::recursive_mutex ppc_mutex, ppc_mutex2;
 #endif
+static thread_local int ppc_spinlock_depth;
 
 void uae_ppc_spinlock_get(void)
 {
+	if (ppc_spinlock_depth > 0) {
+#ifdef WIN32_SPINLOCK
+		EnterCriticalSection(&ppc_cs1);
+#else
+		ppc_mutex.lock();
+#endif
+		ppc_spinlock_depth++;
+#if SPINLOCK_DEBUG
+		spinlock_cnt++;
+#endif
+		return;
+	}
 #ifdef WIN32_SPINLOCK
 	EnterCriticalSection(&ppc_cs2);
 	ppc_spinlock_waiting = true;
@@ -66,6 +79,7 @@ void uae_ppc_spinlock_get(void)
 	ppc_spinlock_waiting = false;
 	ppc_mutex2.unlock();
 #endif
+	ppc_spinlock_depth = 1;
 #if SPINLOCK_DEBUG
 	if (spinlock_cnt != 0)
 		write_log(_T("uae_ppc_spinlock_get %d!\n"), spinlock_cnt);
@@ -75,6 +89,9 @@ void uae_ppc_spinlock_get(void)
 
 void uae_ppc_spinlock_release(void)
 {
+	if (ppc_spinlock_depth <= 0)
+		return;
+	ppc_spinlock_depth--;
 #if SPINLOCK_DEBUG
 	if (spinlock_cnt != 1)
 		write_log(_T("uae_ppc_spinlock_release %d!\n"), spinlock_cnt);
@@ -85,6 +102,23 @@ void uae_ppc_spinlock_release(void)
 #else
 	ppc_mutex.unlock();
 #endif
+}
+
+int uae_ppc_spinlock_release_all(void)
+{
+	int depth = ppc_spinlock_depth;
+	while (ppc_spinlock_depth > 0) {
+		uae_ppc_spinlock_release();
+	}
+	return depth;
+}
+
+void uae_ppc_spinlock_get_depth(int depth)
+{
+	while (depth > 0) {
+		uae_ppc_spinlock_get();
+		depth--;
+	}
 }
 
 static void uae_ppc_spinlock_create(void)
@@ -317,21 +351,26 @@ enum PPCLockMethod {
 	PPC_KEEP_SPINLOCK,
 };
 
-enum PPCLockStatus {
+enum PPCLockState {
 	PPC_NO_LOCK_NEEDED,
 	PPC_LOCKED,
 	PPC_LOCKED_WITHOUT_SPINLOCK,
 };
 
+struct PPCLockStatus {
+	PPCLockState state;
+	int spinlock_depth;
+};
+
 static PPCLockStatus get_ppc_lock(PPCLockMethod method)
 {
 	if (impl.in_cpu_thread()) {
-		return PPC_NO_LOCK_NEEDED;
+		return { PPC_NO_LOCK_NEEDED, 0 };
 	} else if (method == PPC_RELEASE_SPINLOCK) {
 
-		uae_ppc_spinlock_release();
+		int depth = uae_ppc_spinlock_release_all();
 		impl.lock(QEMU_UAE_LOCK_ACQUIRE);
-		return PPC_LOCKED_WITHOUT_SPINLOCK;
+		return { PPC_LOCKED_WITHOUT_SPINLOCK, depth };
 
 	} else if (method == PPC_KEEP_SPINLOCK) {
 
@@ -343,29 +382,29 @@ static PPCLockStatus get_ppc_lock(PPCLockMethod method)
 				if (trylock_called) {
 					impl.lock(QEMU_UAE_LOCK_TRYLOCK_CANCEL);
 				}
-				return PPC_NO_LOCK_NEEDED;
+				return { PPC_NO_LOCK_NEEDED, 0 };
 			}
 			int error = impl.lock(QEMU_UAE_LOCK_TRYLOCK);
 			if (error == 0) {
 				/* Lock succeeded */
-				return PPC_LOCKED;
+				return { PPC_LOCKED, 0 };
 			}
 			trylock_called = true;
 		}
 	} else {
 		write_log("?\n");
-		return PPC_NO_LOCK_NEEDED;
+		return { PPC_NO_LOCK_NEEDED, 0 };
 	}
 }
 
 static void release_ppc_lock(PPCLockStatus status)
 {
-	if (status == PPC_NO_LOCK_NEEDED) {
+	if (status.state == PPC_NO_LOCK_NEEDED) {
 		return;
-	} else if (status == PPC_LOCKED_WITHOUT_SPINLOCK) {
+	} else if (status.state == PPC_LOCKED_WITHOUT_SPINLOCK) {
 		impl.lock(QEMU_UAE_LOCK_RELEASE);
-		uae_ppc_spinlock_get();
-	} else if (status == PPC_LOCKED) {
+		uae_ppc_spinlock_get_depth(status.spinlock_depth);
+	} else if (status.state == PPC_LOCKED) {
 		impl.lock(QEMU_UAE_LOCK_RELEASE);
 	}
 }
@@ -415,12 +454,13 @@ static void map_banks(void)
 		pr->memory = r->memory;
 	}
 
+	int spinlock_depth = 0;
 	if (impl.in_cpu_thread && impl.in_cpu_thread() == false) {
-		uae_ppc_spinlock_release();
+		spinlock_depth = uae_ppc_spinlock_release_all();
 	}
 	impl.map_memory(regions, map.num_regions);
 	if (impl.in_cpu_thread && impl.in_cpu_thread() == false) {
-		uae_ppc_spinlock_get();
+		uae_ppc_spinlock_get_depth(spinlock_depth);
 	}
 
 	for (int i = 0; i < map.num_regions; i++) {
@@ -442,12 +482,13 @@ static void set_and_wait_for_state(int state, int unlock)
 		return;
 	}
 	if (using_qemu()) {
+		int spinlock_depth = 0;
 		if (impl.in_cpu_thread() == false) {
-			uae_ppc_spinlock_release();
+			spinlock_depth = uae_ppc_spinlock_release_all();
 		}
 		impl.set_state(state);
 		if (impl.in_cpu_thread() == false) {
-			uae_ppc_spinlock_get();
+			uae_ppc_spinlock_get_depth(spinlock_depth);
 		}
 	}
 }
@@ -468,14 +509,15 @@ void uae_ppc_wakeup_main(void)
 
 static void ppc_map_region(PPCMemoryRegion *r, bool dolock)
 {
+	int spinlock_depth = 0;
 	if (dolock && impl.in_cpu_thread() == false) {
 		/* map_memory will acquire the qemu global lock, so we must ensure
 		* the PPC CPU can finish any I/O requests and release the lock. */
-		uae_ppc_spinlock_release();
+		spinlock_depth = uae_ppc_spinlock_release_all();
 	}
 	impl.map_memory(r, -1);
 	if (dolock && impl.in_cpu_thread() == false) {
-		uae_ppc_spinlock_get();
+		uae_ppc_spinlock_get_depth(spinlock_depth);
 	}
 	free((void*)r->name);
 }
@@ -526,13 +568,14 @@ void ppc_remap_bank(uae_u32 start, uae_u32 size, const TCHAR *name, void *addr)
 	if (ppc_state == PPC_STATE_INACTIVE || !impl.map_memory)
 		return;
 
+	int spinlock_depth = 0;
 	if (impl.in_cpu_thread() == false) {
-		uae_ppc_spinlock_release();
+		spinlock_depth = uae_ppc_spinlock_release_all();
 	}
 	ppc_map_banks2(start, size, name, addr, true, false, false);
 	ppc_map_banks2(start, size, name, addr, false, true, false);
 	if (impl.in_cpu_thread() == false) {
-		uae_ppc_spinlock_get();
+		uae_ppc_spinlock_get_depth(spinlock_depth);
 	}
 
 }
@@ -627,16 +670,16 @@ static void ppc_thread(void *v)
 void uae_ppc_execute_check(void)
 {
 	if (ppc_spinlock_waiting) {
-		uae_ppc_spinlock_release();
-		uae_ppc_spinlock_get();
+		int spinlock_depth = uae_ppc_spinlock_release_all();
+		uae_ppc_spinlock_get_depth(spinlock_depth);
 	}
 }
 
 void uae_ppc_execute_quick()
 {
-	uae_ppc_spinlock_release();
+	int spinlock_depth = uae_ppc_spinlock_release_all();
 	sleep_millis_main(1);
-	uae_ppc_spinlock_get();
+	uae_ppc_spinlock_get_depth(spinlock_depth);
 }
 
 void uae_ppc_emulate(void)
@@ -840,8 +883,8 @@ void uae_ppc_cpu_stop(void)
 			impl.stop();
 			while (ppc_state != PPC_STATE_STOP && ppc_state != PPC_STATE_CRASH) {
 				uae_ppc_wakeup();
-				uae_ppc_spinlock_release();
-				uae_ppc_spinlock_get();
+				int spinlock_depth = uae_ppc_spinlock_release_all();
+				uae_ppc_spinlock_get_depth(spinlock_depth);
 			}
 			write_log(_T("PPC: Stopped\n"));
 		}

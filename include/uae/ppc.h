@@ -50,6 +50,8 @@ void uae_ppc_execute_check(void);
 void uae_ppc_spinlock_reset(void);
 void uae_ppc_spinlock_get(void);
 void uae_ppc_spinlock_release(void);
+int uae_ppc_spinlock_release_all(void);
+void uae_ppc_spinlock_get_depth(int depth);
 
 /**
  * Pauses the PPC emulation (for some implementations). Currently triggers
