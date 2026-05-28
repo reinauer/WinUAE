@@ -135,6 +135,7 @@ int uae_slirp_redir(int is_udp, int host_port, struct in_addr guest_addr,
 
 static volatile int slirp_thread_active;
 static uae_thread_id slirp_tid;
+static bool slirp_thread_started;
 extern uae_sem_t slirp_sem2;
 
 static void slirp_receive_func(void *arg)
@@ -206,9 +207,10 @@ bool uae_slirp_start (void)
 		if (!uae_start_thread(_T("slirp-receive"), slirp_receive_func, NULL,
 						 &slirp_tid)) {
 			slirp_thread_active = 0;
-			slirp_tid = BAD_THREAD;
+			slirp_thread_started = false;
 			return false;
 		}
+		slirp_thread_started = true;
 		return true;
 	}
 #endif
@@ -225,10 +227,10 @@ void uae_slirp_end(void)
 #endif
 #ifdef WITH_BUILTIN_SLIRP
 	if (impl == BUILTIN_IMPLEMENTATION) {
-		if (slirp_tid != BAD_THREAD) {
+		if (slirp_thread_started) {
 			slirp_thread_active = 0;
 			uae_wait_thread(slirp_tid);
-			slirp_tid = BAD_THREAD;
+			slirp_thread_started = false;
 		}
 		slirp_thread_active = 0;
 		return;
