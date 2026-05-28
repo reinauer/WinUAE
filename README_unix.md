@@ -8,12 +8,12 @@ This is an early macOS/Linux port of the WinUAE source tree. The current Unix bu
 - Uses `od-unix/` host abstractions.
 - SDL3 provides the current window, framebuffer presentation, mouse input, keyboard input, audio output, and playback-device selection.
 - SDL3 gamepads and non-gamepad joysticks are exposed through the WinUAE input-device layer for game-port use; the Qt Game Ports/Input pages have first remap/test dialogs backed by SDL3 device enumeration and WinUAE config keys.
-- Qt Widgets provides an initial Windows-style configuration UI. When Qt is available, it is integrated into `winuae_unix` and the standalone `winuae_unix_qt` launcher is also built.
+- Qt Widgets provides an initial Windows-style configuration UI. When Qt is available, it is integrated into `winuae_unix`.
 - Host clipboard text paste is available through the same paste input event as Windows. The `clipboard_sharing` option has native text clipboard-device support, and SDL3 builds exchange bitmap clipboard data through `image/bmp`, `image/png` when libpng is available, and macOS `image/tiff` through ImageIO, bridged through Amiga IFF ILBM conversion.
 - Floppy drive click sounds are present and audible when enabled.
-- The integrated Qt Output page can toggle the core Sample ripper; ripped WAV files use the configured Rips path. The standalone launcher keeps this runtime action disabled.
+- The integrated Qt Output page can toggle the core Sample ripper; ripped WAV files use the configured Rips path.
 - The integrated Qt Output page can run Pro Wizard when the default `WINUAE_UNIX_WITH_PROWIZARD` build option is enabled. Save prompts use Qt warning dialogs with the same OK/Yes/No/Cancel return contract as Windows.
-- When opened during emulation, the integrated Qt Output page can play, start/stop, and save core input re-recordings. The standalone launcher keeps these runtime actions disabled.
+- When opened during emulation, the integrated Qt Output page can play, start/stop, and save core input re-recordings.
 - The Qt Paths page now writes real Unix target path settings for configuration files, NVRAM, screenshots, videos, save images, rips, data, and ROMs, so runtime helpers use the configured directories. Older `unix.ui.*` path keys are still read for compatibility.
 - Native Unix serial support is available for POSIX serial devices and TCP listener endpoints.
 - A2065 Ethernet and SANA-II `uaenet.device` can use the built-in SLIRP user-mode NAT backend, libpcap-backed native packet adapters, and direct TAP/TUN devices where the host exposes them.
@@ -164,12 +164,7 @@ The Linux install/package metadata can be checked on any Unix host:
 cmake --build /tmp/winuae_cmake_build --target winuae_unix_linux_package_metadata_check
 ```
 
-If Qt Widgets is available, CMake links the Windows-style configuration UI into `winuae_unix` by default and also builds the standalone launcher:
-
-```sh
-cmake --build /tmp/winuae_cmake_build --target winuae_unix_qt -j
-/tmp/winuae_cmake_build/winuae_unix_qt
-```
+If Qt Widgets is available, CMake links the Windows-style configuration UI into `winuae_unix` by default.
 
 On macOS, a local `WinUAE.app` bundle can be created from the same build:
 
@@ -514,7 +509,7 @@ export WINUAE_SMOKE_LOG=/tmp/winuae_unix_smoke.log
 - SDL3 gamepads use the standard SDL layout: left stick and D-pad map to joystick directions, South/East/West/North map to the first four buttons, and CD32 mode follows the Windows default button order where possible.
 - Non-gamepad SDL joysticks expose their native axes, hats, and buttons; hats also map to joystick directions by default.
 - Press `F12` to open the integrated Qt settings UI during emulation.
-- The screenshot file input event and integrated runtime Qt Output-page button save under the configured Screenshots directory. Unix uses PNG when libpng is found at configure time and falls back to BMP otherwise. On macOS, libpng must also pass the configured deployment-target check; a newer Homebrew libpng is skipped so release builds stay compatible with the selected minimum macOS. SDL3 builds can also copy the screenshot event output to the host clipboard as BMP data, and clipboard sharing can exchange PNG plus macOS TIFF image data when the matching native codecs are available. The standalone Qt launcher keeps runtime-only buttons disabled. Unix screenshots now cover autoclip, palette-indexed PNG when the framebuffer has 256 or fewer colors, continuous screenshot directories, and the savestate thumbnail byte helper. The Output page can also start internal DIB RGB AVI capture, PCM-in-AVI audio capture, and WAV audio capture.
+- The screenshot file input event and integrated runtime Qt Output-page button save under the configured Screenshots directory. Unix uses PNG when libpng is found at configure time and falls back to BMP otherwise. On macOS, libpng must also pass the configured deployment-target check; a newer Homebrew libpng is skipped so release builds stay compatible with the selected minimum macOS. SDL3 builds can also copy the screenshot event output to the host clipboard as BMP data, and clipboard sharing can exchange PNG plus macOS TIFF image data when the matching native codecs are available. Unix screenshots now cover autoclip, palette-indexed PNG when the framebuffer has 256 or fewer colors, continuous screenshot directories, and the savestate thumbnail byte helper. The Output page can also start internal DIB RGB AVI capture, PCM-in-AVI audio capture, and WAV audio capture.
 - SDL3 builds can enable an OpenGL shader presenter with `WINUAE_UNIX_WITH_OPENGL_SHADER_PIPELINE`. When OpenGL is available, the Filter page's portable color, blur, noise, scanline, bilinear, and geometry controls are applied by a native GLSL path. Direct3D shader preset files, mask/overlay chains, HDR, and Metal/Vulkan backends are still future work.
 - CHD hardfile and CD image support is built by default. CHD FLAC codecs require libFLAC that is compatible with the configured macOS deployment target; otherwise CHD remains enabled without FLAC-compressed CD codecs.
 - Hold `End` and press `F1`-`F4` to change DF0:-DF3:, `F5` to change the CD image, and `F6` to restore a state. Hold `Shift` with those shortcuts to eject the matching floppy/CD image or save state, matching the Windows key map.
@@ -563,5 +558,5 @@ export WINUAE_SMOKE_LOG=/tmp/winuae_unix_smoke.log
 `WINUAE_UNIX_WITH_OPENGL_SHADER_PIPELINE` is enabled by default when SDL3 and OpenGL development files are available. Runtime OpenGL context or shader setup failure falls back to the SDL renderer.
 `WINUAE_UNIX_WITH_SNDBOARD` is enabled by default and builds the shared Toccata/Prelude/UAESND sound-board backend. PCI sound devices remain part of the future PCI bridgeboard work.
 `WINUAE_UNIX_WITH_PROWIZARD` is enabled by default and builds the same Pro Wizard source set used by the Windows project.
-`WINUAE_UNIX_WITH_QT_UI` is enabled by default, but the `winuae_unix_qt` target is skipped when Qt Widgets is not installed.
+`WINUAE_UNIX_WITH_QT_UI` is enabled by default, but Qt UI targets are skipped when Qt Widgets is not installed.
 `WINUAE_UNIX_WITH_INTEGRATED_QT_UI` is enabled by default. When Qt Widgets is not installed, the build continues without the integrated UI.

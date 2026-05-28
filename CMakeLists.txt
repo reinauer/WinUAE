@@ -164,7 +164,7 @@ option(WINUAE_UNIX_WITH_SANA2 "Build uaenet.device SANA-II networking on top of 
 option(WINUAE_UNIX_WITH_UAENET_PCAP "Build native libpcap and TAP/TUN packet networking for A2065 and uaenet.device" ON)
 option(WINUAE_UNIX_WITH_NCR_SCSI "Build NCR/NCR9x SCSI controller emulation" ON)
 option(WINUAE_UNIX_WITH_PROWIZARD "Build Pro-Wizard module ripper support" ON)
-option(WINUAE_UNIX_WITH_QT_UI "Build the optional Unix Qt launcher/config UI" ON)
+option(WINUAE_UNIX_WITH_QT_UI "Build the optional Unix Qt configuration UI" ON)
 option(WINUAE_UNIX_WITH_INTEGRATED_QT_UI "Allow winuae_unix to host the Unix Qt frontend" ON)
 option(WINUAE_UNIX_WITH_LIBPNG "Build optional PNG screenshot support when libpng is available" ON)
 option(WINUAE_UNIX_WITH_ARCHIVES "Build bundled ZIP/LHA/LZX/DMS/WRP archive support" ON)
@@ -1235,7 +1235,15 @@ target_include_directories(winuae_unix_threading_test PRIVATE
 target_link_libraries(winuae_unix_threading_test PRIVATE pthread)
 winuae_unix_register_test(winuae_unix_threading_test)
 
-if(WINUAE_UNIX_WITH_QT_UI OR WINUAE_UNIX_WITH_INTEGRATED_QT_UI)
+if(WINUAE_UNIX_WITH_INTEGRATED_QT_UI AND NOT WINUAE_UNIX_WITH_QT_UI)
+    message(STATUS
+        "WINUAE_UNIX_WITH_INTEGRATED_QT_UI requires "
+        "WINUAE_UNIX_WITH_QT_UI; disabling integrated Qt UI"
+    )
+    set(WINUAE_UNIX_WITH_INTEGRATED_QT_UI OFF)
+endif()
+
+if(WINUAE_UNIX_WITH_QT_UI)
     if(APPLE)
         winuae_unix_macos_find_qt_frameworks(WINUAE_UNIX_QT_WIDGETS_TARGET)
     endif()
@@ -1318,16 +1326,6 @@ if(WINUAE_UNIX_WITH_QT_UI OR WINUAE_UNIX_WITH_INTEGRATED_QT_UI)
             target_link_libraries(winuae_unix_qt_frontend PUBLIC ${SDL3_LIBRARIES})
             if(SDL3_LIBRARY_DIRS)
                 target_link_directories(winuae_unix_qt_frontend PUBLIC ${SDL3_LIBRARY_DIRS})
-            endif()
-        endif()
-
-        if(WINUAE_UNIX_WITH_QT_UI)
-            add_executable(winuae_unix_qt
-                od-unix/qt/launcher_main.cpp
-            )
-            target_link_libraries(winuae_unix_qt PRIVATE winuae_unix_qt_frontend)
-            if(TARGET winuae_unix)
-                add_dependencies(winuae_unix_qt winuae_unix)
             endif()
         endif()
 
@@ -1417,12 +1415,6 @@ if(TARGET winuae_unix AND NOT APPLE)
             RENAME application-x-winuae-config.png
         )
     endif()
-endif()
-
-if(TARGET winuae_unix_qt AND NOT APPLE)
-    install(TARGETS winuae_unix_qt
-        RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
-    )
 endif()
 
 add_custom_target(winuae_unix_linux_package_metadata_check
