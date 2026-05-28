@@ -196,15 +196,19 @@ if [[ "${WINUAE_SKIP_QT:-0}" != "1" ]]; then
         -qt-freetype
         -qt-harfbuzz
     )
-    split_extra_args "${WINUAE_QT_CONFIGURE_ARGS:-}"
-    qt_configure_args+=("${extra_args[@]}")
+    if [[ -n "${WINUAE_QT_CONFIGURE_ARGS:-}" ]]; then
+        split_extra_args "${WINUAE_QT_CONFIGURE_ARGS}"
+        qt_configure_args+=("${extra_args[@]}")
+    fi
 
     qt_cmake_args=()
     if ! xcodebuild -version >/dev/null 2>&1 && xcrun --show-sdk-path >/dev/null 2>&1; then
         qt_cmake_args+=(-DQT_NO_XCODE_MIN_VERSION_CHECK=ON)
     fi
-    split_extra_args "${WINUAE_QT_CMAKE_ARGS:-}"
-    qt_cmake_args+=("${extra_args[@]}")
+    if [[ -n "${WINUAE_QT_CMAKE_ARGS:-}" ]]; then
+        split_extra_args "${WINUAE_QT_CMAKE_ARGS}"
+        qt_cmake_args+=("${extra_args[@]}")
+    fi
 
     qt_submodule_args=()
     if [[ -d "${qt_source}/qtbase" || -f "${qt_source}/init-repository" ]]; then
