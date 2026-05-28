@@ -26,7 +26,7 @@ env:
 jobs:
   build-macos-dmg:
     name: Build macOS DMG
-    runs-on: macos-13
+    runs-on: macos-15
 
     steps:
       - name: Checkout WinUAE
