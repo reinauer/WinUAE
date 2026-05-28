@@ -150,8 +150,10 @@ glib_args=(
     -Ddtrace=disabled
     -Dsystemtap=disabled
 )
-split_extra_args "${WINUAE_GLIB_MESON_ARGS:-}"
-glib_args+=("${extra_args[@]}")
+if [[ -n "${WINUAE_GLIB_MESON_ARGS:-}" ]]; then
+    split_extra_args "${WINUAE_GLIB_MESON_ARGS}"
+    glib_args+=(${extra_args[@]+"${extra_args[@]}"})
+fi
 
 run_meson_build "${glib_source}" "${build_dir}/glib" "${glib_args[@]}"
 
