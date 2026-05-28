@@ -247,7 +247,7 @@ if [[ "${WINUAE_SKIP_CODESIGN:-0}" != "1" ]] && command -v codesign >/dev/null 2
     codesign_identity="${WINUAE_CODESIGN_IDENTITY:--}"
     codesign_args=(--force --deep --sign "${codesign_identity}")
     split_extra_args "${WINUAE_CODESIGN_OPTIONS:-}"
-    codesign_args+=("${extra_args[@]}")
+    codesign_args+=(${extra_args[@]+"${extra_args[@]}"})
     if [[ -n "${WINUAE_CODESIGN_ENTITLEMENTS:-}" ]]; then
         codesign_args+=(--entitlements "${WINUAE_CODESIGN_ENTITLEMENTS}")
     fi
