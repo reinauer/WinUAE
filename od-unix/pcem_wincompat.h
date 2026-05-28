@@ -4,8 +4,16 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#ifdef __cplusplus
+#include <cstdlib>
+#endif
+
 #ifndef UAE
 #define UAE
+#endif
+
+#ifndef __cdecl
+#define __cdecl
 #endif
 
 #ifndef container_of
