@@ -1,0 +1,101 @@
+name: Build Ubuntu 26.04 LTS DEB
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+      - back-to-the-roots
+  pull_request:
+    branches:
+      - master
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  BUILD_DIR: ${{ github.workspace }}/build/ubuntu-26.04-deb
+  DEBIAN_FRONTEND: noninteractive
+
+jobs:
+  build-ubuntu-2604-deb:
+    name: Build Ubuntu 26.04 LTS DEB
+    runs-on: ubuntu-24.04
+    container:
+      image: ubuntu:26.04
+
+    steps:
+      - name: Install build dependencies
+        run: |
+          set -euo pipefail
+
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            build-essential \
+            ca-certificates \
+            cmake \
+            curl \
+            dpkg-dev \
+            file \
+            git \
+            libasound2-dev \
+            libflac-dev \
+            libgl-dev \
+            libpcap-dev \
+            libpng-dev \
+            libsdl3-dev \
+            pkg-config \
+            qt6-base-dev \
+            zlib1g-dev
+
+          if ! apt-get install -y --no-install-recommends 7zip; then
+            apt-get install -y --no-install-recommends p7zip-full
+          fi
+
+      - name: Checkout WinUAE
+        uses: actions/checkout@v4
+
+      - name: Build Debian package
+        run: |
+          set -euo pipefail
+
+          tools/debian-build-package.sh \
+            --build-dir "${BUILD_DIR}" \
+            --jobs "$(getconf _NPROCESSORS_ONLN)" \
+            -- \
+            -DWINUAE_LZMA_SDK_FETCH=ON
+
+      - name: Inspect Debian package
+        run: |
+          set -euo pipefail
+
+          mapfile -t debs < <(
+            find "${BUILD_DIR}" -maxdepth 1 -type f -name '*.deb' |
+              sort
+          )
+          if ((${#debs[@]} == 0)); then
+            echo "error: no .deb package found in ${BUILD_DIR}" >&2
+            exit 1
+          fi
+
+          for deb in "${debs[@]}"; do
+            echo "::group::$(basename "${deb}") fields"
+            dpkg-deb --field "${deb}" \
+              Package Version Architecture Depends Recommends
+            echo "::endgroup::"
+
+            echo "::group::$(basename "${deb}") contents"
+            dpkg-deb --contents "${deb}" | sed -n '1,160p'
+            echo "::endgroup::"
+          done
+
+      - name: Upload Debian package
+        uses: actions/upload-artifact@v4
+        with:
+          name: WinUAE Ubuntu 26.04 LTS DEB
+          path: ${{ env.BUILD_DIR }}/*.deb
+          if-no-files-found: error
