@@ -1413,7 +1413,7 @@ void unix_video_shutdown(void)
     s_available = false;
 }
 
-int unix_video_poll(bool *quit_requested)
+static int unix_video_poll_internal(bool *quit_requested, bool input_events)
 {
     SDL_Event event;
     int got = 0;
@@ -1444,6 +1444,9 @@ int unix_video_poll(bool *quit_requested)
             break;
         case SDL_EVENT_KEY_DOWN:
         case SDL_EVENT_KEY_UP:
+            if (!input_events) {
+                break;
+            }
             if (event.key.repeat) {
                 break;
             }
@@ -1465,6 +1468,9 @@ int unix_video_poll(bool *quit_requested)
                 unix_input_lock_state_from_sdl(event.key.mod));
             break;
         case SDL_EVENT_MOUSE_MOTION:
+            if (!input_events) {
+                break;
+            }
             if (s_mouse_grabbed) {
                 unix_input_mouse_motion((int)event.motion.xrel, (int)event.motion.yrel);
             }
@@ -1472,6 +1478,9 @@ int unix_video_poll(bool *quit_requested)
         case SDL_EVENT_MOUSE_BUTTON_DOWN:
         case SDL_EVENT_MOUSE_BUTTON_UP:
         {
+            if (!input_events) {
+                break;
+            }
             int button = unix_mouse_button_from_sdl(event.button.button);
             if (button >= 0) {
                 if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN && handle_statusbar_click((int)event.button.x, (int)event.button.y, event.button.button)) {
@@ -1490,6 +1499,9 @@ int unix_video_poll(bool *quit_requested)
             break;
         }
         case SDL_EVENT_MOUSE_WHEEL:
+            if (!input_events) {
+                break;
+            }
             if (s_mouse_grabbed) {
                 unix_input_mouse_wheel(event.wheel.integer_x, event.wheel.integer_y);
             }
@@ -1510,6 +1522,16 @@ int unix_video_poll(bool *quit_requested)
     }
 
     return got;
+}
+
+int unix_video_poll(bool *quit_requested)
+{
+    return unix_video_poll_internal(quit_requested, true);
+}
+
+int unix_video_poll_window_events(bool *quit_requested)
+{
+    return unix_video_poll_internal(quit_requested, false);
 }
 
 void unix_video_present(const struct unix_video_frame *frame)

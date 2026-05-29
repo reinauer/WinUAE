@@ -19,6 +19,9 @@
 #include "autoconf.h"
 #include "rommgr.h"
 #include "xwin.h"
+#include "host.h"
+#include "uae.h"
+#include "video.h"
 #include "audio.h"
 #include "inputrecord.h"
 #include "savestate.h"
@@ -561,6 +564,17 @@ static void bridgeRunProWizard(void *)
 }
 #endif
 
+static void bridgePollHostWindowEvents(void *)
+{
+    unix_host_check_quit();
+    bool quitRequested = false;
+    unix_video_poll_window_events(&quitRequested);
+    if (quitRequested) {
+        uae_quit();
+    }
+    unix_host_check_quit();
+}
+
 static WinUaeQtHardwareInfoProvider bridgeHardwareProvider(struct uae_prefs *prefs, bool runtimeActions)
 {
     WinUaeQtHardwareInfoProvider provider;
@@ -576,6 +590,7 @@ static WinUaeQtHardwareInfoProvider bridgeHardwareProvider(struct uae_prefs *pre
     provider.sampleRipperEnabled = bridgeSampleRipperEnabled;
     provider.setSampleRipperEnabled = bridgeSetSampleRipperEnabled;
     if (runtimeActions) {
+        provider.pollHostWindowEvents = bridgePollHostWindowEvents;
         provider.saveScreenshot = bridgeSaveScreenshot;
         provider.statePlaybackEnabled = bridgeStatePlaybackEnabled;
         provider.stateRecordingEnabled = bridgeStateRecordingEnabled;

@@ -25,6 +25,14 @@ int unix_video_poll(bool *quit_requested)
     return 0;
 }
 
+int unix_video_poll_window_events(bool *quit_requested)
+{
+    if (quit_requested) {
+        *quit_requested = false;
+    }
+    return 0;
+}
+
 void unix_video_present(const struct unix_video_frame *)
 {
 }
