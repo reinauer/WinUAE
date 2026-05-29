@@ -120,6 +120,7 @@ struct WinUaeQtHardwareInfoProvider {
     bool (*canMove)(void *context, int index, int direction) = nullptr;
     int (*move)(void *context, int index, int direction) = nullptr;
     WinUaeQtConfig::Settings (*orderSettings)(void *context) = nullptr;
+    void (*pollHostWindowEvents)(void *context) = nullptr;
     void (*saveScreenshot)(void *context) = nullptr;
     bool (*sampleRipperEnabled)(void *context) = nullptr;
     void (*setSampleRipperEnabled)(void *context, bool enabled) = nullptr;

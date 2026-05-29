@@ -32,6 +32,7 @@ bool unix_video_setup(void);
 bool unix_video_init(int width, int height, int pixbytes);
 void unix_video_shutdown(void);
 int unix_video_poll(bool *quit_requested);
+int unix_video_poll_window_events(bool *quit_requested);
 void unix_video_present(const struct unix_video_frame *frame);
 void unix_video_set_title(const TCHAR *title);
 bool unix_video_set_window_mode(enum unix_video_window_mode mode, int display_index, int width, int height, int refresh_rate);
