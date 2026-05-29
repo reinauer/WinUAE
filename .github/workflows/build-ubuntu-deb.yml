@@ -43,13 +43,21 @@ jobs:
             file \
             git \
             libasound2-dev \
+            libfdt-dev \
             libflac-dev \
             libgl-dev \
+            libglib2.0-dev \
             libpcap-dev \
             libpng-dev \
             libsdl3-dev \
+            meson \
+            ninja-build \
+            patch \
             pkg-config \
+            python3 \
+            python3-venv \
             qt6-base-dev \
+            xz-utils \
             zlib1g-dev
 
           if ! apt-get install -y --no-install-recommends 7zip; then
@@ -59,6 +67,25 @@ jobs:
       - name: Checkout WinUAE
         uses: actions/checkout@v4
 
+      - name: Checkout QEMU-UAE PPC plugin builder
+        uses: actions/checkout@v4
+        with:
+          repository: reinauer/uae-ppc-plugin
+          path: uae-ppc-plugin
+
+      - name: Build QEMU-UAE PPC plugin
+        run: |
+          set -euo pipefail
+
+          mkdir -p "${BUILD_DIR}"
+
+          export QEMU_UAE_WORK_DIR="${GITHUB_WORKSPACE}/.deps/qemu-uae"
+          uae-ppc-plugin/build-qemu-uae-plugin.sh \
+            --output "${BUILD_DIR}/qemu-uae.so" \
+            --jobs "$(getconf _NPROCESSORS_ONLN)"
+
+          strip --strip-unneeded "${BUILD_DIR}/qemu-uae.so"
+
       - name: Build Debian package
         run: |
           set -euo pipefail
@@ -67,6 +94,8 @@ jobs:
             --build-dir "${BUILD_DIR}" \
             --jobs "$(getconf _NPROCESSORS_ONLN)" \
             -- \
+            -DWINUAE_QEMU_UAE_PLUGIN_FILE="${BUILD_DIR}/qemu-uae.so" \
+            -DWINUAE_UNIX_BUILD_QEMU_UAE_PLUGIN=OFF \
             -DWINUAE_LZMA_SDK_FETCH=ON
 
       - name: Inspect Debian package
@@ -89,8 +118,14 @@ jobs:
             echo "::endgroup::"
 
             echo "::group::$(basename "${deb}") contents"
-            dpkg-deb --contents "${deb}" | sed -n '1,160p'
+            contents="$(dpkg-deb --contents "${deb}")"
+            printf '%s\n' "${contents}" | sed -n '1,180p'
             echo "::endgroup::"
+
+            grep -Eq ' \./usr/bin/winuae$' <<<"${contents}"
+            ! grep -Eq ' \./usr/bin/winuae_unix$' <<<"${contents}"
+            grep -Eq ' \./usr/lib.*/winuae/plugins/qemu-uae\.so$' \
+              <<<"${contents}"
           done
 
       - name: Upload Debian package

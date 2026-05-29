@@ -181,6 +181,7 @@ option(WINUAE_UNIX_WITH_MIDI "Build native Unix MIDI support" ON)
 option(WINUAE_UNIX_WITH_CPUBOARD "Build shared non-PPC CPU accelerator board support" ON)
 option(WINUAE_UNIX_WITH_PPC_QEMU "Build Unix PPC accelerator support through the qemu-uae plugin ABI" ON)
 option(WINUAE_UNIX_BUILD_QEMU_UAE_PLUGIN "Build the sibling qemu-uae plugin for Unix packaging" ON)
+option(WINUAE_UNIX_PACKAGE_REQUIRE_QEMU_UAE_PLUGIN "Require qemu-uae.so when building Unix packages with PPC support" OFF)
 option(WINUAE_UNIX_WITH_SNDBOARD "Build shared Toccata/Prelude/UAESND sound-board support" ON)
 option(WINUAE_UNIX_WITH_GFXBOARD "Build shared hardware RTG graphics board, PCI, QEMU VGA and PCem Voodoo support" ON)
 option(WINUAE_UNIX_WITH_AVIOUTPUT "Build Unix screenshot and video/audio capture output support" ON)
@@ -195,6 +196,13 @@ set(WINUAE_LZMA_SDK_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.deps/lzma-sdk/${WINUAE_LZM
 
 set(WINUAE_QEMU_UAE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../qemu-uae-v11.0"
     CACHE PATH "QEMU-UAE plugin source directory")
+set(WINUAE_QEMU_UAE_PLUGIN_FILE "" CACHE FILEPATH "Prebuilt qemu-uae.so plugin to install or bundle")
+set(WINUAE_UNIX_INSTALL_PLUGINDIR_RELATIVE "${CMAKE_INSTALL_LIBDIR}/winuae/plugins"
+    CACHE STRING "Relative Unix install directory for runtime plugins")
+
+if(IS_ABSOLUTE "${WINUAE_UNIX_INSTALL_PLUGINDIR_RELATIVE}")
+    message(FATAL_ERROR "WINUAE_UNIX_INSTALL_PLUGINDIR_RELATIVE must be relative")
+endif()
 
 set(WINUAE_UNIX_TARGET_ARCHES "${CMAKE_SYSTEM_PROCESSOR}")
 if(APPLE AND CMAKE_OSX_ARCHITECTURES)
@@ -252,6 +260,7 @@ target_compile_definitions(winuae_core PRIVATE
     WINUAE_UNIX_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
     WINUAE_UNIX_INSTALL_DATA_DIR="${CMAKE_INSTALL_FULL_DATADIR}/winuae"
     WINUAE_UNIX_INSTALL_DATADIR_RELATIVE="${CMAKE_INSTALL_DATADIR}/winuae"
+    WINUAE_UNIX_INSTALL_PLUGINDIR_RELATIVE="${WINUAE_UNIX_INSTALL_PLUGINDIR_RELATIVE}"
 )
 
 target_include_directories(winuae_core PRIVATE
@@ -1389,34 +1398,6 @@ if(WINUAE_UNIX_TEST_TARGETS)
     endif()
 endif()
 
-if(TARGET winuae_unix AND NOT APPLE)
-    install(TARGETS winuae_unix
-        RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
-    )
-    install(FILES README_unix.md UNIX_RUNTIME_PARITY.md
-        DESTINATION "${CMAKE_INSTALL_DOCDIR}"
-    )
-    install(DIRECTORY od-win32/resources/
-        DESTINATION "${CMAKE_INSTALL_DATADIR}/winuae/od-win32/resources"
-    )
-    if(NOT APPLE)
-        install(FILES od-unix/share/applications/net.winuae.WinUAE.desktop
-            DESTINATION "${CMAKE_INSTALL_DATADIR}/applications"
-        )
-        install(FILES od-unix/share/mime/packages/net.winuae.WinUAE.xml
-            DESTINATION "${CMAKE_INSTALL_DATADIR}/mime/packages"
-        )
-        install(FILES od-win32/resources/amiga.png
-            DESTINATION "${CMAKE_INSTALL_DATADIR}/icons/hicolor/256x256/apps"
-            RENAME winuae.png
-        )
-        install(FILES od-win32/resources/amiga.png
-            DESTINATION "${CMAKE_INSTALL_DATADIR}/icons/hicolor/256x256/mimetypes"
-            RENAME application-x-winuae-config.png
-        )
-    endif()
-endif()
-
 add_custom_target(winuae_unix_linux_package_metadata_check
     COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tools/unix-check-linux-package-metadata.sh" "${CMAKE_CURRENT_SOURCE_DIR}"
     COMMENT "Checking Linux install and package metadata"
@@ -1442,7 +1423,13 @@ if(APPLE)
     )
 endif()
 
-set(WINUAE_QEMU_UAE_PLUGIN_PATH "${CMAKE_BINARY_DIR}/qemu-uae.so")
+if(WINUAE_QEMU_UAE_PLUGIN_FILE)
+    get_filename_component(WINUAE_QEMU_UAE_PLUGIN_PATH
+        "${WINUAE_QEMU_UAE_PLUGIN_FILE}" ABSOLUTE
+        BASE_DIR "${CMAKE_BINARY_DIR}")
+else()
+    set(WINUAE_QEMU_UAE_PLUGIN_PATH "${CMAKE_BINARY_DIR}/qemu-uae.so")
+endif()
 if(UNIX
     AND WINUAE_UNIX_WITH_PPC_QEMU
     AND WINUAE_UNIX_BUILD_QEMU_UAE_PLUGIN
@@ -1458,6 +1445,64 @@ if(UNIX
         COMMENT "Building QEMU-UAE PPC plugin"
         VERBATIM
     )
+endif()
+
+set(WINUAE_UNIX_HAS_QEMU_UAE_PLUGIN OFF)
+if(WINUAE_UNIX_WITH_PPC_QEMU)
+    if(TARGET winuae_unix_qemu_uae_plugin)
+        set(WINUAE_UNIX_HAS_QEMU_UAE_PLUGIN ON)
+    elseif(WINUAE_QEMU_UAE_PLUGIN_FILE)
+        if(NOT EXISTS "${WINUAE_QEMU_UAE_PLUGIN_PATH}")
+            message(FATAL_ERROR
+                "WINUAE_QEMU_UAE_PLUGIN_FILE does not exist: "
+                "${WINUAE_QEMU_UAE_PLUGIN_PATH}")
+        endif()
+        set(WINUAE_UNIX_HAS_QEMU_UAE_PLUGIN ON)
+    endif()
+endif()
+
+if(WINUAE_UNIX_PACKAGE_REQUIRE_QEMU_UAE_PLUGIN
+    AND NOT APPLE
+    AND WINUAE_UNIX_WITH_PPC_QEMU
+    AND NOT WINUAE_UNIX_HAS_QEMU_UAE_PLUGIN)
+    message(FATAL_ERROR
+        "Unix PPC support is enabled, but no qemu-uae.so plugin is "
+        "available for packaging. Set WINUAE_QEMU_UAE_PLUGIN_FILE or "
+        "provide a WINUAE_QEMU_UAE_SOURCE_DIR tree with configure-qemu-uae.")
+endif()
+
+if(TARGET winuae_unix AND NOT APPLE)
+    install(PROGRAMS "$<TARGET_FILE:winuae_unix>"
+        DESTINATION "${CMAKE_INSTALL_BINDIR}"
+        RENAME winuae
+    )
+    install(FILES README_unix.md UNIX_RUNTIME_PARITY.md
+        DESTINATION "${CMAKE_INSTALL_DOCDIR}"
+    )
+    install(DIRECTORY od-win32/resources/
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/winuae/od-win32/resources"
+    )
+    if(WINUAE_UNIX_HAS_QEMU_UAE_PLUGIN)
+        install(FILES "${WINUAE_QEMU_UAE_PLUGIN_PATH}"
+            DESTINATION "${WINUAE_UNIX_INSTALL_PLUGINDIR_RELATIVE}"
+        )
+    endif()
+    if(NOT APPLE)
+        install(FILES od-unix/share/applications/net.winuae.WinUAE.desktop
+            DESTINATION "${CMAKE_INSTALL_DATADIR}/applications"
+        )
+        install(FILES od-unix/share/mime/packages/net.winuae.WinUAE.xml
+            DESTINATION "${CMAKE_INSTALL_DATADIR}/mime/packages"
+        )
+        install(FILES od-win32/resources/amiga.png
+            DESTINATION "${CMAKE_INSTALL_DATADIR}/icons/hicolor/256x256/apps"
+            RENAME winuae.png
+        )
+        install(FILES od-win32/resources/amiga.png
+            DESTINATION "${CMAKE_INSTALL_DATADIR}/icons/hicolor/256x256/mimetypes"
+            RENAME application-x-winuae-config.png
+        )
+    endif()
 endif()
 
 if(APPLE AND TARGET winuae_unix)
@@ -1530,4 +1575,10 @@ if(NOT APPLE)
         )
     endif()
     include(CPack)
+    if(TARGET package AND TARGET winuae_unix)
+        add_dependencies(package winuae_unix)
+    endif()
+    if(TARGET package AND TARGET winuae_unix_qemu_uae_plugin)
+        add_dependencies(package winuae_unix_qemu_uae_plugin)
+    endif()
 endif()
