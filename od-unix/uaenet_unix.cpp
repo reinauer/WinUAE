@@ -27,8 +27,10 @@
 
 #if defined(__APPLE__) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__) || defined(__DragonFly__)
 #include <net/if_dl.h>
+#include <net/if_types.h>
 #endif
 #if defined(__linux__)
+#include <net/if_arp.h>
 #include <linux/if_tun.h>
 #include <netpacket/packet.h>
 #endif
@@ -351,7 +353,7 @@ void uaenet_trigger(void *vsd)
 	}
 }
 
-static bool get_interface_mac(const char *name, uae_u8 *mac)
+static bool get_interface_mac_2(const char *name, uae_u8 *mac, bool ethernet_only)
 {
 	struct ifaddrs *ifaddr = NULL;
 	bool found = false;
@@ -367,7 +369,7 @@ static bool get_interface_mac(const char *name, uae_u8 *mac)
 #if defined(__linux__)
 		if (ifa->ifa_addr->sa_family == AF_PACKET) {
 			const struct sockaddr_ll *sll = (const struct sockaddr_ll*)ifa->ifa_addr;
-			if (sll->sll_halen >= 6) {
+			if (sll->sll_halen >= 6 && (!ethernet_only || sll->sll_hatype == ARPHRD_ETHER)) {
 				memcpy(mac, sll->sll_addr, 6);
 				found = true;
 				break;
@@ -376,7 +378,7 @@ static bool get_interface_mac(const char *name, uae_u8 *mac)
 #elif defined(AF_LINK)
 		if (ifa->ifa_addr->sa_family == AF_LINK) {
 			const struct sockaddr_dl *sdl = (const struct sockaddr_dl*)ifa->ifa_addr;
-			if (sdl->sdl_alen >= 6) {
+			if (sdl->sdl_alen >= 6 && (!ethernet_only || sdl->sdl_type == IFT_ETHER)) {
 				memcpy(mac, LLADDR(sdl), 6);
 				found = true;
 				break;
@@ -387,6 +389,16 @@ static bool get_interface_mac(const char *name, uae_u8 *mac)
 
 	freeifaddrs(ifaddr);
 	return found;
+}
+
+static bool get_interface_mac(const char *name, uae_u8 *mac)
+{
+	return get_interface_mac_2(name, mac, false);
+}
+
+static bool get_ethernet_interface_mac(const char *name, uae_u8 *mac)
+{
+	return get_interface_mac_2(name, mac, true);
 }
 
 static bool set_nonblocking(int fd)
@@ -566,6 +578,56 @@ static bool has_enumerated_name(const TCHAR *name)
 	return false;
 }
 
+static struct netdriverdata *add_pcap_entry(int *cntp, const char *ifname, const char *desc, bool verified)
+{
+	if (!ifname || !ifname[0] || *cntp >= MAX_TOTAL_NET_DEVICES) {
+		return NULL;
+	}
+
+	TCHAR *tname = au(ifname);
+	if (has_enumerated_name(tname)) {
+		xfree(tname);
+		return NULL;
+	}
+
+	char dbuf[512];
+	if (verified) {
+		snprintf(dbuf, sizeof(dbuf), "%s", desc ? desc : ifname);
+	} else {
+		snprintf(dbuf, sizeof(dbuf), "%s (pcap, permission needed)", desc ? desc : ifname);
+	}
+
+	TCHAR *tdesc = au(dbuf);
+	struct netdriverdata *tc = &tds[*cntp];
+	memset(tc, 0, sizeof(*tc));
+	memcpy(tc->mac, uaemac, 6);
+	if ((verified ? get_interface_mac : get_ethernet_interface_mac)(ifname, tc->mac)) {
+		memcpy(tc->originalmac, tc->mac, 6);
+	} else {
+		if (!verified) {
+			xfree(tname);
+			xfree(tdesc);
+			return NULL;
+		}
+		make_fallback_macs(tc, *cntp);
+	}
+
+	write_log(_T("- MAC %02X:%02X:%02X:%02X:%02X:%02X -> %02X:%02X:%02X:%02X:%02X:%02X\n"),
+		tc->originalmac[0], tc->originalmac[1], tc->originalmac[2], tc->originalmac[3], tc->originalmac[4], tc->originalmac[5],
+		uaemac[0], uaemac[1], uaemac[2], tc->originalmac[3], tc->originalmac[4], tc->originalmac[5]);
+	memcpy(tc->mac, uaemac, 3);
+	tc->mac[3] = tc->originalmac[3];
+	tc->mac[4] = tc->originalmac[4];
+	tc->mac[5] = tc->originalmac[5];
+	tc->type = UAENET_PCAP;
+	tc->active = 1;
+	tc->mtu = 1522;
+	tc->name = tname;
+	tc->desc = tdesc;
+	(*cntp)++;
+	return tc;
+}
+
 static struct netdriverdata *add_tuntap_entry(int *cntp, int type, const char *ifname)
 {
 	if (!ifname || !ifname[0] || *cntp >= MAX_TOTAL_NET_DEVICES) {
@@ -726,7 +788,6 @@ struct netdriverdata *uaenet_enumerate(const TCHAR *name)
 		write_log(_T("uaenet: detecting interfaces\n"));
 
 		for (pcap_if_t *d = alldevs; d && cnt < MAX_TOTAL_NET_DEVICES; d = d->next) {
-			struct netdriverdata *tc = &tds[cnt];
 			pcap_t *fp;
 			char openerr[PCAP_ERRBUF_SIZE];
 			const char *desc = d->description ? d->description : d->name;
@@ -742,6 +803,7 @@ struct netdriverdata *uaenet_enumerate(const TCHAR *name)
 				xfree(err);
 				xfree(tname);
 				xfree(tdesc);
+				add_pcap_entry(&cnt, d->name, desc, false);
 				continue;
 			}
 			const int datalink = pcap_datalink(fp);
@@ -753,27 +815,12 @@ struct netdriverdata *uaenet_enumerate(const TCHAR *name)
 				continue;
 			}
 
-			memset(tc, 0, sizeof(*tc));
-			memcpy(tc->mac, uaemac, 6);
-			if (get_interface_mac(d->name, tc->mac)) {
-				memcpy(tc->originalmac, tc->mac, 6);
-			} else {
-				make_fallback_macs(tc, cnt);
+			if (add_pcap_entry(&cnt, d->name, desc, true)) {
+				tname = NULL;
+				tdesc = NULL;
 			}
-
-			write_log(_T("- MAC %02X:%02X:%02X:%02X:%02X:%02X -> %02X:%02X:%02X:%02X:%02X:%02X\n"),
-				tc->originalmac[0], tc->originalmac[1], tc->originalmac[2], tc->originalmac[3], tc->originalmac[4], tc->originalmac[5],
-				uaemac[0], uaemac[1], uaemac[2], tc->originalmac[3], tc->originalmac[4], tc->originalmac[5]);
-			memcpy(tc->mac, uaemac, 3);
-			tc->mac[3] = tc->originalmac[3];
-			tc->mac[4] = tc->originalmac[4];
-			tc->mac[5] = tc->originalmac[5];
-			tc->type = UAENET_PCAP;
-			tc->active = 1;
-			tc->mtu = 1522;
-			tc->name = tname;
-			tc->desc = tdesc;
-			cnt++;
+			xfree(tname);
+			xfree(tdesc);
 		}
 		pcap_freealldevs(alldevs);
 	}
