@@ -181,6 +181,26 @@ static UAE_DLHANDLE uae_dlopen_plugin_unix(const TCHAR *name, TCHAR *loaded_path
 					}
 				}
 			}
+#ifdef WINUAE_UNIX_INSTALL_PLUGINDIR_RELATIVE
+			if (_tcslen(executable_dir) + 4 +
+				_tcslen(WINUAE_UNIX_INSTALL_PLUGINDIR_RELATIVE) + 2 <
+				MAX_DPATH) {
+				_tcscpy(prefix, executable_dir);
+				_tcscat(prefix, _T("/../"));
+				_tcscat(prefix, WINUAE_UNIX_INSTALL_PLUGINDIR_RELATIVE);
+				_tcscat(prefix, _T("/"));
+				TCHAR path[MAX_DPATH];
+				if (append_plugin_path(path, MAX_DPATH, prefix, name,
+					suffixes[s])) {
+					UAE_DLHANDLE handle = try_unix_plugin_path(path,
+						&last_error);
+					if (handle) {
+						_tcscpy(loaded_path, path);
+						return handle;
+					}
+				}
+			}
+#endif
 		}
 	}
 
