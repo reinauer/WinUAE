@@ -5534,7 +5534,7 @@ public:
 
         navigation = new QTreeWidget;
         navigation->setHeaderHidden(true);
-        navigation->setRootIsDecorated(false);
+        navigation->setRootIsDecorated(true);
         navigation->setIndentation(12);
         navigation->setIconSize(QSize(16, 16));
         navigation->setFixedWidth(166);
@@ -5542,37 +5542,47 @@ public:
         pageStack = new QStackedWidget;
         pageStack->setObjectName(QStringLiteral("pageStack"));
 
-        addPage(QStringLiteral("Configurations"), QStringLiteral("configfile.ico"), makeConfigurationsPage());
-        addPage(QStringLiteral("Quickstart"), QStringLiteral("quickstart.ico"), makeQuickstartPage());
-        addPage(QStringLiteral("CPU and FPU"), QStringLiteral("cpu.ico"), makeCpuPage());
-        addPage(QStringLiteral("Chipset"), QStringLiteral("chip.ico"), makeChipsetPage());
-        addPage(QStringLiteral("Adv. Chipset"), QStringLiteral("chip.ico"), makeAdvancedChipsetPage());
-        addPage(QStringLiteral("ROM"), QStringLiteral("chip.ico"), makeRomPage());
-        addPage(QStringLiteral("RAM"), QStringLiteral("chip.ico"), makeMemoryPage());
-        addPage(QStringLiteral("Floppy drives"), QStringLiteral("35floppy.ico"), makeFloppyPage());
-        addPage(QStringLiteral("Disk Swapper"), QStringLiteral("diskimage.ico"), makeDiskSwapperPage());
-        addPage(QStringLiteral("Hard drives"), QStringLiteral("drive.ico"), makeHardDrivesPage());
-        addPage(QStringLiteral("Expansion boards"), QStringLiteral("expansion.ico"), makeExpansionPage());
-        addPage(QStringLiteral("Expansions"), QStringLiteral("expansion.ico"), makeExpansionsPage());
-        addPage(QStringLiteral("Hardware info"), QStringLiteral("expansion.ico"), makeHardwareInfoPage());
-        addPage(QStringLiteral("Display"), QStringLiteral("screen.ico"), makeDisplayPage());
-        addPage(QStringLiteral("Filter"), QStringLiteral("screen.ico"), makeFilterPage());
-        addPage(QStringLiteral("Output"), QStringLiteral("avioutput.ico"), makeOutputPage());
-        addPage(QStringLiteral("Sound"), QStringLiteral("sound.ico"), makeSoundPage());
-        addPage(QStringLiteral("Game ports"), QStringLiteral("joystick.ico"), makeGamePortsPage());
-        addPage(QStringLiteral("IO ports"), QStringLiteral("port.ico"), makeIoPortsPage());
-        addPage(QStringLiteral("Input"), QStringLiteral("port.ico"), makeInputPage());
-        addPage(QStringLiteral("Paths"), QStringLiteral("paths.ico"), makePathsPage());
-        addPage(QStringLiteral("Miscellaneous"), QStringLiteral("misc.ico"), makeMiscPage());
-        addPage(QStringLiteral("Pri. & Extensions"), QStringLiteral("misc.ico"), makeExtensionsPage());
-        addPage(QStringLiteral("Frontend"), QStringLiteral("quickstart.ico"), makeFrontendPage());
-        addPage(QStringLiteral("About"), QStringLiteral("amigainfo.ico"), makeAboutPage());
+        QTreeWidgetItem *settingsFolder = addFolder(QStringLiteral("Settings"));
+        addPage(QStringLiteral("About"), QStringLiteral("amigainfo.ico"), makeAboutPage(), settingsFolder);
+        addPage(QStringLiteral("Paths"), QStringLiteral("paths.ico"), makePathsPage(), settingsFolder);
+        QTreeWidgetItem *quickstartPage = addPage(QStringLiteral("Quickstart"), QStringLiteral("quickstart.ico"), makeQuickstartPage(), settingsFolder);
+        addPage(QStringLiteral("Configurations"), QStringLiteral("configfile.ico"), makeConfigurationsPage(), settingsFolder);
+        addPage(QStringLiteral("Frontend"), QStringLiteral("quickstart.ico"), makeFrontendPage(), settingsFolder);
+
+        QTreeWidgetItem *hardwareFolder = addFolder(QStringLiteral("Hardware"), settingsFolder);
+        addPage(QStringLiteral("CPU and FPU"), QStringLiteral("cpu.ico"), makeCpuPage(), hardwareFolder);
+        addPage(QStringLiteral("Chipset"), QStringLiteral("chip.ico"), makeChipsetPage(), hardwareFolder);
+        addPage(QStringLiteral("Adv. Chipset"), QStringLiteral("chip.ico"), makeAdvancedChipsetPage(), hardwareFolder);
+        addPage(QStringLiteral("ROM"), QStringLiteral("chip.ico"), makeRomPage(), hardwareFolder);
+        addPage(QStringLiteral("RAM"), QStringLiteral("chip.ico"), makeMemoryPage(), hardwareFolder);
+        addPage(QStringLiteral("Floppy drives"), QStringLiteral("35floppy.ico"), makeFloppyPage(), hardwareFolder);
+        addPage(QStringLiteral("CD & Hard drives"), QStringLiteral("drive.ico"), makeHardDrivesPage(), hardwareFolder);
+        addPage(QStringLiteral("Expansions"), QStringLiteral("expansion.ico"), makeExpansionsPage(), hardwareFolder);
+        addPage(QStringLiteral("RTG board"), QStringLiteral("expansion.ico"), makeExpansionPage(), hardwareFolder);
+        addPage(QStringLiteral("Hardware info"), QStringLiteral("expansion.ico"), makeHardwareInfoPage(), hardwareFolder);
+
+        QTreeWidgetItem *hostFolder = addFolder(QStringLiteral("Host"), settingsFolder);
+        addPage(QStringLiteral("Display"), QStringLiteral("screen.ico"), makeDisplayPage(), hostFolder);
+        addPage(QStringLiteral("Sound"), QStringLiteral("sound.ico"), makeSoundPage(), hostFolder);
+        addPage(QStringLiteral("Game ports"), QStringLiteral("joystick.ico"), makeGamePortsPage(), hostFolder);
+        addPage(QStringLiteral("IO ports"), QStringLiteral("port.ico"), makeIoPortsPage(), hostFolder);
+        addPage(QStringLiteral("Input"), QStringLiteral("port.ico"), makeInputPage(), hostFolder);
+        addPage(QStringLiteral("Output"), QStringLiteral("avioutput.ico"), makeOutputPage(), hostFolder);
+        addPage(QStringLiteral("Filter"), QStringLiteral("screen.ico"), makeFilterPage(), hostFolder);
+        addPage(QStringLiteral("Disk Swapper"), QStringLiteral("diskimage.ico"), makeDiskSwapperPage(), hostFolder);
+        addPage(QStringLiteral("Miscellaneous"), QStringLiteral("misc.ico"), makeMiscPage(), hostFolder);
+        addPage(QStringLiteral("Pri. & Extensions"), QStringLiteral("misc.ico"), makeExtensionsPage(), hostFolder);
+        navigation->expandAll();
 
         connect(navigation, &QTreeWidget::currentItemChanged, this, [this](QTreeWidgetItem *item) {
             if (!item) {
                 return;
             }
-            pageStack->setCurrentIndex(item->data(0, Qt::UserRole).toInt());
+            const QVariant pageIndex = item->data(0, Qt::UserRole);
+            if (!pageIndex.isValid()) {
+                return;
+            }
+            pageStack->setCurrentIndex(pageIndex.toInt());
             if (item->text(0) == QStringLiteral("Hardware info")) {
                 refreshHardwareInfoPage();
             } else if (item->text(0) == QStringLiteral("Frontend")) {
@@ -5634,7 +5644,7 @@ public:
         root->addLayout(buttons);
 
         resetDefaults();
-        navigation->setCurrentItem(navigation->topLevelItem(1));
+        navigation->setCurrentItem(quickstartPage);
         if (!initialConfigPath.isEmpty()) {
             loadConfig(initialConfigPath);
         }
@@ -6077,7 +6087,19 @@ private:
     WinUaeQtConfig loadedConfig;
     WinUaeQtLauncherResult result;
 
-    void addPage(const QString &title, const QString &icon, QWidget *page)
+    QTreeWidgetItem *addFolder(const QString &title, QTreeWidgetItem *parent = nullptr)
+    {
+        QTreeWidgetItem *item = parent ? new QTreeWidgetItem(parent) : new QTreeWidgetItem(navigation);
+        item->setText(0, title);
+        item->setIcon(0, resourceIcon(QStringLiteral("folder.ico")));
+        QFont font = item->font(0);
+        font.setBold(true);
+        item->setFont(0, font);
+        item->setExpanded(true);
+        return item;
+    }
+
+    QTreeWidgetItem *addPage(const QString &title, const QString &icon, QWidget *page, QTreeWidgetItem *parent = nullptr)
     {
         QWidget *stackPage = page;
         if (!page->findChild<QScrollArea*>()) {
@@ -6092,10 +6114,11 @@ private:
             stackPage = scroll;
         }
         const int index = pageStack->addWidget(stackPage);
-        QTreeWidgetItem *item = new QTreeWidgetItem(navigation);
+        QTreeWidgetItem *item = parent ? new QTreeWidgetItem(parent) : new QTreeWidgetItem(navigation);
         item->setText(0, title);
         item->setIcon(0, resourceIcon(icon));
         item->setData(0, Qt::UserRole, index);
+        return item;
     }
 
     QWidget *makePage()
@@ -15896,7 +15919,11 @@ private:
                 && !description.contains(search, Qt::CaseInsensitive)) {
                 continue;
             }
-            QTreeWidgetItem *item = new QTreeWidgetItem(root, QStringList(info.completeBaseName()));
+            QString displayName = info.completeBaseName();
+            if (!description.isEmpty()) {
+                displayName += QStringLiteral(" (%1)").arg(description);
+            }
+            QTreeWidgetItem *item = new QTreeWidgetItem(root, QStringList(displayName));
             item->setIcon(0, resourceIcon(QStringLiteral("configfile.ico")));
             item->setData(0, Qt::UserRole, info.absoluteFilePath());
             item->setData(0, Qt::UserRole + 1, description);
