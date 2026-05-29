@@ -1479,6 +1479,15 @@ if(WINUAE_UNIX_WITH_QT_UI)
     endif()
 endif()
 
+if(TARGET winuae_unix)
+    add_test(
+        NAME winuae_unix_sound_board_catalog
+        COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tools/unix-check-sound-board-catalog.sh" $<TARGET_FILE:winuae_unix>
+    )
+    set_tests_properties(winuae_unix_sound_board_catalog PROPERTIES LABELS "unix")
+    list(APPEND WINUAE_UNIX_TEST_TARGETS winuae_unix)
+endif()
+
 if(WINUAE_UNIX_TEST_TARGETS)
     add_custom_target(winuae_unix_tests
         DEPENDS ${WINUAE_UNIX_TEST_TARGETS}
