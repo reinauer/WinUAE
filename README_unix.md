@@ -453,7 +453,9 @@ tools/unix-smoke-sound-boards.sh
 cmake --build "$WINUAE_BUILD_DIR" --target winuae_unix_smoke_sound_boards
 ```
 
-That smoke checks Toccata, Prelude, Prelude 1200, UAESND Z2/Z3, UAEBOARD Z2/Z3, and ES1370/FM801 behind a Prometheus PCI bridge.
+That smoke checks Toccata, Prelude, Prelude 1200, UAESND Z2/Z3,
+UAEBOARD Z2/Z3, and ES1370/FM801 behind Prometheus, Prometheus
+FireStorm, Mediator 4000, and G-REX PCI bridges.
 
 For manual A4091 autoconfig smoke tests, use an A4000/A4000T-style config, disable 24-bit CPU addressing, and provide a real A4091 ROM:
 
@@ -603,7 +605,7 @@ export WINUAE_SMOKE_LOG=/tmp/winuae_unix_smoke.log
 `WINUAE_UNIX_WITH_PPC_QEMU` is enabled by default and builds the WinUAE side of the PPC accelerator/QEMU plugin ABI. `WINUAE_UNIX_BUILD_QEMU_UAE_PLUGIN` is enabled by default when a sibling `qemu-uae-v11.0` tree is present and builds/copies `qemu-uae.so` for the executable, Linux package, or app bundle. `WINUAE_QEMU_UAE_PLUGIN_FILE` can point at a prebuilt plugin, and `WINUAE_UNIX_PACKAGE_REQUIRE_QEMU_UAE_PLUGIN` makes package configuration fail if PPC support is enabled but no plugin can be packaged.
 `WINUAE_QEMU_UAE_DEPS_PREFIX` defaults to the private macOS dependency prefix and points the plugin helper at the deployment-target-compatible GLib build.
 `WINUAE_UNIX_WITH_OPENGL_SHADER_PIPELINE` is enabled by default when SDL3 and OpenGL development files are available. Runtime OpenGL context or shader setup failure falls back to the SDL renderer.
-`WINUAE_UNIX_WITH_SNDBOARD` is enabled by default and builds the shared Toccata/Prelude/UAESND sound-board backend. The default PCI build also exposes ES1370 and FM801 through the same expansion-board catalog as Windows.
+`WINUAE_UNIX_WITH_SNDBOARD` is enabled by default and builds the shared Toccata/Prelude/UAESND sound-board backend. It also enables the shared PCI bridge layer needed to expose ES1370 and FM801 through the same expansion-board catalog as Windows, even when hardware RTG graphics boards are disabled.
 `WINUAE_UNIX_WITH_PROWIZARD` is enabled by default and builds the same Pro Wizard source set used by the Windows project.
 `WINUAE_UNIX_WITH_QT_UI` is enabled by default, but Qt UI targets are skipped when Qt Widgets is not installed.
 `WINUAE_UNIX_WITH_INTEGRATED_QT_UI` is enabled by default. When Qt Widgets is not installed, the build continues without the integrated UI.
