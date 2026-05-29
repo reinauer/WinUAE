@@ -94,6 +94,18 @@ require_log()
     fi
 }
 
+run_pci_case()
+{
+    local name=$1
+    local bridge_pattern=$2
+    local board_pattern=$3
+    shift 3
+
+    run_case "$name" "$A4000_ROM" "${base_a4000[@]}" "$@"
+    require_log "$bridge_pattern"
+    require_log "$board_pattern"
+}
+
 run_case toccata "$A1200_ROM" "${base_a1200[@]}" -s toccata_rom_file=:ENABLED
 require_log "Card [0-9]+: 'Toccata'"
 require_log "Toccata"
@@ -125,18 +137,40 @@ require_log "Card [0-9]+: 'UAEBOARD Z3'"
 require_log "Card [0-9]+: Z3 .*uaesnd z3"
 require_log "UAESND memory"
 
-run_case es1370_prometheus "$A4000_ROM" \
-    "${base_a4000[@]}" \
+run_pci_case es1370_prometheus "PCI bridge 'Prometheus'" "ES1370" \
     -s prometheus_rom_file=:ENABLED \
     -s es1370_rom_file=:ENABLED
-require_log "PCI bridge 'Prometheus'"
-require_log "ES1370"
 
-run_case fm801_prometheus "$A4000_ROM" \
-    "${base_a4000[@]}" \
+run_pci_case es1370_prometheusfirestorm \
+    "PCI bridge 'Prometheus FireStorm'" "ES1370" \
+    -s prometheusfirestorm_rom_file=:ENABLED \
+    -s es1370_rom_file=:ENABLED
+
+run_pci_case es1370_mediator4000 "PCI bridge 'Mediator 4000'" "ES1370" \
+    -s mediator_rom_file=:ENABLED \
+    -s mediator_rom_options=subtype=4000mkii \
+    -s es1370_rom_file=:ENABLED
+
+run_pci_case es1370_grex "PCI bridge 'G-REX'" "ES1370" \
+    -s grex_rom_file=:ENABLED \
+    -s es1370_rom_file=:ENABLED
+
+run_pci_case fm801_prometheus "PCI bridge 'Prometheus'" "FM801" \
     -s prometheus_rom_file=:ENABLED \
     -s fm801_rom_file=:ENABLED
-require_log "PCI bridge 'Prometheus'"
-require_log "FM801"
+
+run_pci_case fm801_prometheusfirestorm \
+    "PCI bridge 'Prometheus FireStorm'" "FM801" \
+    -s prometheusfirestorm_rom_file=:ENABLED \
+    -s fm801_rom_file=:ENABLED
+
+run_pci_case fm801_mediator4000 "PCI bridge 'Mediator 4000'" "FM801" \
+    -s mediator_rom_file=:ENABLED \
+    -s mediator_rom_options=subtype=4000mkii \
+    -s fm801_rom_file=:ENABLED
+
+run_pci_case fm801_grex "PCI bridge 'G-REX'" "FM801" \
+    -s grex_rom_file=:ENABLED \
+    -s fm801_rom_file=:ENABLED
 
 echo "Unix sound-board smoke test passed. Logs: $LOG_DIR/winuae_unix_sound_*.log"
