@@ -42,6 +42,8 @@ Unix now builds `GFXBOARD`, PCem video adapters, QEMU VGA glue, and the
 RTG UI list. The remaining work is full Windows-equivalent behavior:
 board ROM execution, monitor switching, backbuffers, hardware callbacks,
 render-thread interactions, and real driver validation for every board.
+The PCem Voodoo render recompiler now follows the Windows non-ARM64
+behavior on Unix x86/x86_64 hosts.
 
 - UAE Zorro II RTG.
 - UAE Zorro III RTG.
@@ -92,8 +94,8 @@ Unix now defines `WITH_X86` by default, links `x86.cpp`, and builds the
 shared PCem x86 bridgeboard interpreter, storage, input, sound, serial,
 timer, DMA, NVRAM, and VGA source set. The old PCem dynamic recompiler
 source is compiled only far enough to provide the interpreter opcode
-tables when `UAE` is defined; Unix does not enable the old PCem dynarec
-backend. These boards are visible through the shared expansion catalog,
+tables when `UAE` is defined; Unix does not enable that bridgeboard CPU
+dynarec backend. These boards are visible through the shared expansion catalog,
 but still need ROM and guest-driver validation.
 
 - `a1060` - A1060 Sidecar.
