@@ -31,6 +31,7 @@ void mem_mapping_set_addrx(mem_mapping_t *mapping, uint32_t base, uint32_t size)
 void mem_mapping_disablex(mem_mapping_t *mapping);
 void mem_mapping_enablex(mem_mapping_t *mapping);
 
+#ifndef WITH_X86
 uint64_t tsc;
 uint64_t VGACONST1;
 uint64_t VGACONST2;
@@ -55,6 +56,7 @@ static struct pcem_timer_defaults
         }
     }
 } pcem_timer_defaults_instance;
+#endif
 
 HANDLE CreateSemaphore(void*, int, int initial_count, const char*)
 {
@@ -84,6 +86,7 @@ BOOL CloseHandle(HANDLE handle)
     return TRUE;
 }
 
+#ifndef WITH_X86
 void mem_mapping_add(mem_mapping_t *mapping,
     uint32_t base,
     uint32_t size,
@@ -233,6 +236,7 @@ int device_get_config_int(const char *name)
     }
     return 0;
 }
+#endif
 
 char *device_get_config_string(const char*)
 {
