@@ -43,7 +43,7 @@ require_file "${deb_postrm}" "Debian postrm control script"
 require_match '^\[Desktop Entry\]$' "${desktop}" "desktop header"
 require_match '^Type=Application$' "${desktop}" "desktop application type"
 require_match '^Name=WinUAE$' "${desktop}" "desktop name"
-require_match '^Exec=winuae_unix %f$' "${desktop}" "desktop exec"
+require_match '^Exec=winuae %f$' "${desktop}" "desktop exec"
 require_match '^Icon=winuae$' "${desktop}" "desktop icon"
 require_match '^Categories=.*(^|;)Emulator(;|$)' "${desktop}" "desktop category"
 require_match '^MimeType=application/x-winuae-config;$' "${desktop}" "desktop MIME type"
@@ -56,7 +56,12 @@ if ! file "${icon}" | grep -q 'PNG image data'; then
     exit 1
 fi
 
-require_match 'install\(TARGETS winuae_unix' "${cmake}" "Linux executable install rule"
+require_match 'install\(PROGRAMS "\$<TARGET_FILE:winuae_unix>"' "${cmake}" "Linux executable install rule"
+require_match 'RENAME winuae' "${cmake}" "Linux executable install name"
+require_match 'WINUAE_UNIX_INSTALL_PLUGINDIR_RELATIVE' "${cmake}" "Linux plugin install directory"
+require_match 'WINUAE_QEMU_UAE_PLUGIN_FILE' "${cmake}" "prebuilt QEMU-UAE plugin option"
+require_match 'available for packaging' "${cmake}" "QEMU-UAE package requirement"
+require_match 'install\(FILES "\$\{WINUAE_QEMU_UAE_PLUGIN_PATH\}"' "${cmake}" "QEMU-UAE plugin install rule"
 require_match 'od-unix/share/applications/net\.winuae\.WinUAE\.desktop' "${cmake}" "desktop install rule"
 require_match 'od-unix/share/mime/packages/net\.winuae\.WinUAE\.xml' "${cmake}" "MIME install rule"
 require_match 'icons/hicolor/256x256/apps' "${cmake}" "application icon install rule"
@@ -67,9 +72,15 @@ require_match 'CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON' "${cmake}" "CPack Debian shlib
 require_match 'CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA' "${cmake}" "CPack Debian control scripts"
 require_match 'packaging/debian/postinst' "${cmake}" "Debian postinst registration"
 require_match 'packaging/debian/postrm' "${cmake}" "Debian postrm registration"
+require_match 'add_dependencies\(package winuae_unix_qemu_uae_plugin\)' "${cmake}" "package plugin dependency"
 
 require_match 'cmake --install /tmp/winuae_cmake_build --prefix /opt/winuae' "${readme}" "Linux install instructions"
 require_match 'cmake --build /tmp/winuae_cmake_build --target package' "${readme}" "Linux package instructions"
 require_match 'tools/debian-build-package.sh' "${readme}" "Debian package helper instructions"
+require_match 'installs the emulator as `winuae`' "${readme}" "Debian command name documentation"
+require_match 'qemu-uae\.so' "${readme}" "QEMU-UAE package documentation"
+require_match 'WINUAE_UNIX_PACKAGE_REQUIRE_QEMU_UAE_PLUGIN' "${deb_builder}" "Debian plugin requirement"
+require_match '/usr/bin/winuae' "${deb_builder}" "Debian installed binary check"
+require_match 'package does not contain qemu-uae\.so' "${deb_builder}" "Debian plugin contents check"
 
 echo "verified Linux package metadata"

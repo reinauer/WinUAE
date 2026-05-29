@@ -5,6 +5,7 @@ source_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 build_dir="${WINUAE_DEB_BUILD_DIR:-/tmp/winuae_deb_build}"
 build_type="${WINUAE_DEB_BUILD_TYPE:-RelWithDebInfo}"
 jobs="${WINUAE_DEB_JOBS:-}"
+require_qemu_plugin="${WINUAE_DEB_REQUIRE_QEMU_UAE_PLUGIN:-ON}"
 cmake_args=()
 
 usage() {
@@ -18,6 +19,8 @@ Options:
   -h, --help          Show this help
 
 Extra arguments after -- are passed to the CMake configure step.
+Set WINUAE_DEB_REQUIRE_QEMU_UAE_PLUGIN=OFF to allow a package without the
+QEMU-UAE PPC plugin.
 EOF
 }
 
@@ -82,6 +85,7 @@ fi
 
 cmake -S "${source_dir}" -B "${build_dir}" \
     -DCMAKE_BUILD_TYPE="${build_type}" \
+    -DWINUAE_UNIX_PACKAGE_REQUIRE_QEMU_UAE_PLUGIN="${require_qemu_plugin}" \
     "${cmake_args[@]}"
 
 cmake --build "${build_dir}" \
@@ -104,4 +108,20 @@ echo "Built Debian package:"
 for deb in "${debs[@]}"; do
     echo "  ${deb}"
     dpkg-deb --field "${deb}" Package Version Architecture Depends
+
+    contents="$(dpkg-deb --contents "${deb}")"
+    if ! grep -Eq ' \./usr/bin/winuae$' <<<"${contents}"; then
+        echo "error: package does not contain /usr/bin/winuae" >&2
+        exit 1
+    fi
+    if grep -Eq ' \./usr/bin/winuae_unix$' <<<"${contents}"; then
+        echo "error: package should not install /usr/bin/winuae_unix" >&2
+        exit 1
+    fi
+    if [[ "${require_qemu_plugin}" != "OFF" && "${require_qemu_plugin}" != "0" ]]; then
+        if ! grep -Eq ' \./usr/lib.*/winuae/plugins/qemu-uae\.so$' <<<"${contents}"; then
+            echo "error: package does not contain qemu-uae.so" >&2
+            exit 1
+        fi
+    fi
 done
