@@ -219,8 +219,14 @@ int device_get_config_int(const char *name)
         !strcmp(name, "dithersub") || !strcmp(name, "dacfilter")) {
         return 1;
     }
-    if (!strcmp(name, "recompiler") || !strcmp(name, "sli") ||
-        !strcmp(name, "type")) {
+    if (!strcmp(name, "recompiler")) {
+#ifdef PCEM_VOODOO_CODEGEN
+        return 1;
+#else
+        return 0;
+#endif
+    }
+    if (!strcmp(name, "sli") || !strcmp(name, "type")) {
         return 0;
     }
     if (!strcmp(name, "framebuffer_memory") ||
