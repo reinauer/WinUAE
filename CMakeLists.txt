@@ -182,8 +182,11 @@ option(WINUAE_UNIX_WITH_CPUBOARD "Build shared non-PPC CPU accelerator board sup
 option(WINUAE_UNIX_WITH_PPC_QEMU "Build Unix PPC accelerator support through the qemu-uae plugin ABI" ON)
 option(WINUAE_UNIX_BUILD_QEMU_UAE_PLUGIN "Build the sibling qemu-uae plugin for Unix packaging" ON)
 option(WINUAE_UNIX_PACKAGE_REQUIRE_QEMU_UAE_PLUGIN "Require qemu-uae.so when building Unix packages with PPC support" OFF)
+option(WINUAE_UNIX_WITH_DSP "Build shared DSP3210 accelerator support" ON)
 option(WINUAE_UNIX_WITH_SNDBOARD "Build shared Toccata/Prelude/UAESND sound-board support" ON)
 option(WINUAE_UNIX_WITH_GFXBOARD "Build shared hardware RTG graphics board, PCI, QEMU VGA and PCem Voodoo support" ON)
+option(WINUAE_UNIX_WITH_X86 "Build shared x86 bridgeboard and ISA expansion support" ON)
+option(WINUAE_UNIX_WITH_DRACO "Build shared DraCo and Casablanca support" ON)
 option(WINUAE_UNIX_WITH_AVIOUTPUT "Build Unix screenshot and video/audio capture output support" ON)
 option(WINUAE_UNIX_WITH_OPENGL_SHADER_PIPELINE "Build OpenGL-backed Unix shader/filter presentation support" ON)
 option(WINUAE_LZMA_SDK_FETCH "Fetch the 7-Zip/LZMA SDK into WINUAE_LZMA_SDK_DIR when missing" ON)
@@ -312,8 +315,12 @@ set(WINUAE_UNIX_ENABLE_NATIVE_SCSI OFF)
 set(WINUAE_UNIX_ENABLE_MIDI OFF)
 set(WINUAE_UNIX_ENABLE_CPUBOARD OFF)
 set(WINUAE_UNIX_ENABLE_PPC OFF)
+set(WINUAE_UNIX_ENABLE_DSP OFF)
 set(WINUAE_UNIX_ENABLE_SNDBOARD OFF)
 set(WINUAE_UNIX_ENABLE_GFXBOARD OFF)
+set(WINUAE_UNIX_ENABLE_X86 OFF)
+set(WINUAE_UNIX_ENABLE_DRACO OFF)
+set(WINUAE_UNIX_ENABLE_PCEM OFF)
 set(WINUAE_UNIX_ENABLE_JIT OFF)
 set(WINUAE_UNIX_ENABLE_AVIOUTPUT OFF)
 set(WINUAE_UNIX_ENABLE_SHADER_PIPELINE OFF)
@@ -322,6 +329,86 @@ set(WINUAE_UNIX_MIDI_INCLUDE_DIRS)
 set(WINUAE_UNIX_MIDI_LIBRARY_DIRS)
 set(WINUAE_UNIX_MIDI_COMPILE_OPTIONS)
 set(WINUAE_UNIX_MIDI_QT_DEFINITIONS)
+
+set(WINUAE_UNIX_PCEM_COMMON_SOURCES
+    od-unix/pcem_wincompat.cpp
+    pcem/pcemglue.cpp
+    pcem/timer.cpp
+)
+
+set(WINUAE_UNIX_PCEM_VIDEO_SOURCES
+    pcem/vid_bt482_ramdac.cpp
+    pcem/vid_cl5429.cpp
+    pcem/vid_et4000.cpp
+    pcem/vid_et4000w32.cpp
+    pcem/vid_inmos.cpp
+    pcem/vid_mga.cpp
+    pcem/vid_ncr.cpp
+    pcem/vid_permedia2.cpp
+    pcem/vid_s3.cpp
+    pcem/vid_s3_virge.cpp
+    pcem/vid_sc1502x_ramdac.cpp
+    pcem/vid_sdac_ramdac.cpp
+    pcem/vid_svga.cpp
+    pcem/vid_svga_render.cpp
+    pcem/vid_tvp3026_ramdac.cpp
+    pcem/vid_voodoo.cpp
+    pcem/vid_voodoo_banshee.cpp
+    pcem/vid_voodoo_banshee_blitter.cpp
+    pcem/vid_voodoo_blitter.cpp
+    pcem/vid_voodoo_display.cpp
+    pcem/vid_voodoo_fb.cpp
+    pcem/vid_voodoo_fifo.cpp
+    pcem/vid_voodoo_reg.cpp
+    pcem/vid_voodoo_render.cpp
+    pcem/vid_voodoo_setup.cpp
+    pcem/vid_voodoo_texture.cpp
+    qemuvga/cirrus_vga.cpp
+    qemuvga/es1370.cpp
+    qemuvga/ne2000.cpp
+    qemuvga/qemu.cpp
+    qemuvga/qemuuaeglue.cpp
+    qemuvga/vga.cpp
+)
+
+set(WINUAE_UNIX_PCEM_X86_SOURCES
+    pcem/386.cpp
+    pcem/386_common.cpp
+    pcem/386_dynarec.cpp
+    pcem/808x.cpp
+    pcem/cpu.cpp
+    pcem/dma.cpp
+    pcem/dosbox/dbopl.cpp
+    pcem/dosbox/nukedopl.cpp
+    pcem/keyboard.cpp
+    pcem/keyboard_at.cpp
+    pcem/mem.cpp
+    pcem/mouse_ps2.cpp
+    pcem/mouse_serial.cpp
+    pcem/nvr.cpp
+    pcem/pcemrtc.cpp
+    pcem/pic.cpp
+    pcem/pit.cpp
+    pcem/serial.cpp
+    pcem/sound_cms.cpp
+    pcem/sound_dbopl.cpp
+    pcem/sound_mpu401_uart.cpp
+    pcem/sound_opl.cpp
+    pcem/sound_sb.cpp
+    pcem/sound_sb_dsp.cpp
+    pcem/sound_speaker.cpp
+    pcem/x86seg.cpp
+    pcem/x87.cpp
+    pcem/x87_timings.cpp
+)
+
+set(WINUAE_UNIX_PCEM_DRACO_SOURCES
+    pcem/keyboard.cpp
+    pcem/keyboard_at.cpp
+    pcem/keyboard_at_draco.cpp
+    pcem/mouse_serial.cpp
+    pcem/serial.cpp
+)
 
 set(WINUAE_UNIX_USE_LIBPNG OFF)
 if(WINUAE_UNIX_WITH_LIBPNG AND PNG_FOUND)
@@ -572,6 +659,15 @@ if(WINUAE_UNIX_WITH_PPC_QEMU)
     )
 endif()
 
+if(WINUAE_UNIX_WITH_DSP)
+    set(WINUAE_UNIX_ENABLE_DSP ON)
+    target_compile_definitions(winuae_core PRIVATE WITH_DSP=1)
+    list(APPEND WINUAE_UNIX_EXTRA_SOURCES
+        dsp3210/DSP3210_emulation.cpp
+        dsp3210/dsp_glue.cpp
+    )
+endif()
+
 if(WINUAE_UNIX_WITH_SNDBOARD)
     set(WINUAE_UNIX_ENABLE_SNDBOARD ON)
     target_compile_definitions(winuae_core PRIVATE WITH_SNDBOARD=1 WITH_TOCCATA=1)
@@ -590,57 +686,54 @@ if(WINUAE_UNIX_WITH_GFXBOARD)
             GFXBOARD=1
             WITH_PCI=1
             WINUAE_UNIX_WITH_GFXBOARD=1
-            WINUAE_UNIX_WITH_PCEM=1
         )
-        target_compile_options(winuae_core PRIVATE
-            $<$<COMPILE_LANGUAGE:CXX>:-include>
-            $<$<COMPILE_LANGUAGE:CXX>:${CMAKE_CURRENT_SOURCE_DIR}/od-unix/pcem_wincompat.h>
-        )
+        set(WINUAE_UNIX_ENABLE_PCEM ON)
         list(APPEND WINUAE_UNIX_EXTRA_SOURCES
             gfxboard.cpp
             pci.cpp
             mame/a2410.cpp
             mame/tm34010/tms34010.cpp
-            od-unix/pcem_wincompat.cpp
-            pcem/pcemglue.cpp
-            pcem/timer.cpp
-            pcem/vid_bt482_ramdac.cpp
-            pcem/vid_cl5429.cpp
-            pcem/vid_et4000.cpp
-            pcem/vid_et4000w32.cpp
-            pcem/vid_inmos.cpp
-            pcem/vid_mga.cpp
-            pcem/vid_ncr.cpp
-            pcem/vid_permedia2.cpp
-            pcem/vid_s3.cpp
-            pcem/vid_s3_virge.cpp
-            pcem/vid_sc1502x_ramdac.cpp
-            pcem/vid_sdac_ramdac.cpp
-            pcem/vid_svga.cpp
-            pcem/vid_svga_render.cpp
-            pcem/vid_tvp3026_ramdac.cpp
-            pcem/vid_voodoo.cpp
-            pcem/vid_voodoo_banshee.cpp
-            pcem/vid_voodoo_banshee_blitter.cpp
-            pcem/vid_voodoo_blitter.cpp
-            pcem/vid_voodoo_display.cpp
-            pcem/vid_voodoo_fb.cpp
-            pcem/vid_voodoo_fifo.cpp
-            pcem/vid_voodoo_reg.cpp
-            pcem/vid_voodoo_render.cpp
-            pcem/vid_voodoo_setup.cpp
-            pcem/vid_voodoo_texture.cpp
-            qemuvga/cirrus_vga.cpp
-            qemuvga/es1370.cpp
-            qemuvga/ne2000.cpp
-            qemuvga/qemu.cpp
-            qemuvga/qemuuaeglue.cpp
-            qemuvga/vga.cpp
+            ${WINUAE_UNIX_PCEM_COMMON_SOURCES}
+            ${WINUAE_UNIX_PCEM_VIDEO_SOURCES}
         )
     endif()
 endif()
 
-if(WINUAE_UNIX_ENABLE_PPC OR WINUAE_UNIX_ENABLE_GFXBOARD)
+if(WINUAE_UNIX_WITH_X86)
+    set(WINUAE_UNIX_ENABLE_X86 ON)
+    set(WINUAE_UNIX_ENABLE_PCEM ON)
+    target_compile_definitions(winuae_core PRIVATE WITH_X86=1)
+    list(APPEND WINUAE_UNIX_EXTRA_SOURCES
+        x86.cpp
+        ${WINUAE_UNIX_PCEM_COMMON_SOURCES}
+        ${WINUAE_UNIX_PCEM_X86_SOURCES}
+    )
+endif()
+
+if(WINUAE_UNIX_WITH_DRACO)
+    if(NOT WINUAE_UNIX_WITH_NCR_SCSI)
+        message(STATUS "DraCo/Casablanca support requires NCR SCSI; disabling WINUAE_UNIX_WITH_DRACO")
+    else()
+        set(WINUAE_UNIX_ENABLE_DRACO ON)
+        set(WINUAE_UNIX_ENABLE_PCEM ON)
+        target_compile_definitions(winuae_core PRIVATE WITH_DRACO=1)
+        list(APPEND WINUAE_UNIX_EXTRA_SOURCES
+            draco.cpp
+            ${WINUAE_UNIX_PCEM_COMMON_SOURCES}
+            ${WINUAE_UNIX_PCEM_DRACO_SOURCES}
+        )
+    endif()
+endif()
+
+if(WINUAE_UNIX_ENABLE_PCEM)
+    target_compile_definitions(winuae_core PRIVATE WINUAE_UNIX_WITH_PCEM=1)
+    target_compile_options(winuae_core PRIVATE
+        $<$<COMPILE_LANGUAGE:CXX>:-include>
+        $<$<COMPILE_LANGUAGE:CXX>:${CMAKE_CURRENT_SOURCE_DIR}/od-unix/pcem_wincompat.h>
+    )
+endif()
+
+if(WINUAE_UNIX_ENABLE_PPC OR WINUAE_UNIX_ENABLE_GFXBOARD OR WINUAE_UNIX_ENABLE_X86 OR WINUAE_UNIX_ENABLE_DRACO)
     target_compile_definitions(winuae_core PRIVATE UAE=)
 endif()
 
@@ -1304,8 +1397,11 @@ if(WINUAE_UNIX_WITH_QT_UI)
             UAE_UNIX_WITH_MIDI=$<BOOL:${WINUAE_UNIX_ENABLE_MIDI}>
             UAE_UNIX_WITH_CPUBOARD=$<BOOL:${WINUAE_UNIX_ENABLE_CPUBOARD}>
             UAE_UNIX_WITH_PPC=$<BOOL:${WINUAE_UNIX_ENABLE_PPC}>
+            UAE_UNIX_WITH_DSP=$<BOOL:${WINUAE_UNIX_ENABLE_DSP}>
             UAE_UNIX_WITH_SNDBOARD=$<BOOL:${WINUAE_UNIX_ENABLE_SNDBOARD}>
             UAE_UNIX_WITH_GFXBOARD=$<BOOL:${WINUAE_UNIX_ENABLE_GFXBOARD}>
+            UAE_UNIX_WITH_X86=$<BOOL:${WINUAE_UNIX_ENABLE_X86}>
+            UAE_UNIX_WITH_DRACO=$<BOOL:${WINUAE_UNIX_ENABLE_DRACO}>
             UAE_UNIX_WITH_JIT=$<BOOL:${WINUAE_UNIX_ENABLE_JIT}>
             UAE_UNIX_WITH_AVIOUTPUT=$<BOOL:${WINUAE_UNIX_ENABLE_AVIOUTPUT}>
             UAE_UNIX_WITH_SHADER_PIPELINE=$<BOOL:${WINUAE_UNIX_ENABLE_SHADER_PIPELINE}>

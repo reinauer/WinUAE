@@ -20,26 +20,8 @@ Status meanings:
 These are Windows-supported expansion-card paths gated by feature macros
 that are still not enabled by the Unix build.
 
-- `dsp3210` - DSP3210, AT&T. Windows defines `WITH_DSP`; Unix does not.
 - `catweasel` - Catweasel, Individual Computers. Windows defines
   `CATWEASEL`; Unix has no native Catweasel hardware backend.
-- `a1060` - A1060 Sidecar. Needs `WITH_X86`.
-- `a2088` - A2088. Needs `WITH_X86`.
-- `a2088t` - A2088T. Needs `WITH_X86`.
-- `a2286` - A2286. Needs `WITH_X86`.
-- `a2386` - A2386SX. Needs `WITH_X86`.
-- `x86athdprimary` - AT IDE Primary. Needs `WITH_X86`.
-- `x86athdxt` - XTIDE Universal BIOS HD. Needs `WITH_X86`.
-- `x86rt1000` - Rancho RT1000. Needs `WITH_X86`.
-- `sb_isa` - SoundBlaster ISA. Needs `WITH_X86`.
-- `ne2000_isa` - RTL8019 ISA, NE2000 compatible. Needs `WITH_X86`.
-- `x86_mouse` - x86 Bridgeboard mouse. Needs `WITH_X86`.
-- `x86vga` / `GFXBOARD_ID_VGA` - x86 Bridgeboard VGA. The ROM selector
-  exists, but full x86 bridgeboard integration still depends on
-  `WITH_X86`.
-- `draco` - MacroSystem DraCo accelerator subtype. Needs `WITH_DRACO`.
-- `casablanca` - MacroSystem Casablanca accelerator subtype. Needs
-  `WITH_DRACO`.
 
 ## Built or Visible, but Still Partial
 
@@ -93,7 +75,50 @@ render-thread interactions, and real driver validation for every board.
 - Matrox Millennium II PCI.
 - Matrox Mystique PCI.
 - Matrox Mystique 220 PCI.
-- x86 Bridgeboard VGA ISA, also blocked by the `WITH_X86` item above.
+- x86 Bridgeboard VGA ISA.
+
+### DSP3210
+
+Unix now defines `WITH_DSP` by default and links the shared DSP3210
+emulation sources used by Windows. The board is no longer a missing
+catalog entry, but it still needs a real DSP3210 guest/ROM validation
+pass before it can be marked complete.
+
+- `dsp3210` - DSP3210, AT&T.
+
+### x86 Bridgeboards and ISA Expansions
+
+Unix now defines `WITH_X86` by default, links `x86.cpp`, and builds the
+shared PCem x86 bridgeboard interpreter, storage, input, sound, serial,
+timer, DMA, NVRAM, and VGA source set. The old PCem dynamic recompiler
+source is compiled only far enough to provide the interpreter opcode
+tables when `UAE` is defined; Unix does not enable the old PCem dynarec
+backend. These boards are visible through the shared expansion catalog,
+but still need ROM and guest-driver validation.
+
+- `a1060` - A1060 Sidecar.
+- `a2088` - A2088.
+- `a2088t` - A2088T.
+- `a2286` - A2286.
+- `a2386` - A2386SX.
+- `x86athdprimary` - AT IDE Primary.
+- `x86athdxt` - XTIDE Universal BIOS HD.
+- `x86rt1000` - Rancho RT1000.
+- `sb_isa` - SoundBlaster ISA.
+- `ne2000_isa` - RTL8019 ISA, NE2000 compatible.
+- `x86_mouse` - x86 Bridgeboard mouse.
+- `x86vga` / `GFXBOARD_ID_VGA` - x86 Bridgeboard VGA.
+
+### DraCo and Casablanca
+
+Unix now defines `WITH_DRACO` by default when NCR SCSI is enabled and
+links the shared DraCo/Casablanca source plus the PCem serial, mouse,
+and keyboard helpers used by that code. These accelerator subtypes are
+no longer missing, but still need ROM/SCSI/video validation on real
+configs.
+
+- `draco` - MacroSystem DraCo accelerator subtype.
+- `casablanca` - MacroSystem Casablanca accelerator subtype.
 
 ### Network Cards
 
