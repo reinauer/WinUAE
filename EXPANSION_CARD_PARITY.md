@@ -27,9 +27,10 @@ that are still not enabled by the Unix build.
 
 ### PCI Bridges
 
-The Unix build now enables `WITH_PCI` through `WINUAE_UNIX_WITH_GFXBOARD`,
-so these are no longer simply absent. They still need guest/driver
-validation and PCI-device coverage before they can be called complete.
+The Unix build now enables `WITH_PCI` through the shared sound-board path,
+so PCI sound can be built without depending on RTG graphics boards. The
+bridges still need guest/driver validation and PCI-device coverage before
+they can be called complete.
 
 - `grex` - G-REX, DCE.
 - `mediator` - Mediator, Elbox.
@@ -145,9 +146,10 @@ polish, and TAP/TUN/pcap permission checks on real systems.
 The Unix build compiles the Toccata/Prelude/UAESND path and PCI sound
 devices. `tools/unix-check-sound-board-catalog.sh` guards the shared UI
 catalog entries and Toccata-family mixer option. The sound-board smoke
-script maps the Zorro boards plus ES1370/FM801 behind a Prometheus PCI
-bridge. Real guest-driver audio routing and additional PCI bridge
-validation are still not at Windows parity.
+script maps the Zorro boards plus ES1370/FM801 behind Prometheus,
+Prometheus FireStorm, Mediator 4000, and G-REX PCI bridges. Real
+guest-driver audio routing and Mediator 1200 PCI sound validation are
+still not at Windows parity.
 
 - `prelude` - Prelude, ACT.
 - `prelude1200` - Prelude 1200, ACT.
