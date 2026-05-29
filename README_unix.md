@@ -19,7 +19,7 @@ This is an early macOS/Linux port of the WinUAE source tree. The current Unix bu
 - A2065 Ethernet and SANA-II `uaenet.device` can use the built-in SLIRP user-mode NAT backend, libpcap-backed native packet adapters, and direct TAP/TUN devices where the host exposes them.
 - Unix JIT is wired for ARM64 and x86_64 hosts. macOS uses `MAP_JIT` plus write/execute protection switching where required.
 - Native CD/DVD access is available on macOS and Linux; `WINUAE_UNIX_WITH_NATIVE_SCSI` adds Linux SG_IO and macOS SCSITaskLib direct SCSI/tape passthrough through the same SPTI-style slot used by Windows.
-- The shared Toccata/Prelude/UAESND sound-board backend is built by default, with SDL3 host capture hooks when SDL3 is available.
+- The shared Toccata/Prelude/UAESND sound-board backend and PCI ES1370/FM801 paths are built by default, with SDL3 host capture hooks when SDL3 is available.
 - UAE Zorro II/Zorro III RTG RAM can be configured and autoconfigured, with an initial Unix `uaegfx.card` install path and guest Picasso96 monitor-driver smoke coverage, including 8-bit Workbench mode open and direct 15-bit/16-bit/24-bit/32-bit P96 screen-open tests. Accelerated RTG operations are still incomplete.
 - The Qt Expansions page can enable common Zorro/expansion board ROM entries, CPU boards, PPC quickstart presets, and shared sound boards using the same `*_rom_file`, `*_rom_options`, and CPU-board keys as WinUAE. PPC emulation uses the external `qemu-uae` plugin ABI; a QEMU 11.0 based plugin tree is expected next to `WinUAE/` as `qemu-uae-v11.0`.
 - Full UI parity with the Windows configuration dialogs and platform packaging are still incomplete.
@@ -444,6 +444,17 @@ To include Zorro III RTG RAM autoconfig in the same smoke path:
 tools/unix-smoke-rtg-z3.sh
 ```
 
+To cover the shared sound-board startup paths, provide A1200 and A4000 Kickstart ROMs:
+
+```sh
+export WINUAE_A1200_KICKSTART_ROM=/path/to/A1200.rom
+export WINUAE_A4000_KICKSTART_ROM=/path/to/A4000.rom
+tools/unix-smoke-sound-boards.sh
+cmake --build "$WINUAE_BUILD_DIR" --target winuae_unix_smoke_sound_boards
+```
+
+That smoke checks Toccata, Prelude, Prelude 1200, UAESND Z2/Z3, UAEBOARD Z2/Z3, and ES1370/FM801 behind a Prometheus PCI bridge.
+
 For manual A4091 autoconfig smoke tests, use an A4000/A4000T-style config, disable 24-bit CPU addressing, and provide a real A4091 ROM:
 
 ```sh
@@ -592,7 +603,7 @@ export WINUAE_SMOKE_LOG=/tmp/winuae_unix_smoke.log
 `WINUAE_UNIX_WITH_PPC_QEMU` is enabled by default and builds the WinUAE side of the PPC accelerator/QEMU plugin ABI. `WINUAE_UNIX_BUILD_QEMU_UAE_PLUGIN` is enabled by default when a sibling `qemu-uae-v11.0` tree is present and builds/copies `qemu-uae.so` for the executable, Linux package, or app bundle. `WINUAE_QEMU_UAE_PLUGIN_FILE` can point at a prebuilt plugin, and `WINUAE_UNIX_PACKAGE_REQUIRE_QEMU_UAE_PLUGIN` makes package configuration fail if PPC support is enabled but no plugin can be packaged.
 `WINUAE_QEMU_UAE_DEPS_PREFIX` defaults to the private macOS dependency prefix and points the plugin helper at the deployment-target-compatible GLib build.
 `WINUAE_UNIX_WITH_OPENGL_SHADER_PIPELINE` is enabled by default when SDL3 and OpenGL development files are available. Runtime OpenGL context or shader setup failure falls back to the SDL renderer.
-`WINUAE_UNIX_WITH_SNDBOARD` is enabled by default and builds the shared Toccata/Prelude/UAESND sound-board backend. PCI sound devices remain part of the future PCI bridgeboard work.
+`WINUAE_UNIX_WITH_SNDBOARD` is enabled by default and builds the shared Toccata/Prelude/UAESND sound-board backend. The default PCI build also exposes ES1370 and FM801 through the same expansion-board catalog as Windows.
 `WINUAE_UNIX_WITH_PROWIZARD` is enabled by default and builds the same Pro Wizard source set used by the Windows project.
 `WINUAE_UNIX_WITH_QT_UI` is enabled by default, but Qt UI targets are skipped when Qt Widgets is not installed.
 `WINUAE_UNIX_WITH_INTEGRATED_QT_UI` is enabled by default. When Qt Widgets is not installed, the build continues without the integrated UI.
