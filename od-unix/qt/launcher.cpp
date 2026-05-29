@@ -5666,6 +5666,13 @@ public:
         if (!initialConfigPath.isEmpty()) {
             loadConfig(initialConfigPath);
         }
+        if (hardwareProvider.pollHostWindowEvents) {
+            QTimer *timer = new QTimer(this);
+            connect(timer, &QTimer::timeout, this, [this]() {
+                hardwareProvider.pollHostWindowEvents(hardwareProvider.context);
+            });
+            timer->start(100);
+        }
     }
 
     const WinUaeQtLauncherResult &launcherResult() const
