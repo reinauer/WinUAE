@@ -148,7 +148,10 @@ On Linux, install the executable, shared resources, documentation, and desktop/M
 cmake --install /tmp/winuae_cmake_build --prefix /opt/winuae
 ```
 
-This installs the desktop entry, `.uae` MIME type, and hicolor icons. On macOS, use the `.app` and DMG targets below instead of installing the raw executable.
+This installs the desktop entry, `.uae` MIME type, and hicolor icons. The
+installed Linux command is `winuae`; the build-tree executable remains
+`winuae_unix` to keep the existing developer targets stable. On macOS, use the
+`.app` and DMG targets below instead of installing the raw executable.
 
 On Linux, CPack can create packages from the same install rules:
 
@@ -156,7 +159,9 @@ On Linux, CPack can create packages from the same install rules:
 cmake --build /tmp/winuae_cmake_build --target package
 ```
 
-This currently produces a `.tar.gz` package and, when Debian packaging tools are available, a `.deb` package with shared-library dependencies inferred by `dpkg-shlibdeps`.
+This currently produces a `.tar.gz` package and, when Debian packaging tools
+are available, a `.deb` package with shared-library dependencies inferred by
+`dpkg-shlibdeps`. The Debian package installs the emulator as `winuae`.
 
 For a Debian/Ubuntu package build from a clean CMake directory, use:
 
@@ -164,13 +169,25 @@ For a Debian/Ubuntu package build from a clean CMake directory, use:
 tools/debian-build-package.sh --build-dir /tmp/winuae_deb_build
 ```
 
-The helper checks the Linux desktop/MIME/icon packaging metadata, builds the
-CPack `DEB` package, and prints the generated `.deb` path and package fields.
-Extra CMake options can be passed after `--`, for example:
+The helper checks the Linux desktop/MIME/icon packaging metadata, requires a
+`qemu-uae.so` plugin when PPC support is enabled, builds the CPack `DEB`
+package, and prints the generated `.deb` path and package fields. Extra CMake
+options can be passed after `--`, for example:
 
 ```sh
 tools/debian-build-package.sh -- -DWINUAE_UNIX_WITH_QT_UI=OFF
 ```
+
+To build a package from a prebuilt QEMU-UAE plugin, pass:
+
+```sh
+tools/debian-build-package.sh -- \
+  -DWINUAE_QEMU_UAE_PLUGIN_FILE=/path/to/qemu-uae.so \
+  -DWINUAE_UNIX_BUILD_QEMU_UAE_PLUGIN=OFF
+```
+
+Set `WINUAE_DEB_REQUIRE_QEMU_UAE_PLUGIN=OFF` only for a deliberately reduced
+Debian package without PPC plugin support.
 
 The Linux install/package metadata can be checked on any Unix host:
 
@@ -258,11 +275,16 @@ cmake --build /tmp/winuae_cmake_build --target winuae_unix_qemu_uae_plugin -j
 
 `WINUAE_UNIX_BUILD_QEMU_UAE_PLUGIN` controls whether the sibling plugin target
 is enabled, and `WINUAE_QEMU_UAE_SOURCE_DIR` can point at a different
-`qemu-uae` source tree. `WINUAE_QEMU_UAE_DEPS_PREFIX` defaults to the private
-macOS dependency prefix and is passed to the plugin helper as
-`QEMU_UAE_DEPS_PREFIX`. Set `QEMU_UAE_NINJA=/path/to/ninja` if QEMU configure
-cannot find Ninja itself. On macOS, the app bundler copies `qemu-uae.so` into
-`WinUAE.app/Contents/PlugIns/` before dependency deployment.
+`qemu-uae` source tree. `WINUAE_QEMU_UAE_PLUGIN_FILE` can point at an already
+built plugin, which is useful for CI jobs that build the plugin through the
+release-oriented `uae-ppc-plugin` wrapper. `WINUAE_QEMU_UAE_DEPS_PREFIX`
+defaults to the private macOS dependency prefix and is passed to the plugin
+helper as `QEMU_UAE_DEPS_PREFIX`. Set `QEMU_UAE_NINJA=/path/to/ninja` if QEMU
+configure cannot find Ninja itself. On macOS, the app bundler copies
+`qemu-uae.so` into `WinUAE.app/Contents/PlugIns/` before dependency deployment.
+On Linux, install/package rules copy it into
+`$libdir/winuae/plugins/qemu-uae.so`, and the runtime loader searches that path
+relative to the installed `winuae` binary.
 
 Local app bundles are ad-hoc signed by default. For Developer ID release signing and notarization, pass signing/notary settings through the packaging environment:
 
@@ -567,7 +589,7 @@ export WINUAE_SMOKE_LOG=/tmp/winuae_unix_smoke.log
 `WINUAE_UNIX_WITH_CHD` is enabled by default and builds CHD hardfile/CD image support. `WINUAE_UNIX_WITH_CHD_FLAC` is also enabled by default, but macOS builds skip FLAC codecs if the available libFLAC was built for a newer deployment target.
 `WINUAE_LZMA_SDK_FETCH` is enabled by default. When archive or CHD support needs the 7-Zip/LZMA SDK, CMake uses `WINUAE_LZMA_SDK_DIR`, defaulting to the ignored `.deps/lzma-sdk/16.04` cache, and fetches `WINUAE_LZMA_SDK_URL` if that cache is missing.
 `WINUAE_UNIX_WITH_JIT` is enabled by default where the Unix host backend is wired, including ARM64 and x86_64.
-`WINUAE_UNIX_WITH_PPC_QEMU` is enabled by default and builds the WinUAE side of the PPC accelerator/QEMU plugin ABI. `WINUAE_UNIX_BUILD_QEMU_UAE_PLUGIN` is enabled by default when a sibling `qemu-uae-v11.0` tree is present and builds/copies `qemu-uae.so` for the executable or app bundle.
+`WINUAE_UNIX_WITH_PPC_QEMU` is enabled by default and builds the WinUAE side of the PPC accelerator/QEMU plugin ABI. `WINUAE_UNIX_BUILD_QEMU_UAE_PLUGIN` is enabled by default when a sibling `qemu-uae-v11.0` tree is present and builds/copies `qemu-uae.so` for the executable, Linux package, or app bundle. `WINUAE_QEMU_UAE_PLUGIN_FILE` can point at a prebuilt plugin, and `WINUAE_UNIX_PACKAGE_REQUIRE_QEMU_UAE_PLUGIN` makes package configuration fail if PPC support is enabled but no plugin can be packaged.
 `WINUAE_QEMU_UAE_DEPS_PREFIX` defaults to the private macOS dependency prefix and points the plugin helper at the deployment-target-compatible GLib build.
 `WINUAE_UNIX_WITH_OPENGL_SHADER_PIPELINE` is enabled by default when SDL3 and OpenGL development files are available. Runtime OpenGL context or shader setup failure falls back to the SDL renderer.
 `WINUAE_UNIX_WITH_SNDBOARD` is enabled by default and builds the shared Toccata/Prelude/UAESND sound-board backend. PCI sound devices remain part of the future PCI bridgeboard work.
