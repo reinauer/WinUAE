@@ -193,6 +193,7 @@ static WinUaeQtBoardCatalog winUaeQtLoadExternalBoardCatalog()
             board.autobootJumper = fields.value(9).toInt() != 0;
             board.idJumper = fields.value(10).toInt() != 0;
             board.noRomFile = fields.size() >= 12 && fields.value(11).toInt() != 0;
+            board.clockPort = fields.size() >= 13 && fields.value(12).toInt() != 0;
             if (!board.key.isEmpty() && !board.display.isEmpty()) {
                 catalog.expansionBoards.append(board);
             }
@@ -3415,7 +3416,24 @@ static bool expansionBoardMatchesCategory(const WinUaeQtExpansionBoardCatalogIte
     if (!(board.categoryMask & category.mask)) {
         return false;
     }
+    if (category.mask == WinUaeQtExpansionCategoryInternal
+        && (board.categoryMask & (WinUaeQtExpansionCategorySasi | WinUaeQtExpansionCategoryCustom))) {
+        return false;
+    }
+    if ((board.categoryMask & WinUaeQtExpansionCategoryX86Expansion)
+        && category.mask != WinUaeQtExpansionCategoryX86Expansion) {
+        return false;
+    }
     return true;
+}
+
+static QString expansionBoardSortText(const QString &display)
+{
+    const int manufacturer = display.lastIndexOf(QStringLiteral(" ("));
+    if (manufacturer > 0 && display.endsWith(QLatin1Char(')'))) {
+        return display.left(manufacturer);
+    }
+    return display;
 }
 
 static const WinUaeQtExpansionCategoryChoice *expansionBoardCategoryByDisplay(const QString &display)
@@ -8056,6 +8074,46 @@ private:
         return ok ? qBound(0, slot - 1, 3) : 0;
     }
 
+    int expansionBoardEnabledCount(const QString &boardKey) const
+    {
+        int count = 0;
+        for (auto it = expansionBoardStates.constBegin(); it != expansionBoardStates.constEnd(); ++it) {
+            int slot = 0;
+            const QString key = expansionBoardBaseKey(it.key(), &slot);
+            if (it.value().present && key.compare(boardKey, Qt::CaseInsensitive) == 0) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    QString expansionBoardComboText(const WinUaeQtExpansionBoardCatalogItem &choice) const
+    {
+        const int count = expansionBoardEnabledCount(choice.key);
+        if (count == 1) {
+            return QStringLiteral("* %1").arg(choice.display);
+        }
+        if (count > 1) {
+            return QStringLiteral("[%1] %2").arg(count).arg(choice.display);
+        }
+        return choice.display;
+    }
+
+    void refreshExpansionBoardChoiceLabels()
+    {
+        if (!expansionRomBoard) {
+            return;
+        }
+
+        const QSignalBlocker blocker(expansionRomBoard);
+        for (int i = 0; i < expansionRomBoard->count(); i++) {
+            const QString boardKey = expansionRomBoard->itemData(i).toString();
+            if (const WinUaeQtExpansionBoardCatalogItem *choice = expansionBoardChoiceByKey(boardCatalog, boardKey)) {
+                expansionRomBoard->setItemText(i, expansionBoardComboText(*choice));
+            }
+        }
+    }
+
     void populateExpansionBoardChoices(const QString &requestedKey = QString())
     {
         if (!expansionRomBoard || !expansionRomCategory) {
@@ -8068,10 +8126,23 @@ private:
         expansionRomBoard->clear();
         expansionRomBoard->addItem(QStringLiteral("None"), QString());
         if (category) {
+            QVector<const WinUaeQtExpansionBoardCatalogItem*> choices;
             for (const WinUaeQtExpansionBoardCatalogItem &choice : boardCatalog.expansionBoards) {
                 if (expansionBoardMatchesCategory(choice, *category)) {
-                    expansionRomBoard->addItem(choice.display, choice.key);
+                    choices.append(&choice);
                 }
+            }
+            std::sort(choices.begin(), choices.end(), [](const WinUaeQtExpansionBoardCatalogItem *a, const WinUaeQtExpansionBoardCatalogItem *b) {
+                const QString aSort = expansionBoardSortText(a->display);
+                const QString bSort = expansionBoardSortText(b->display);
+                const int byName = QString::compare(aSort, bSort, Qt::CaseInsensitive);
+                if (byName != 0) {
+                    return byName < 0;
+                }
+                return QString::compare(a->display, b->display, Qt::CaseInsensitive) < 0;
+            });
+            for (const WinUaeQtExpansionBoardCatalogItem *choice : choices) {
+                expansionRomBoard->addItem(expansionBoardComboText(*choice), choice->key);
             }
         }
 
@@ -8284,7 +8355,7 @@ private:
             }
         }
         if (expansionRomSlot) {
-            expansionRomSlot->setEnabled(supported && !choice->singleOnly);
+            expansionRomSlot->setEnabled(supported && ((choice->zorro >= 2 && !choice->singleOnly) || choice->clockPort));
         }
         if (expansionRom24BitDma) {
             expansionRom24BitDma->setEnabled(supported && choice->dma24Bit);
@@ -8368,6 +8439,7 @@ private:
         } else {
             expansionBoardStates.remove(currentExpansionBoardConfigName);
         }
+        refreshExpansionBoardChoiceLabels();
         refreshHardwareInfoPage();
     }
 
