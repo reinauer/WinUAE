@@ -143,7 +143,10 @@ polish, and TAP/TUN/pcap permission checks on real systems.
 ### Sound Cards
 
 The Unix build compiles the Toccata/Prelude/UAESND path and PCI sound
-devices, but audio routing, mixer behavior, guest drivers, and PCI card
+devices. `tools/unix-check-sound-board-catalog.sh` guards the shared UI
+catalog entries and Toccata-family mixer option. The sound-board smoke
+script maps the Zorro boards plus ES1370/FM801 behind a Prometheus PCI
+bridge. Real guest-driver audio routing and additional PCI bridge
 validation are still not at Windows parity.
 
 - `prelude` - Prelude, ACT.
