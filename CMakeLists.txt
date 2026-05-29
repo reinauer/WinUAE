@@ -184,7 +184,7 @@ option(WINUAE_UNIX_BUILD_QEMU_UAE_PLUGIN "Build the sibling qemu-uae plugin for 
 option(WINUAE_UNIX_PACKAGE_REQUIRE_QEMU_UAE_PLUGIN "Require qemu-uae.so when building Unix packages with PPC support" OFF)
 option(WINUAE_UNIX_WITH_DSP "Build shared DSP3210 accelerator support" ON)
 option(WINUAE_UNIX_WITH_SNDBOARD "Build shared Toccata/Prelude/UAESND sound-board support" ON)
-option(WINUAE_UNIX_WITH_GFXBOARD "Build shared hardware RTG graphics board, PCI, QEMU VGA and PCem Voodoo support" ON)
+option(WINUAE_UNIX_WITH_GFXBOARD "Build shared hardware RTG graphics board, QEMU VGA and PCem Voodoo support" ON)
 option(WINUAE_UNIX_WITH_X86 "Build shared x86 bridgeboard and ISA expansion support" ON)
 option(WINUAE_UNIX_WITH_DRACO "Build shared DraCo and Casablanca support" ON)
 option(WINUAE_UNIX_WITH_AVIOUTPUT "Build Unix screenshot and video/audio capture output support" ON)
@@ -317,6 +317,7 @@ set(WINUAE_UNIX_ENABLE_CPUBOARD OFF)
 set(WINUAE_UNIX_ENABLE_PPC OFF)
 set(WINUAE_UNIX_ENABLE_DSP OFF)
 set(WINUAE_UNIX_ENABLE_SNDBOARD OFF)
+set(WINUAE_UNIX_ENABLE_PCI OFF)
 set(WINUAE_UNIX_ENABLE_GFXBOARD OFF)
 set(WINUAE_UNIX_ENABLE_X86 OFF)
 set(WINUAE_UNIX_ENABLE_DRACO OFF)
@@ -670,10 +671,19 @@ endif()
 
 if(WINUAE_UNIX_WITH_SNDBOARD)
     set(WINUAE_UNIX_ENABLE_SNDBOARD ON)
-    target_compile_definitions(winuae_core PRIVATE WITH_SNDBOARD=1 WITH_TOCCATA=1)
+    set(WINUAE_UNIX_ENABLE_PCI ON)
+    target_compile_definitions(winuae_core PRIVATE
+        WITH_SNDBOARD=1
+        WITH_TOCCATA=1
+        WITH_PCI=1
+    )
     list(APPEND WINUAE_UNIX_EXTRA_SOURCES
         sndboard.cpp
         od-unix/sndboard_host.cpp
+        pci.cpp
+        qemuvga/es1370.cpp
+        qemuvga/ne2000.cpp
+        qemuvga/qemuuaeglue.cpp
     )
 endif()
 
@@ -684,7 +694,6 @@ if(WINUAE_UNIX_WITH_GFXBOARD)
         set(WINUAE_UNIX_ENABLE_GFXBOARD ON)
         target_compile_definitions(winuae_core PRIVATE
             GFXBOARD=1
-            WITH_PCI=1
             WINUAE_UNIX_WITH_GFXBOARD=1
         )
         set(WINUAE_UNIX_ENABLE_PCEM ON)
@@ -700,19 +709,25 @@ if(WINUAE_UNIX_WITH_GFXBOARD)
 endif()
 
 if(WINUAE_UNIX_WITH_X86)
-    set(WINUAE_UNIX_ENABLE_X86 ON)
-    set(WINUAE_UNIX_ENABLE_PCEM ON)
-    target_compile_definitions(winuae_core PRIVATE WITH_X86=1)
-    list(APPEND WINUAE_UNIX_EXTRA_SOURCES
-        x86.cpp
-        ${WINUAE_UNIX_PCEM_COMMON_SOURCES}
-        ${WINUAE_UNIX_PCEM_X86_SOURCES}
-    )
+    if(NOT WINUAE_UNIX_WITH_GFXBOARD)
+        message(STATUS "x86 bridgeboard support requires Unix hardware graphics-board glue; disabling WINUAE_UNIX_WITH_X86")
+    else()
+        set(WINUAE_UNIX_ENABLE_X86 ON)
+        set(WINUAE_UNIX_ENABLE_PCEM ON)
+        target_compile_definitions(winuae_core PRIVATE WITH_X86=1)
+        list(APPEND WINUAE_UNIX_EXTRA_SOURCES
+            x86.cpp
+            ${WINUAE_UNIX_PCEM_COMMON_SOURCES}
+            ${WINUAE_UNIX_PCEM_X86_SOURCES}
+        )
+    endif()
 endif()
 
 if(WINUAE_UNIX_WITH_DRACO)
     if(NOT WINUAE_UNIX_WITH_NCR_SCSI)
         message(STATUS "DraCo/Casablanca support requires NCR SCSI; disabling WINUAE_UNIX_WITH_DRACO")
+    elseif(NOT WINUAE_UNIX_WITH_GFXBOARD)
+        message(STATUS "DraCo/Casablanca support requires Unix hardware graphics-board glue; disabling WINUAE_UNIX_WITH_DRACO")
     else()
         set(WINUAE_UNIX_ENABLE_DRACO ON)
         set(WINUAE_UNIX_ENABLE_PCEM ON)
