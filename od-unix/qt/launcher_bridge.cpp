@@ -215,6 +215,7 @@ static WinUaeQtBoardCatalog bridgeBoardCatalog(void *)
         item.idJumper = rom->id_jumper;
         item.noRomFile = rom->romtype & ROMTYPE_NOT;
         item.clockPort = rom->deviceflags & EXPANSIONTYPE_CLOCKPORT;
+        item.extraHdPorts = rom->extrahdports;
         if (rom->subtypes) {
             for (int j = 0; rom->subtypes[j].name; j++) {
                 WinUaeQtBoardSubtype subtype;
@@ -291,6 +292,7 @@ int runWinUaeQtBoardCatalogDump(void)
             board.idJumper ? 1 : 0,
             board.noRomFile ? 1 : 0,
             board.clockPort ? 1 : 0);
+        fprintf(stdout, "\t%d", board.extraHdPorts);
         fputc('\n', stdout);
         for (const WinUaeQtBoardSubtype &subtype : board.subtypes) {
             fputc('S', stdout);
