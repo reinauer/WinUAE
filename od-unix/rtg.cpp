@@ -1036,8 +1036,11 @@ static void unix_amiga_list_add_tail(TrapContext *ctx, uaecptr list, uaecptr nod
 static void unix_copy_lib_resolution(TrapContext *ctx, const struct LibResolution *res, uaecptr ptr)
 {
     trap_set_bytes(ctx, ptr, 0, PSSO_LibResolution_sizeof);
-    for (int i = 0; i < 6 && res->P96ID[i]; i++) {
+    for (int i = 0; i < 6; i++) {
         trap_put_byte(ctx, ptr + PSSO_LibResolution_P96ID + i, res->P96ID[i]);
+    }
+    for (int i = 0; i < MAXRESOLUTIONNAMELENGTH && res->Name[i]; i++) {
+        trap_put_byte(ctx, ptr + PSSO_LibResolution_Name + i, res->Name[i]);
     }
     trap_put_long(ctx, ptr + PSSO_LibResolution_DisplayID, res->DisplayID);
     trap_put_word(ctx, ptr + PSSO_LibResolution_Width, res->Width);
