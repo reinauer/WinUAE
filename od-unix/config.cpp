@@ -15,6 +15,7 @@ extern int video_recording_active;
 static int unix_avi_audio_codec = AVIAUDIO_AVI;
 #endif
 #include "path_expand.h"
+#include "romscan.h"
 #include "savestate.h"
 #include "sound_unix.h"
 #include "uaeserial_unix.h"
@@ -488,6 +489,10 @@ int target_cfgfile_load(struct uae_prefs *p, const TCHAR *filename, int type, in
 
 int target_parse_option(struct uae_prefs *p, const TCHAR *option, const TCHAR *value, int)
 {
+    if (!_tcsicmp(option, _T("ui.recursive_roms"))) {
+        unix_romscan_set_recursive(parse_bool_value(value ? value : ""));
+        return 1;
+    }
     if (!_tcsicmp(option, _T("middle_mouse"))) {
         if (parse_bool_value(value ? value : "")) {
             p->input_mouse_untrap |= MOUSEUNTRAP_MIDDLEBUTTON;
@@ -915,6 +920,7 @@ void target_default_options(struct uae_prefs *p, int)
     for (int i = 0; i < UNIX_UAESERIAL_MAX_UNITS; i++) {
         uaeserial_ports[i][0] = 0;
     }
+    unix_romscan_mark_dirty();
     p->rtg_dacswitch = true;
     p->rtg_hardwaresprite = true;
     p->win32_rtgvblankrate = 0;
@@ -933,10 +939,12 @@ void target_fixup_options(struct uae_prefs *p)
     if (p->win32_uaescsimode > UAESCSI_LAST) {
         p->win32_uaescsimode = UAESCSI_SPTI;
     }
+    unix_romscan_refresh(p, false);
 }
 
 void target_multipath_modified(struct uae_prefs*)
 {
+    unix_romscan_mark_dirty();
 }
 
 bool target_isrelativemode(void)
