@@ -11,6 +11,7 @@ struct unix_video_frame
     int rowbytes;
     int pixbytes;
     int filter_index;
+    int monitor_id;
     int backbuffers;
 };
 
