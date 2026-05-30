@@ -74,6 +74,13 @@ static int unix_picasso_bytes_per_pixel(RGBFTYPE rgbfmt)
     }
 }
 
+static uae_u16 unix_picasso_load_host_u16(const uae_u8 *src)
+{
+    uae_u16 value;
+    memcpy(&value, src, sizeof value);
+    return value;
+}
+
 static void unix_init_colors(void)
 {
     alloc_colors64k(0, 8, 8, 8, 16, 8, 0, 8, 24, 1, 0);
@@ -536,7 +543,7 @@ static uae_u32 unix_picasso_convert_pixel(const uae_u8 *src, RGBFTYPE fmt,
     case RGBFB_R5G5B5PC:
     case RGBFB_B5G6R5PC:
     case RGBFB_B5G5R5PC:
-        return rgbx16[do_get_mem_word((uae_u16 *)src)];
+        return rgbx16[unix_picasso_load_host_u16(src)];
     default:
         return 0xff000000;
     }
@@ -698,7 +705,7 @@ static uae_u32 unix_picasso_convert_scaled_pixel(const uae_u8 *src, int x, int s
     case RGBFB_R5G5B5_32:
     case RGBFB_B5G6R5PC_32:
     case RGBFB_B5G5R5PC_32:
-        return rgbx16 ? rgbx16[do_get_mem_word((uae_u16 *)(src + x * 2))] : 0xff000000;
+        return rgbx16 ? rgbx16[unix_picasso_load_host_u16(src + x * 2)] : 0xff000000;
     case RGBFB_CLUT_RGBFB_32:
         return clut ? clut[src[x]] : (0xff000000 | src[x] | ((uae_u32)src[x] << 8) |
             ((uae_u32)src[x] << 16));
