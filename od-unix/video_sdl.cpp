@@ -89,6 +89,7 @@ static uae_u32 s_status_gc[256];
 static uae_u32 s_status_bc[256];
 static bool s_status_colors_ready;
 static Uint8 s_status_click_button;
+static SDL_MouseButtonFlags s_suppressed_mouse_buttons;
 
 struct unix_pending_video_frame {
     std::vector<uae_u8> pixels;
@@ -1394,6 +1395,37 @@ static int unix_mouse_button_from_sdl(Uint8 button)
     }
 }
 
+static SDL_MouseButtonFlags unix_mouse_button_mask(Uint8 button)
+{
+    if (button == 0 || button > 32) {
+        return 0;
+    }
+    return SDL_BUTTON_MASK(button);
+}
+
+static bool unix_event_for_window(SDL_WindowID window_id)
+{
+    return s_window && window_id != 0 && window_id == SDL_GetWindowID(s_window);
+}
+
+static bool unix_mouse_point_in_client(float x, float y)
+{
+    int width = 0;
+    int height = 0;
+
+    if (!s_window) {
+        return false;
+    }
+    SDL_GetWindowSize(s_window, &width, &height);
+    return width > 0 && height > 0 &&
+        x >= 0.0f && y >= 0.0f && x < (float)width && y < (float)height;
+}
+
+static bool unix_mouse_event_in_client(SDL_WindowID window_id, float x, float y)
+{
+    return unix_event_for_window(window_id) && unix_mouse_point_in_client(x, y);
+}
+
 static bool statusbar_logical_position(int window_x, int window_y, int *logical_x, int *logical_y)
 {
     if (!s_window || s_texture_width <= 0 || s_texture_height <= 0) {
@@ -1704,6 +1736,7 @@ void unix_video_shutdown(void)
     s_event_thread_valid = false;
     s_wrong_event_thread_logged = false;
     s_queued_present_logged = false;
+    s_suppressed_mouse_buttons = 0;
     {
         std::lock_guard<std::mutex> lock(s_pending_frame_mutex);
         s_pending_frame = unix_pending_video_frame();
@@ -1762,9 +1795,17 @@ static int unix_video_poll_internal(bool *quit_requested, bool input_events)
                 *quit_requested = true;
             }
             break;
+        case SDL_EVENT_WINDOW_MOVED:
+            if (s_mouse_grabbed && unix_event_for_window(event.window.windowID)) {
+                unix_input_release_keys();
+                unix_video_set_mouse_grab(false);
+                s_suppressed_mouse_buttons = 0;
+            }
+            break;
         case SDL_EVENT_WINDOW_FOCUS_LOST:
             unix_input_release_keys();
             unix_video_set_mouse_grab(false);
+            s_suppressed_mouse_buttons = 0;
             break;
         case SDL_EVENT_KEY_DOWN:
         case SDL_EVENT_KEY_UP:
@@ -1795,6 +1836,10 @@ static int unix_video_poll_internal(bool *quit_requested, bool input_events)
             if (!input_events) {
                 break;
             }
+            if (s_suppressed_mouse_buttons) {
+                s_suppressed_mouse_buttons &= event.motion.state;
+                break;
+            }
             if (s_mouse_grabbed) {
                 unix_input_mouse_motion((int)event.motion.xrel, (int)event.motion.yrel);
             }
@@ -1803,6 +1848,20 @@ static int unix_video_poll_internal(bool *quit_requested, bool input_events)
         case SDL_EVENT_MOUSE_BUTTON_UP:
         {
             if (!input_events) {
+                break;
+            }
+            SDL_MouseButtonFlags button_mask = unix_mouse_button_mask(event.button.button);
+            if (button_mask && (s_suppressed_mouse_buttons & button_mask)) {
+                if (event.type == SDL_EVENT_MOUSE_BUTTON_UP) {
+                    s_suppressed_mouse_buttons &= ~button_mask;
+                }
+                break;
+            }
+            if (!s_mouse_grabbed &&
+                !unix_mouse_event_in_client(event.button.windowID, event.button.x, event.button.y)) {
+                if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN && button_mask) {
+                    s_suppressed_mouse_buttons |= button_mask;
+                }
                 break;
             }
             int button = unix_mouse_button_from_sdl(event.button.button);
@@ -1824,6 +1883,10 @@ static int unix_video_poll_internal(bool *quit_requested, bool input_events)
         }
         case SDL_EVENT_MOUSE_WHEEL:
             if (!input_events) {
+                break;
+            }
+            if (!s_mouse_grabbed &&
+                !unix_mouse_event_in_client(event.wheel.windowID, event.wheel.mouse_x, event.wheel.mouse_y)) {
                 break;
             }
             if (s_mouse_grabbed) {
@@ -1996,6 +2059,9 @@ void unix_video_set_mouse_grab(bool grab)
 {
     s_mouse_grabbed = grab;
     unix_input_set_mouse_active(grab);
+    if (grab) {
+        s_suppressed_mouse_buttons = 0;
+    }
 
     if (!s_setup_done || !s_available) {
         return;
