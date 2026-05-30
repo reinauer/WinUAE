@@ -16,6 +16,9 @@
 
 #include "options.h"
 #include "midi.h"
+#ifdef WITH_MIDIEMU
+#include "midiemu.h"
+#endif
 
 extern int serdev;
 
@@ -24,6 +27,8 @@ BOOL midi_ready = FALSE;
 struct unix_midi_output_device {
     int devid;
     TCHAR name[256];
+    TCHAR label[256];
+    bool emulated;
 #if defined(WINUAE_UNIX_WITH_COREMIDI)
     MIDIEndpointRef endpoint;
 #elif defined(WINUAE_UNIX_WITH_ALSA_MIDI)
@@ -183,6 +188,22 @@ static void enumerate_midi_outputs(void)
     }
     snd_seq_close(seq);
 #endif
+#ifdef WITH_MIDIEMU
+    unix_midi_output_device dev;
+    memset(&dev, 0, sizeof dev);
+    dev.devid = (int)midi_outputs.size();
+    dev.emulated = true;
+    _tcscpy(dev.name, _T("Munt MT-32"));
+    _tcscpy(dev.label, midi_emu_available(_T("MT-32")) ? _T("Munt MT-32") : _T("Munt MT-32 (Missing ROMs)"));
+    midi_outputs.push_back(dev);
+
+    memset(&dev, 0, sizeof dev);
+    dev.devid = (int)midi_outputs.size();
+    dev.emulated = true;
+    _tcscpy(dev.name, _T("Munt CM-32L"));
+    _tcscpy(dev.label, midi_emu_available(_T("CM-32L")) ? _T("Munt CM-32L") : _T("Munt CM-32L (Missing ROMs)"));
+    midi_outputs.push_back(dev);
+#endif
 }
 
 static void enumerate_midi_inputs(void)
@@ -265,7 +286,12 @@ static unix_midi_output_device *find_midi_device(std::vector<unix_midi_output_de
         return NULL;
     }
     if (default_to_first && devid == -1) {
-        return &devices[0];
+        for (size_t i = 0; i < devices.size(); i++) {
+            if (!devices[i].emulated) {
+                return &devices[i];
+            }
+        }
+        return NULL;
     }
     for (size_t i = 0; i < devices.size(); i++) {
         if (devices[i].devid == devid) {
@@ -287,19 +313,33 @@ static unix_midi_output_device *find_midi_input(int devid)
     return find_midi_device(midi_inputs, devid, false);
 }
 
+static bool has_native_midi_output(void)
+{
+    ensure_midi_outputs();
+    for (size_t i = 0; i < midi_outputs.size(); i++) {
+        if (!midi_outputs[i].emulated) {
+            return true;
+        }
+    }
+    return false;
+}
+
 int unix_midi_output_device_count(void)
 {
     ensure_midi_outputs();
-    return midi_outputs.empty() ? 0 : (int)midi_outputs.size() + 1;
+    return (int)midi_outputs.size() + (has_native_midi_output() ? 1 : 0);
 }
 
 int unix_midi_output_device_id(int index)
 {
     ensure_midi_outputs();
-    if (index == 0 && !midi_outputs.empty()) {
+    const bool has_default = has_native_midi_output();
+    if (index == 0 && has_default) {
         return -1;
     }
-    index--;
+    if (has_default) {
+        index--;
+    }
     if (index < 0 || index >= (int)midi_outputs.size()) {
         return -2;
     }
@@ -310,14 +350,18 @@ const TCHAR *unix_midi_output_device_display_name(int index)
 {
     static TCHAR name[320];
     ensure_midi_outputs();
-    if (index == 0 && !midi_outputs.empty()) {
+    const bool has_default = has_native_midi_output();
+    if (index == 0 && has_default) {
         return _T("Default MIDI-Out Device");
     }
-    index--;
+    if (has_default) {
+        index--;
+    }
     if (index < 0 || index >= (int)midi_outputs.size()) {
         return _T("");
     }
-    _sntprintf(name, sizeof name / sizeof(TCHAR), _T("%s"), midi_outputs[index].name);
+    _sntprintf(name, sizeof name / sizeof(TCHAR), _T("%s"),
+        midi_outputs[index].label[0] ? midi_outputs[index].label : midi_outputs[index].name);
     return name;
 }
 
@@ -562,6 +606,9 @@ int Midi_Open(void)
     unix_midi_output_device *indev = currprefs.win32_midiindev >= 0 ? find_midi_input(currprefs.win32_midiindev) : NULL;
     if (!outdev) {
         write_log(_T("MIDI OUT: no output device for id %d\n"), currprefs.win32_midioutdev);
+        return 0;
+    }
+    if (outdev->emulated) {
         return 0;
     }
 #if defined(WINUAE_UNIX_WITH_COREMIDI)
