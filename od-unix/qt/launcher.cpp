@@ -263,14 +263,6 @@ static WinUaeQtBoardCatalog winUaeQtLoadExternalBoardCatalog()
 #define UAE_UNIX_WITH_JIT 0
 #endif
 
-#ifndef UAE_UNIX_WITH_PRINTER
-#define UAE_UNIX_WITH_PRINTER 0
-#endif
-
-#ifndef UAE_UNIX_WITH_PARALLEL_PORT
-#define UAE_UNIX_WITH_PARALLEL_PORT 0
-#endif
-
 #ifndef UAE_UNIX_WITH_SAMPLER
 #define UAE_UNIX_WITH_SAMPLER 0
 #endif
@@ -283,40 +275,12 @@ static WinUaeQtBoardCatalog winUaeQtLoadExternalBoardCatalog()
 #define UAE_UNIX_WITH_SNDBOARD 0
 #endif
 
-#ifndef UAE_UNIX_WITH_UAESERIAL
-#define UAE_UNIX_WITH_UAESERIAL 0
-#endif
-
-#ifndef UAE_UNIX_WITH_SERIAL_DIRECT
-#define UAE_UNIX_WITH_SERIAL_DIRECT 1
-#endif
-
 #ifndef UAE_UNIX_WITH_SHADER_PIPELINE
 #define UAE_UNIX_WITH_SHADER_PIPELINE 0
 #endif
 
-#ifndef UAE_UNIX_WITH_NATIVE_MEDIA
-#define UAE_UNIX_WITH_NATIVE_MEDIA 0
-#endif
-
 #ifndef UAE_UNIX_WITH_NATIVE_HARDDRIVES
-#define UAE_UNIX_WITH_NATIVE_HARDDRIVES UAE_UNIX_WITH_NATIVE_MEDIA
-#endif
-
-#ifndef UAE_UNIX_WITH_NATIVE_CD
-#define UAE_UNIX_WITH_NATIVE_CD 0
-#endif
-
-#ifndef UAE_UNIX_WITH_NATIVE_TAPE
-#define UAE_UNIX_WITH_NATIVE_TAPE 0
-#endif
-
-#ifndef UAE_UNIX_WITH_CPUBOARD
-#define UAE_UNIX_WITH_CPUBOARD 0
-#endif
-
-#ifndef UAE_UNIX_WITH_PPC
-#define UAE_UNIX_WITH_PPC 0
+#define UAE_UNIX_WITH_NATIVE_HARDDRIVES 0
 #endif
 
 #ifndef UAE_UNIX_WITH_TABLET
@@ -348,15 +312,6 @@ static constexpr int InputFlagSetOnOff = 128;
 static constexpr int InputFlagSetOnOffVal1 = 256;
 static constexpr int InputFlagSetOnOffVal2 = 512;
 
-static bool unixPrinterBackendAvailable()
-{
-#if UAE_UNIX_WITH_PRINTER
-    return true;
-#else
-    return false;
-#endif
-}
-
 static bool unixJitBackendAvailable()
 {
 #if UAE_UNIX_WITH_JIT
@@ -366,117 +321,9 @@ static bool unixJitBackendAvailable()
 #endif
 }
 
-static bool unixParallelPortBackendAvailable()
-{
-#if UAE_UNIX_WITH_PARALLEL_PORT
-    return true;
-#else
-    return false;
-#endif
-}
-
-static bool unixSamplerBackendAvailable()
-{
-#if UAE_UNIX_WITH_SAMPLER
-    return true;
-#else
-    return false;
-#endif
-}
-
-static bool unixMidiBackendAvailable()
-{
-#if UAE_UNIX_WITH_MIDI
-    return true;
-#else
-    return false;
-#endif
-}
-
-static bool unixMidiInputBackendAvailable()
-{
-#if UAE_UNIX_WITH_MIDI
-    return true;
-#else
-    return false;
-#endif
-}
-
-static bool unixMidiVolumeBackendAvailable()
-{
-#if UAE_UNIX_WITH_MIDI
-    return true;
-#else
-    return false;
-#endif
-}
-
-static bool unixUaeSerialBackendAvailable()
-{
-#if UAE_UNIX_WITH_UAESERIAL
-    return true;
-#else
-    return false;
-#endif
-}
-
-static bool unixSerialDirectBackendAvailable()
-{
-#if UAE_UNIX_WITH_SERIAL_DIRECT
-    return true;
-#else
-    return false;
-#endif
-}
-
 static bool unixShaderPipelineAvailable()
 {
 #if UAE_UNIX_WITH_SHADER_PIPELINE
-    return true;
-#else
-    return false;
-#endif
-}
-
-static bool unixNativeHardDriveBackendAvailable()
-{
-#if UAE_UNIX_WITH_NATIVE_HARDDRIVES
-    return true;
-#else
-    return false;
-#endif
-}
-
-static bool unixNativeCdBackendAvailable()
-{
-#if UAE_UNIX_WITH_NATIVE_CD
-    return true;
-#else
-    return false;
-#endif
-}
-
-static bool unixNativeTapeBackendAvailable()
-{
-#if UAE_UNIX_WITH_NATIVE_TAPE
-    return true;
-#else
-    return false;
-#endif
-}
-
-static bool unixCpuBoardBackendAvailable()
-{
-#if UAE_UNIX_WITH_CPUBOARD
-    return true;
-#else
-    return false;
-#endif
-}
-
-static bool unixPpcBackendAvailable()
-{
-#if UAE_UNIX_WITH_PPC
     return true;
 #else
     return false;
@@ -2999,11 +2846,7 @@ static QStringList quickstartConfigItems(const QuickstartModelChoice &choice)
     QStringList items;
     for (int i = 0; i < choice.configCount && i < MaxQuickstartConfigs; i++) {
         if (choice.configs[i]) {
-            const QString item = QString::fromLatin1(choice.configs[i]);
-            if (!unixPpcBackendAvailable() && item.contains(QStringLiteral("PPC"), Qt::CaseInsensitive)) {
-                continue;
-            }
-            items.append(item);
+            items.append(QString::fromLatin1(choice.configs[i]));
         }
     }
     return items;
@@ -7793,15 +7636,6 @@ private:
         buttons->addWidget(propertiesMountButton, 1, 2);
         buttons->addWidget(removeMountButton, 1, 3);
         root->addLayout(buttons);
-        if (!unixNativeHardDriveBackendAvailable()) {
-            disableUnavailable(addHardDriveMountButton, QStringLiteral("Native Unix hard drive enumeration is not implemented yet; use image-backed hardfiles or directory mounts."));
-        }
-        if (!unixNativeCdBackendAvailable()) {
-            disableUnavailable(addCdMountButton, QStringLiteral("Native Unix CD/DVD drive enumeration is not implemented yet; use the image-backed optical media selector below."));
-        }
-        if (!unixNativeTapeBackendAvailable()) {
-            disableUnavailable(addTapeMountButton, QStringLiteral("Native Unix tape drive enumeration is not implemented yet."));
-        }
 
         hostDriveAutomount = new QCheckBox(QStringLiteral("Add PC drives at startup"));
         hostRemovableDrives = new QCheckBox(QStringLiteral("Include removable drives.."));
@@ -8902,16 +8736,6 @@ private:
         if (!cpuBoardSubtype || !cpuBoardRom || !cpuBoardMem || !cpuBoardBrowse) {
             return;
         }
-        if (!unixCpuBoardBackendAvailable()) {
-            const QString reason = QStringLiteral("Accelerator/CPU board emulation is not enabled in this Unix build yet.");
-            for (QWidget *widget : { static_cast<QWidget *>(cpuBoardType), static_cast<QWidget *>(cpuBoardSubtype), static_cast<QWidget *>(cpuBoardRom), static_cast<QWidget *>(cpuBoardBrowse), static_cast<QWidget *>(cpuBoardMem), static_cast<QWidget *>(acceleratorOption), static_cast<QWidget *>(acceleratorSelector), static_cast<QWidget *>(acceleratorOptionCheck) }) {
-                if (widget) {
-                    widget->setEnabled(false);
-                    widget->setToolTip(reason);
-                }
-            }
-            return;
-        }
         const WinUaeQtCpuBoardCatalogItem *choice = selectedCpuBoardChoice();
         const bool hasBoard = choice != nullptr;
         cpuBoardSubtype->setEnabled(!selectedCpuBoardType().isEmpty() && cpuBoardSubtype->count() > 0);
@@ -9904,9 +9728,6 @@ private:
         soundMasterVolumeValue = new QLabel;
         soundMasterVolumeValue->setMinimumWidth(44);
         soundVolumeSelect = combo({ QStringLiteral("Paula"), QStringLiteral("CD"), QStringLiteral("AHI"), QStringLiteral("MIDI"), QStringLiteral("Genlock") }, QStringLiteral("Paula"));
-        if (!unixMidiVolumeBackendAvailable()) {
-            setComboItemEnabled(soundVolumeSelect, 3, false, QStringLiteral("Native MIDI output volume is not connected to a Unix backend yet."));
-        }
         soundSelectedVolume = new QSlider(Qt::Horizontal);
         soundSelectedVolume->setRange(0, 100);
         soundSelectedVolumeValue = new QLabel;
@@ -10370,13 +10191,6 @@ private:
         wireRemapButton(port1Remap, 1);
         wireRemapButton(port2Remap, 2);
         wireRemapButton(port3Remap, 3);
-        if (!unixParallelPortBackendAvailable()) {
-            const QString reason = QStringLiteral("Parallel port joystick adapter is not connected to a Unix backend yet.");
-            disableUnavailable(portDevice[2], reason);
-            disableUnavailable(portDevice[3], reason);
-            disableUnavailable(port2Remap, reason);
-            disableUnavailable(port3Remap, reason);
-        }
 
         QGridLayout *ports = new QGridLayout;
         ports->setColumnStretch(1, 1);
@@ -10565,24 +10379,11 @@ private:
         printerAutoFlush = new QSpinBox;
         printerAutoFlush->setRange(0, 3600);
         ghostscriptParams = new QLineEdit;
-        if (!unixPrinterBackendAvailable()) {
-            const QString reason = QStringLiteral("Printer output is not connected to a Unix backend yet.");
-            disableUnavailable(printerPort, reason);
-            disableUnavailable(printerType, reason);
-            disableUnavailable(flushPrinter, reason);
-            disableUnavailable(printerAutoFlush, reason);
-            disableUnavailable(ghostscriptParams, reason);
-        }
         samplerDevice = new QComboBox;
         for (const auto &choice : samplerDeviceChoices()) {
             samplerDevice->addItem(choice.first, choice.second);
         }
         samplerStereo = new QCheckBox(QStringLiteral("Stereo sampler"));
-        if (!unixSamplerBackendAvailable()) {
-            const QString reason = QStringLiteral("Parallel sampler input is not connected to a Unix backend yet.");
-            disableUnavailable(samplerDevice, reason);
-            disableUnavailable(samplerStereo, reason);
-        }
         parallel->addWidget(label(QStringLiteral("Printer:")), 0, 0);
         parallel->addWidget(printerPort, 0, 1, 1, 3);
         parallel->addWidget(label(QStringLiteral("Type:")), 1, 0);
@@ -10616,9 +10417,6 @@ private:
         serialStatus = new QCheckBox(QStringLiteral("Serial status (RTS/CTS/DTR/DTE/CD)"));
         serialRingIndicator = new QCheckBox(QStringLiteral("Serial status: Ring Indicator"));
         serialDirect->setToolTip(QStringLiteral("Unix serial uses direct host device/TCP I/O; this keeps the Windows-compatible config flag enabled for that path."));
-        if (!unixUaeSerialBackendAvailable()) {
-            disableUnavailable(uaeSerial, QStringLiteral("uaeserial.device is not enabled in this Unix build yet."));
-        }
         serial->addWidget(serialPort, 0, 0, 1, 4);
         serial->addWidget(serialShared, 1, 0);
         serial->addWidget(serialCtsRts, 1, 1);
@@ -10647,15 +10445,6 @@ private:
             midiIn->setItemData(midiIn->count() - 1, choice.configName, Qt::UserRole + 1);
         }
         midiRouter = new QCheckBox(QStringLiteral("Route MIDI In to MIDI Out"));
-        if (!unixMidiBackendAvailable()) {
-            const QString reason = QStringLiteral("Native MIDI is not connected to a Unix backend yet.");
-            disableUnavailable(midiOut, reason);
-            disableUnavailable(midiIn, reason);
-            disableUnavailable(midiRouter, reason);
-        } else if (!unixMidiInputBackendAvailable()) {
-            disableUnavailable(midiIn, QStringLiteral("Native MIDI input is not connected to a Unix backend yet."));
-            disableUnavailable(midiRouter, QStringLiteral("MIDI routing requires a native MIDI input backend."));
-        }
         midi->addWidget(label(QStringLiteral("Out:")), 0, 0);
         midi->addWidget(midiOut, 0, 1);
         midi->addWidget(label(QStringLiteral("In:")), 0, 2);
@@ -10694,7 +10483,7 @@ private:
             serialCtsRts->setEnabled(serialEnabled);
         }
         if (serialDirect) {
-            serialDirect->setEnabled(serialEnabled && unixSerialDirectBackendAvailable());
+            serialDirect->setEnabled(serialEnabled);
         }
         if (serialStatus) {
             serialStatus->setEnabled(serialEnabled);
@@ -10703,11 +10492,9 @@ private:
             serialRingIndicator->setEnabled(serialEnabled);
         }
         if (samplerStereo) {
-            samplerStereo->setEnabled(unixSamplerBackendAvailable() && samplerDevice && samplerDevice->currentText() != QStringLiteral("<None>"));
+            samplerStereo->setEnabled(samplerDevice && samplerDevice->currentText() != QStringLiteral("<None>"));
         }
         const bool midiActive = midiOut && midiIn
-            && unixMidiBackendAvailable()
-            && unixMidiInputBackendAvailable()
             && midiOut->currentText() != QStringLiteral("<None>")
             && midiIn->currentText() != QStringLiteral("<None>");
         if (midiRouter) {
@@ -13973,14 +13760,6 @@ private:
 
     void addHardDriveMountDialog()
     {
-        if (!unixNativeHardDriveBackendAvailable()) {
-            QMessageBox::information(
-                this,
-                QStringLiteral("Add Hard Drive"),
-                QStringLiteral("Native Unix hard drive enumeration is not implemented yet. The Windows dialog uses a Win32 physical-drive backend; Unix needs a separate block-device backend before this can safely add host disks."));
-            return;
-        }
-
         const QVector<WinUaeQtNativeDriveChoice> choices = nativeHardDriveChoices();
         if (choices.isEmpty()) {
             QMessageBox::information(
@@ -14033,14 +13812,6 @@ private:
 
     void addCdDriveMountDialog()
     {
-        if (!unixNativeCdBackendAvailable()) {
-            QMessageBox::information(
-                this,
-                QStringLiteral("Add CD Drive"),
-                QStringLiteral("Native Unix CD/DVD drive enumeration is not implemented yet. Use the image-backed optical media selector instead."));
-            return;
-        }
-
         WinUaeQtMountEntry entry;
         entry.kind = QStringLiteral("cd");
         entry.emuUnit = nextMountEmuUnit(QStringLiteral("cd"));
@@ -14055,14 +13826,6 @@ private:
 
     void addTapeDriveMountDialog()
     {
-        if (!unixNativeTapeBackendAvailable()) {
-            QMessageBox::information(
-                this,
-                QStringLiteral("Add Tape Drive"),
-                QStringLiteral("Native Unix tape drive enumeration is not implemented yet."));
-            return;
-        }
-
         WinUaeQtMountEntry entry;
         entry.kind = QStringLiteral("tape");
         entry.emuUnit = nextMountEmuUnit(QStringLiteral("tape"));
@@ -14259,13 +14022,13 @@ private:
             addHardfileMountButton->setEnabled(canAdd);
         }
         if (addHardDriveMountButton) {
-            addHardDriveMountButton->setEnabled(canAdd && unixNativeHardDriveBackendAvailable());
+            addHardDriveMountButton->setEnabled(canAdd);
         }
         if (addCdMountButton) {
-            addCdMountButton->setEnabled(canAdd && unixNativeCdBackendAvailable());
+            addCdMountButton->setEnabled(canAdd);
         }
         if (addTapeMountButton) {
-            addTapeMountButton->setEnabled(canAdd && unixNativeTapeBackendAvailable());
+            addTapeMountButton->setEnabled(canAdd);
         }
         if (propertiesMountButton) {
             propertiesMountButton->setEnabled(!mountedDrives->selectedItems().isEmpty());
@@ -15234,7 +14997,7 @@ private:
         settings.insert(QStringLiteral("sound_volume_paula"), QString::number(soundVolumeAttenuationValue(0)));
         settings.insert(QStringLiteral("sound_volume_cd"), QString::number(soundVolumeAttenuationValue(1)));
         settings.insert(QStringLiteral("sound_volume_ahi"), QString::number(soundVolumeAttenuationValue(2)));
-        settings.insert(QStringLiteral("sound_volume_midi"), QString::number(unixMidiVolumeBackendAvailable() ? soundVolumeAttenuationValue(3) : 0));
+        settings.insert(QStringLiteral("sound_volume_midi"), QString::number(soundVolumeAttenuationValue(3)));
         settings.insert(QStringLiteral("sound_volume_genlock"), QString::number(soundVolumeAttenuationValue(4)));
         settings.insert(QStringLiteral("sound_max_buff"), QString::number(soundBufferSizeFromIndex(soundBufferSize->value())));
         settings.insert(QStringLiteral("sound_channels"), soundChannelConfigValue(soundChannels->currentText()));
@@ -15257,34 +15020,27 @@ private:
             settings.insert(QStringLiteral("floppy%1soundvolume_empty").arg(i), QString::number(floppySoundEmptyAttenuationValue(i)));
             settings.insert(QStringLiteral("floppy%1soundvolume_disk").arg(i), QString::number(floppySoundDiskAttenuationValue(i)));
         }
-        if (unixPrinterBackendAvailable()) {
-            const QString printerTypeValue = configChoiceValue(printerTypeChoices, int(sizeof(printerTypeChoices) / sizeof(printerTypeChoices[0])), printerType->currentText());
-            settings.insert(QStringLiteral("parallel_matrix_emulation"),
-                printerTypeValue.startsWith(QStringLiteral("postscript_")) ? QStringLiteral("none") : printerTypeValue);
-            settings.insert(QStringLiteral("parallel_postscript_detection"),
-                printerTypeValue.startsWith(QStringLiteral("postscript_")) ? QStringLiteral("true") : QStringLiteral("false"));
-            settings.insert(QStringLiteral("parallel_postscript_emulation"),
-                printerTypeValue == QStringLiteral("postscript_emulation") ? QStringLiteral("true") : QStringLiteral("false"));
-            settings.insert(QStringLiteral("parallel_autoflush"), QString::number(printerAutoFlush->value()));
-            if (!ghostscriptParams->text().trimmed().isEmpty()) {
-                settings.insert(QStringLiteral("ghostscript_parameters"), ghostscriptParams->text().trimmed());
-            }
-        } else {
-            settings.insert(QStringLiteral("parallel_matrix_emulation"), QStringLiteral("none"));
-            settings.insert(QStringLiteral("parallel_postscript_detection"), QStringLiteral("false"));
-            settings.insert(QStringLiteral("parallel_postscript_emulation"), QStringLiteral("false"));
-            settings.insert(QStringLiteral("parallel_autoflush"), QStringLiteral("5"));
+        const QString printerTypeValue = configChoiceValue(printerTypeChoices, int(sizeof(printerTypeChoices) / sizeof(printerTypeChoices[0])), printerType->currentText());
+        settings.insert(QStringLiteral("parallel_matrix_emulation"),
+            printerTypeValue.startsWith(QStringLiteral("postscript_")) ? QStringLiteral("none") : printerTypeValue);
+        settings.insert(QStringLiteral("parallel_postscript_detection"),
+            printerTypeValue.startsWith(QStringLiteral("postscript_")) ? QStringLiteral("true") : QStringLiteral("false"));
+        settings.insert(QStringLiteral("parallel_postscript_emulation"),
+            printerTypeValue == QStringLiteral("postscript_emulation") ? QStringLiteral("true") : QStringLiteral("false"));
+        settings.insert(QStringLiteral("parallel_autoflush"), QString::number(printerAutoFlush->value()));
+        if (!ghostscriptParams->text().trimmed().isEmpty()) {
+            settings.insert(QStringLiteral("ghostscript_parameters"), ghostscriptParams->text().trimmed());
         }
-        const int samplerIndex = unixSamplerBackendAvailable() && samplerDevice ? samplerDevice->currentIndex() - 1 : -1;
+        const int samplerIndex = samplerDevice ? samplerDevice->currentIndex() - 1 : -1;
         settings.insert(QStringLiteral("unix.samplersoundcard"), QString::number(samplerIndex));
         const QString samplerDeviceConfigName = samplerDevice ? samplerDevice->currentData().toString() : QString();
         if (samplerIndex >= 0 && !samplerDeviceConfigName.isEmpty()) {
             settings.insert(QStringLiteral("unix.samplersoundcardname"), samplerDeviceConfigName);
         }
-        settings.insert(QStringLiteral("sampler_stereo"), unixSamplerBackendAvailable() && samplerIndex >= 0 && samplerStereo->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
-        const int midiOutDevice = unixMidiBackendAvailable() && midiOut ? midiOut->currentData().toInt() : -2;
+        settings.insert(QStringLiteral("sampler_stereo"), samplerIndex >= 0 && samplerStereo->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
+        const int midiOutDevice = midiOut ? midiOut->currentData().toInt() : -2;
         settings.insert(QStringLiteral("midiout_device"), QString::number(midiOutDevice));
-        const int midiInDevice = unixMidiInputBackendAvailable() && midiIn ? midiIn->currentData().toInt() : -1;
+        const int midiInDevice = midiIn ? midiIn->currentData().toInt() : -1;
         settings.insert(QStringLiteral("midiin_device"), QString::number(midiInDevice));
         QString midiOutName = QStringLiteral("none");
         if (midiOutDevice == -1) {
@@ -15316,9 +15072,9 @@ private:
         settings.insert(QStringLiteral("serial_hardware_ctsrts"), serialCtsRts->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
         settings.insert(QStringLiteral("serial_status"), serialStatus->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
         settings.insert(QStringLiteral("serial_ri"), serialRingIndicator->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
-        settings.insert(QStringLiteral("serial_direct"), unixSerialDirectBackendAvailable() && serialDirect->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
+        settings.insert(QStringLiteral("serial_direct"), serialDirect->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
         settings.insert(QStringLiteral("serial_translate"), serialCrlf->isChecked() ? QStringLiteral("crlf_cr") : QStringLiteral("disabled"));
-        settings.insert(QStringLiteral("uaeserial"), unixUaeSerialBackendAvailable() && uaeSerial->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
+        settings.insert(QStringLiteral("uaeserial"), uaeSerial->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
         const QString dongle = configChoiceValue(dongleChoices, int(sizeof(dongleChoices) / sizeof(dongleChoices[0])), protectionDongle->currentText());
         if (!dongle.isEmpty() && dongle != QStringLiteral("none")) {
             settings.insert(QStringLiteral("dongle"), dongle);
@@ -15372,7 +15128,7 @@ private:
         settings.insert(QStringLiteral("gfx_backbuffers_rtg"),
             rtgBuffers->currentText() == QStringLiteral("Triple") ? QStringLiteral("3") : QStringLiteral("2"));
         settings.insert(QStringLiteral("rtg_modes"), QStringLiteral("0x%1").arg(rtgModeMask(), 0, 16));
-        const QString cpuBoardConfig = unixCpuBoardBackendAvailable() ? selectedCpuBoardConfigValue() : QString();
+        const QString cpuBoardConfig = selectedCpuBoardConfigValue();
         if (cpuBoardConfig.isEmpty()) {
             settings.insert(QStringLiteral("cpuboard_type"), QStringLiteral("none"));
             settings.insert(QStringLiteral("cpuboardmem1_size"), QStringLiteral("0"));
@@ -15497,10 +15253,7 @@ private:
         settings.insert(QStringLiteral("state_replay_buffers"), QString::number(qMax(1, stateReplayBuffers->currentText().toInt())));
         settings.insert(QStringLiteral("state_replay_autoplay"), stateReplayAutoplay->isChecked() ? QStringLiteral("true") : QStringLiteral("false"));
         for (int i = 0; i < 4; i++) {
-            const QString value = i >= 2 && !unixParallelPortBackendAvailable()
-                ? QStringLiteral("none")
-                : joyportDeviceConfigValue(portDevice[i]->currentText());
-            settings.insert(QStringLiteral("joyport%1").arg(i), value);
+            settings.insert(QStringLiteral("joyport%1").arg(i), joyportDeviceConfigValue(portDevice[i]->currentText()));
         }
         for (int i = 0; i < MaxJoyportCustomSlots; i++) {
             if (!joyportCustom[i].trimmed().isEmpty()) {
@@ -16827,33 +16580,23 @@ private:
                 loadSelectedFloppySound();
             }
         } else if (key == QStringLiteral("parallel_matrix_emulation")) {
-            if (unixPrinterBackendAvailable()) {
-                printerType->setCurrentText(configChoiceDisplay(printerTypeChoices, int(sizeof(printerTypeChoices) / sizeof(printerTypeChoices[0])), value));
-            }
+            printerType->setCurrentText(configChoiceDisplay(printerTypeChoices, int(sizeof(printerTypeChoices) / sizeof(printerTypeChoices[0])), value));
         } else if (key == QStringLiteral("parallel_postscript_detection")) {
-            if (unixPrinterBackendAvailable()) {
-                if (configBoolValue(value)) {
-                    printerType->setCurrentText(QStringLiteral("PostScript (Passthrough)"));
-                } else if (printerType->currentText().startsWith(QStringLiteral("PostScript"))) {
-                    printerType->setCurrentText(QStringLiteral("Passthrough"));
-                }
+            if (configBoolValue(value)) {
+                printerType->setCurrentText(QStringLiteral("PostScript (Passthrough)"));
+            } else if (printerType->currentText().startsWith(QStringLiteral("PostScript"))) {
+                printerType->setCurrentText(QStringLiteral("Passthrough"));
             }
         } else if (key == QStringLiteral("parallel_postscript_emulation")) {
-            if (unixPrinterBackendAvailable()) {
-                if (configBoolValue(value)) {
-                    printerType->setCurrentText(QStringLiteral("PostScript (Emulation)"));
-                } else if (printerType->currentText() == QStringLiteral("PostScript (Emulation)")) {
-                    printerType->setCurrentText(QStringLiteral("PostScript (Passthrough)"));
-                }
+            if (configBoolValue(value)) {
+                printerType->setCurrentText(QStringLiteral("PostScript (Emulation)"));
+            } else if (printerType->currentText() == QStringLiteral("PostScript (Emulation)")) {
+                printerType->setCurrentText(QStringLiteral("PostScript (Passthrough)"));
             }
         } else if (key == QStringLiteral("parallel_autoflush")) {
-            if (unixPrinterBackendAvailable()) {
-                printerAutoFlush->setValue(qBound(0, value.toInt(), 3600));
-            }
+            printerAutoFlush->setValue(qBound(0, value.toInt(), 3600));
         } else if (key == QStringLiteral("ghostscript_parameters")) {
-            if (unixPrinterBackendAvailable()) {
-                ghostscriptParams->setText(value);
-            }
+            ghostscriptParams->setText(value);
         } else if (key == QStringLiteral("unix.samplersoundcard")
             || key == QStringLiteral("samplersoundcard")
             || key == QStringLiteral("unix.sampler_soundcard")
@@ -16871,8 +16614,7 @@ private:
             selectSamplerDeviceByConfigName(value);
             updateIoPortsState();
         } else if (key == QStringLiteral("sampler_stereo")) {
-            samplerStereo->setChecked(unixSamplerBackendAvailable()
-                && samplerDevice
+            samplerStereo->setChecked(samplerDevice
                 && samplerDevice->currentText() != QStringLiteral("<None>")
                 && configBoolValue(value));
             updateIoPortsState();
@@ -16880,24 +16622,20 @@ private:
             bool ok = false;
             const int deviceId = value.toInt(&ok);
             if (ok) {
-                selectMidiOutByDeviceId(unixMidiBackendAvailable() ? deviceId : -2);
+                selectMidiOutByDeviceId(deviceId);
             }
         } else if (key == QStringLiteral("midiout_device_name")) {
-            if (unixMidiBackendAvailable()) {
-                selectMidiOutByConfigName(value);
-            }
+            selectMidiOutByConfigName(value);
         } else if (key == QStringLiteral("midiin_device")) {
             bool ok = false;
             const int deviceId = value.toInt(&ok);
             if (ok) {
-                selectMidiInByDeviceId(unixMidiInputBackendAvailable() ? deviceId : -1);
+                selectMidiInByDeviceId(deviceId);
             }
         } else if (key == QStringLiteral("midiin_device_name")) {
-            if (unixMidiInputBackendAvailable()) {
-                selectMidiInByConfigName(value);
-            }
+            selectMidiInByConfigName(value);
         } else if (key == QStringLiteral("midirouter")) {
-            midiRouter->setChecked(unixMidiInputBackendAvailable() && configBoolValue(value));
+            midiRouter->setChecked(configBoolValue(value));
         } else if (key == QStringLiteral("unix.serial_port") || key == QStringLiteral("serial_port")) {
             serialPort->setCurrentText(value.isEmpty() ? QStringLiteral("<None>") : value);
             updateIoPortsState();
@@ -16910,11 +16648,11 @@ private:
         } else if (key == QStringLiteral("serial_ri")) {
             serialRingIndicator->setChecked(configBoolValue(value));
         } else if (key == QStringLiteral("serial_direct")) {
-            serialDirect->setChecked(unixSerialDirectBackendAvailable() && configBoolValue(value));
+            serialDirect->setChecked(configBoolValue(value));
         } else if (key == QStringLiteral("serial_translate")) {
             serialCrlf->setChecked(value.compare(QStringLiteral("crlf_cr"), Qt::CaseInsensitive) == 0 || configBoolValue(value));
         } else if (key == QStringLiteral("uaeserial")) {
-            uaeSerial->setChecked(unixUaeSerialBackendAvailable() && configBoolValue(value));
+            uaeSerial->setChecked(configBoolValue(value));
         } else if (key == QStringLiteral("dongle")) {
             bool ok = false;
             const int index = value.toInt(&ok);
@@ -16987,11 +16725,7 @@ private:
             bool ok = false;
             const int port = key.mid(7, 1).toInt(&ok);
             if (ok && port >= 0 && port < 4) {
-                if (port >= 2 && !unixParallelPortBackendAvailable()) {
-                    portDevice[port]->setCurrentText(QStringLiteral("<None>"));
-                } else {
-                    portDevice[port]->setCurrentText(joyportDeviceText(value, port < 2));
-                }
+                portDevice[port]->setCurrentText(joyportDeviceText(value, port < 2));
             }
         } else if (key.startsWith(QStringLiteral("joyportcustom"))) {
             bool ok = false;
