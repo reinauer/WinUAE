@@ -66,6 +66,8 @@ static int s_requested_fullscreen_refresh;
 static int s_active_fullscreen_width = -1;
 static int s_active_fullscreen_height = -1;
 static int s_active_fullscreen_refresh = -1;
+static int s_auto_window_width;
+static int s_auto_window_height;
 static int s_texture_width;
 static int s_texture_height;
 static int s_texture_pixbytes;
@@ -518,6 +520,103 @@ static SDL_FRect filtered_frame_rect(const struct unix_video_frame *frame, const
     rect.x = (frame->width - rect.w) / 2.0f + offset_x;
     rect.y = (frame->height - rect.h) / 2.0f + offset_y;
     return rect;
+}
+
+static int valid_monitor_id(int monitor_id)
+{
+    if (monitor_id < 0 || monitor_id >= MAX_AMIGADISPLAYS) {
+        return 0;
+    }
+    return monitor_id;
+}
+
+static void configured_window_size(int monitor_id, int *width, int *height)
+{
+    monitor_id = valid_monitor_id(monitor_id);
+    int w = currprefs.gfx_monitor[monitor_id].gfx_size.width;
+    int h = currprefs.gfx_monitor[monitor_id].gfx_size.height;
+    if (w <= 0) {
+        w = currprefs.gfx_monitor[monitor_id].gfx_size_win.width;
+    }
+    if (h <= 0) {
+        h = currprefs.gfx_monitor[monitor_id].gfx_size_win.height;
+    }
+    if (width) {
+        *width = w;
+    }
+    if (height) {
+        *height = h;
+    }
+}
+
+static void auto_resize_window_for_rtg(const struct unix_video_frame *frame,
+    const struct gfx_filterdata *filter)
+{
+    if (!s_window || s_active_window_mode != UNIX_VIDEO_WINDOWED || !frame ||
+        frame->filter_index != GF_RTG || frame->width <= 0 || frame->height <= 0) {
+        s_auto_window_width = 0;
+        s_auto_window_height = 0;
+        return;
+    }
+
+    SDL_WindowFlags flags = SDL_GetWindowFlags(s_window);
+    if (flags & SDL_WINDOW_MAXIMIZED) {
+        return;
+    }
+
+    SDL_FRect rect = filtered_frame_rect(frame, filter);
+    int source_width = std::max(1, (int)std::ceil(rect.w));
+    int source_height = std::max(1, (int)std::ceil(rect.h));
+    int configured_width = 0;
+    int configured_height = 0;
+    int desired_width = source_width;
+    int desired_height = source_height;
+
+    configured_window_size(frame->monitor_id, &configured_width, &configured_height);
+    bool have_configured = configured_width > 0 && configured_height > 0;
+    int mode = filter ? filter->gfx_filter_autoscale : 0;
+
+    switch (mode) {
+    case 1: /* scale */
+        if (have_configured && currprefs.win32_rtgallowscaling) {
+            desired_width = configured_width;
+            desired_height = configured_height;
+        } else if (have_configured) {
+            desired_width = std::max(configured_width, source_width);
+            desired_height = std::max(configured_height, source_height);
+        }
+        break;
+    case 2: /* center */
+        if (have_configured &&
+            (currprefs.win32_rtgallowscaling ||
+             (configured_width >= source_width && configured_height >= source_height))) {
+            desired_width = configured_width;
+            desired_height = configured_height;
+        }
+        break;
+    case 3: /* integer */
+        if (have_configured) {
+            desired_width = configured_width;
+            desired_height = configured_height;
+        }
+        break;
+    default: /* resize */
+        break;
+    }
+
+    desired_height += statusbar_display_height();
+    if (desired_width == s_auto_window_width && desired_height == s_auto_window_height) {
+        return;
+    }
+
+    if (SDL_SetWindowSize(s_window, desired_width, desired_height)) {
+        s_auto_window_width = desired_width;
+        s_auto_window_height = desired_height;
+        write_log(_T("SDL3: RTG window resize %dx%d\n"), desired_width, desired_height);
+    } else {
+        write_log(_T("SDL3: failed to resize RTG window to %dx%d: %s\n"),
+            desired_width, desired_height, SDL_GetError());
+    }
 }
 
 static int clamp_filter_percent(int value)
@@ -1405,6 +1504,8 @@ void unix_video_shutdown(void)
     }
     s_status_width = 0;
     s_status_height = 0;
+    s_auto_window_width = 0;
+    s_auto_window_height = 0;
 
     if (s_setup_done && s_available) {
         SDL_QuitSubSystem(SDL_INIT_EVENTS | SDL_INIT_VIDEO);
@@ -1543,6 +1644,7 @@ void unix_video_present(const struct unix_video_frame *frame)
         return;
     }
     const struct gfx_filterdata *filter = filterdata_for_frame(frame);
+    auto_resize_window_for_rtg(frame, filter);
 #ifdef WINUAE_UNIX_WITH_OPENGL_SHADER_PIPELINE
     if (s_gl_active) {
         unix_gl_present(frame, filter);
