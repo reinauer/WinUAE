@@ -102,6 +102,14 @@ struct unix_pending_video_frame {
     bool valid;
 };
 
+struct unix_video_layout {
+    float pixel_scale_x;
+    float pixel_scale_y;
+    SDL_FRect frame_dst;
+    SDL_FRect status_dst;
+    SDL_Rect frame_clip;
+};
+
 static std::mutex s_pending_frame_mutex;
 static unix_pending_video_frame s_pending_frame;
 
@@ -593,6 +601,133 @@ static SDL_FRect filtered_frame_rect(const struct unix_video_frame *frame, const
     rect.x = (frame->width - rect.w) / 2.0f + offset_x;
     rect.y = (frame->height - rect.h) / 2.0f + offset_y;
     return rect;
+}
+
+static void get_window_pixel_scale(int output_width, int output_height, float *scale_x, float *scale_y)
+{
+    int window_width = 0;
+    int window_height = 0;
+
+    if (scale_x) {
+        *scale_x = 1.0f;
+    }
+    if (scale_y) {
+        *scale_y = 1.0f;
+    }
+    if (!s_window || output_width <= 0 || output_height <= 0) {
+        return;
+    }
+
+    SDL_GetWindowSize(s_window, &window_width, &window_height);
+    if (window_width > 0 && scale_x) {
+        *scale_x = std::max(0.01f, (float)output_width / (float)window_width);
+    }
+    if (window_height > 0 && scale_y) {
+        *scale_y = std::max(0.01f, (float)output_height / (float)window_height);
+    }
+}
+
+static bool get_window_pixel_size(int *width, int *height)
+{
+    int window_width = 0;
+    int window_height = 0;
+
+    if (!s_window) {
+        return false;
+    }
+    SDL_GetWindowSizeInPixels(s_window, &window_width, &window_height);
+    if (window_width <= 0 || window_height <= 0) {
+        SDL_GetWindowSize(s_window, &window_width, &window_height);
+    }
+    if (window_width <= 0 || window_height <= 0) {
+        return false;
+    }
+
+    if (width) {
+        *width = window_width;
+    }
+    if (height) {
+        *height = window_height;
+    }
+    return true;
+}
+
+static bool get_renderer_output_size(int *width, int *height)
+{
+    int output_width = 0;
+    int output_height = 0;
+
+    if (s_renderer && SDL_GetRenderOutputSize(s_renderer, &output_width, &output_height) &&
+        output_width > 0 && output_height > 0) {
+        if (width) {
+            *width = output_width;
+        }
+        if (height) {
+            *height = output_height;
+        }
+        return true;
+    }
+    return get_window_pixel_size(width, height);
+}
+
+static bool make_video_layout(const struct unix_video_frame *frame, const struct gfx_filterdata *filter,
+    int output_width, int output_height, struct unix_video_layout *layout)
+{
+    if (!frame || !layout || frame->width <= 0 || frame->height <= 0 ||
+        output_width <= 0 || output_height <= 0) {
+        return false;
+    }
+
+    memset(layout, 0, sizeof(*layout));
+    get_window_pixel_scale(output_width, output_height, &layout->pixel_scale_x, &layout->pixel_scale_y);
+
+    int status_height = std::max(1, (int)(statusbar_display_height() * layout->pixel_scale_y + 0.5f));
+    if (status_height >= output_height) {
+        status_height = std::max(0, output_height - 1);
+    }
+    const int frame_area_height = std::max(1, output_height - status_height);
+
+    SDL_FRect source_rect = filtered_frame_rect(frame, filter);
+    SDL_FRect dst = {};
+    int mode = frame->filter_index == GF_RTG && filter ? filter->gfx_filter_autoscale : 0;
+
+    if (frame->filter_index == GF_RTG && mode == 2) { /* center */
+        dst.w = source_rect.w * layout->pixel_scale_x;
+        dst.h = source_rect.h * layout->pixel_scale_y;
+        dst.x = ((float)output_width - dst.w) / 2.0f + source_rect.x * layout->pixel_scale_x;
+        dst.y = ((float)frame_area_height - dst.h) / 2.0f + source_rect.y * layout->pixel_scale_y;
+    } else if (frame->filter_index == GF_RTG && mode == 3) { /* integer */
+        int ix = std::max(1, output_width / frame->width);
+        int iy = std::max(1, frame_area_height / frame->height);
+        int scale = std::max(1, std::min(ix, iy));
+        dst.w = source_rect.w * scale;
+        dst.h = source_rect.h * scale;
+        dst.x = ((float)output_width - (float)frame->width * scale) / 2.0f + source_rect.x * scale;
+        dst.y = ((float)frame_area_height - (float)frame->height * scale) / 2.0f + source_rect.y * scale;
+    } else {
+        const float sx = (float)output_width / (float)frame->width;
+        const float sy = (float)frame_area_height / (float)frame->height;
+        float draw_sx = sx;
+        float draw_sy = sy;
+
+        if (frame->filter_index == GF_RTG && mode == 1 && currprefs.win32_rtgscaleaspectratio) {
+            draw_sx = draw_sy = std::min(sx, sy);
+        }
+        dst.w = source_rect.w * draw_sx;
+        dst.h = source_rect.h * draw_sy;
+        dst.x = ((float)output_width - (float)frame->width * draw_sx) / 2.0f + source_rect.x * draw_sx;
+        dst.y = ((float)frame_area_height - (float)frame->height * draw_sy) / 2.0f + source_rect.y * draw_sy;
+    }
+
+    layout->frame_dst = dst;
+    layout->frame_clip = { 0, 0, output_width, frame_area_height };
+    layout->status_dst = {
+        0.0f,
+        (float)frame_area_height,
+        (float)output_width,
+        (float)status_height
+    };
+    return true;
 }
 
 static int valid_monitor_id(int monitor_id)
@@ -1103,33 +1238,6 @@ static bool unix_gl_ensure_status_texture(int width)
     return true;
 }
 
-static void unix_gl_set_logical_viewport(int logical_width, int logical_height)
-{
-    int window_width = 0;
-    int window_height = 0;
-    SDL_GetWindowSizeInPixels(s_window, &window_width, &window_height);
-    if (window_width <= 0 || window_height <= 0) {
-        SDL_GetWindowSize(s_window, &window_width, &window_height);
-    }
-    if (window_width <= 0 || window_height <= 0 || logical_width <= 0 || logical_height <= 0) {
-        return;
-    }
-
-    float scale = std::min((float)window_width / (float)logical_width,
-        (float)window_height / (float)logical_height);
-    int viewport_width = std::max(1, (int)(logical_width * scale + 0.5f));
-    int viewport_height = std::max(1, (int)(logical_height * scale + 0.5f));
-    int viewport_x = (window_width - viewport_width) / 2;
-    int viewport_y = (window_height - viewport_height) / 2;
-
-    glViewport(viewport_x, viewport_y, viewport_width, viewport_height);
-    glMatrixMode(GL_PROJECTION);
-    glLoadIdentity();
-    glOrtho(0.0, logical_width, logical_height, 0.0, -1.0, 1.0);
-    glMatrixMode(GL_MODELVIEW);
-    glLoadIdentity();
-}
-
 static void unix_gl_draw_texture(GLuint texture, const SDL_FRect &dst, bool shader,
     const struct gfx_filterdata *filter, int source_width, int source_height)
 {
@@ -1232,28 +1340,38 @@ static void unix_gl_present(const struct unix_video_frame *frame, const struct g
     if (!unix_gl_upload_frame(frame)) {
         return;
     }
+    int output_width = 0;
+    int output_height = 0;
+    struct unix_video_layout layout;
+
+    if (!get_window_pixel_size(&output_width, &output_height) ||
+        !make_video_layout(frame, filter, output_width, output_height, &layout)) {
+        return;
+    }
 
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
         filter && filter->gfx_filter_bilinear ? GL_LINEAR : GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER,
         filter && filter->gfx_filter_bilinear ? GL_LINEAR : GL_NEAREST);
 
-    const int logical_width = frame->width;
-    const int logical_height = frame->height + statusbar_display_height();
-    unix_gl_set_logical_viewport(logical_width, logical_height);
+    glViewport(0, 0, output_width, output_height);
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+    glOrtho(0.0, output_width, output_height, 0.0, -1.0, 1.0);
+    glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity();
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
 
-    SDL_FRect frame_dst = filtered_frame_rect(frame, filter);
-    unix_gl_draw_texture(s_gl_texture, frame_dst, true, filter, frame->width, frame->height);
+    glEnable(GL_SCISSOR_TEST);
+    glScissor(layout.frame_clip.x,
+        output_height - layout.frame_clip.y - layout.frame_clip.h,
+        layout.frame_clip.w, layout.frame_clip.h);
+    unix_gl_draw_texture(s_gl_texture, layout.frame_dst, true, filter, frame->width, frame->height);
+    glDisable(GL_SCISSOR_TEST);
 
     if (unix_gl_ensure_status_texture(frame->width)) {
-        SDL_FRect status_dst = {
-            0.0f,
-            (float)frame->height,
-            (float)frame->width,
-            (float)statusbar_display_height()
-        };
-        unix_gl_draw_texture(s_gl_status_texture, status_dst, false, NULL,
+        unix_gl_draw_texture(s_gl_status_texture, layout.status_dst, false, NULL,
             frame->width, statusbar_source_height());
     }
 
@@ -1768,19 +1886,24 @@ static void unix_video_present_on_event_thread(const struct unix_video_frame *fr
         filter && filter->gfx_filter_bilinear ? SDL_SCALEMODE_LINEAR : SDL_SCALEMODE_NEAREST);
 
     SDL_UpdateTexture(s_texture, NULL, frame->pixels, frame->rowbytes);
-    SDL_SetRenderLogicalPresentation(s_renderer, frame->width, frame->height + statusbar_display_height(), SDL_LOGICAL_PRESENTATION_LETTERBOX);
+    SDL_SetRenderLogicalPresentation(s_renderer, 0, 0, SDL_LOGICAL_PRESENTATION_DISABLED);
+    int output_width = 0;
+    int output_height = 0;
+    struct unix_video_layout layout;
+    if (!get_renderer_output_size(&output_width, &output_height) ||
+        !make_video_layout(frame, filter, output_width, output_height, &layout)) {
+        return;
+    }
+    SDL_SetRenderDrawColor(s_renderer, 0, 0, 0, 255);
     SDL_RenderClear(s_renderer);
 
-    SDL_Rect frame_clip = { 0, 0, frame->width, frame->height };
-    SDL_SetRenderClipRect(s_renderer, &frame_clip);
-    SDL_FRect frame_dst = filtered_frame_rect(frame, filter);
-    SDL_RenderTexture(s_renderer, s_texture, NULL, &frame_dst);
-    render_scanline_overlay(filter, &frame_dst);
+    SDL_SetRenderClipRect(s_renderer, &layout.frame_clip);
+    SDL_RenderTexture(s_renderer, s_texture, NULL, &layout.frame_dst);
+    render_scanline_overlay(filter, &layout.frame_dst);
     SDL_SetRenderClipRect(s_renderer, NULL);
 
     if (update_status_texture(frame->width)) {
-        SDL_FRect status_dst = { 0.0f, (float)frame->height, (float)frame->width, (float)statusbar_display_height() };
-        SDL_RenderTexture(s_renderer, s_status_texture, NULL, &status_dst);
+        SDL_RenderTexture(s_renderer, s_status_texture, NULL, &layout.status_dst);
     }
     SDL_RenderPresent(s_renderer);
 }
