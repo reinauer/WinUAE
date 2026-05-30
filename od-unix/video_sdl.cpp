@@ -1372,7 +1372,7 @@ static void unix_gl_present(const struct unix_video_frame *frame, const struct g
     glDisable(GL_SCISSOR_TEST);
 
     if (unix_gl_ensure_status_texture(frame->width)) {
-        unix_gl_draw_texture(s_gl_status_texture, layout.status_dst, false, NULL,
+        unix_gl_draw_texture(s_gl_status_texture, layout.status_dst, true, NULL,
             frame->width, statusbar_source_height());
     }
 
