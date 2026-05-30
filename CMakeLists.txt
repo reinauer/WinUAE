@@ -948,7 +948,10 @@ if(WINUAE_UNIX_WITH_NATIVE_CD)
     if(APPLE OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
         set(WINUAE_UNIX_ENABLE_NATIVE_CD ON)
         target_compile_definitions(winuae_core PRIVATE WITH_SCSI_IOCTL=1)
-        list(APPEND WINUAE_UNIX_EXTRA_SOURCES od-unix/blkdev_unix_ioctl.cpp)
+        list(APPEND WINUAE_UNIX_EXTRA_SOURCES
+            od-unix/blkdev_unix_ioctl.cpp
+            od-unix/cda_play.cpp
+        )
         if(APPLE)
             list(APPEND WINUAE_UNIX_EXTRA_LIBRARIES
                 "-framework CoreFoundation"
