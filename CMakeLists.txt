@@ -1268,6 +1268,7 @@ set(WINUAE_CORE_SOURCES
     od-unix/mman.cpp
     od-unix/path_expand.cpp
     od-unix/parallel.cpp
+    od-unix/romscan.cpp
     od-unix/rtg.cpp
     od-unix/screenshot.cpp
     od-unix/serial.cpp
