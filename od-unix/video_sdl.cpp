@@ -17,6 +17,8 @@
 #include <atomic>
 #include <cmath>
 #include <cstring>
+#include <mutex>
+#include <utility>
 #include <vector>
 
 #include "statusline.h"
@@ -59,6 +61,7 @@ static bool s_setup_done;
 static bool s_available;
 static std::atomic<bool> s_event_thread_valid;
 static std::atomic<bool> s_wrong_event_thread_logged;
+static std::atomic<bool> s_queued_present_logged;
 static uae_thread_id s_event_thread;
 static bool s_mouse_grabbed;
 static enum unix_video_window_mode s_requested_window_mode = UNIX_VIDEO_WINDOWED;
@@ -87,8 +90,25 @@ static uae_u32 s_status_bc[256];
 static bool s_status_colors_ready;
 static Uint8 s_status_click_button;
 
+struct unix_pending_video_frame {
+    std::vector<uae_u8> pixels;
+    int width;
+    int height;
+    int rowbytes;
+    int pixbytes;
+    int filter_index;
+    int monitor_id;
+    int backbuffers;
+    bool valid;
+};
+
+static std::mutex s_pending_frame_mutex;
+static unix_pending_video_frame s_pending_frame;
+
 static constexpr int UnixStatusScale = 2;
 static TCHAR s_display_name[MAX_DPATH];
+
+static void unix_video_present_on_event_thread(const struct unix_video_frame *frame);
 
 #ifdef WINUAE_UNIX_WITH_OPENGL_SHADER_PIPELINE
 #ifndef APIENTRY
@@ -198,6 +218,54 @@ static int clamp_backbuffer_count(int backbuffers)
         return 3;
     }
     return backbuffers;
+}
+
+static bool unix_video_on_event_thread(void)
+{
+    return !s_event_thread_valid.load() ||
+        pthread_equal(uae_thread_get_id(), s_event_thread);
+}
+
+static void queue_video_frame_for_event_thread(const struct unix_video_frame *frame)
+{
+    if (!frame || !frame->pixels || frame->width <= 0 || frame->height <= 0 ||
+        frame->rowbytes <= 0 || frame->pixbytes <= 0) {
+        return;
+    }
+
+    if (!s_queued_present_logged.exchange(true)) {
+        write_log(_T("SDL3: queueing video present from non-video thread\n"));
+    }
+
+    const int rowbytes = frame->width * frame->pixbytes;
+    std::vector<uae_u8> pixels((size_t)rowbytes * (size_t)frame->height);
+    for (int y = 0; y < frame->height; y++) {
+        memcpy(pixels.data() + (size_t)y * (size_t)rowbytes,
+            frame->pixels + (size_t)y * (size_t)frame->rowbytes,
+            (size_t)rowbytes);
+    }
+
+    std::lock_guard<std::mutex> lock(s_pending_frame_mutex);
+    s_pending_frame.pixels = std::move(pixels);
+    s_pending_frame.width = frame->width;
+    s_pending_frame.height = frame->height;
+    s_pending_frame.rowbytes = rowbytes;
+    s_pending_frame.pixbytes = frame->pixbytes;
+    s_pending_frame.filter_index = frame->filter_index;
+    s_pending_frame.monitor_id = frame->monitor_id;
+    s_pending_frame.backbuffers = frame->backbuffers;
+    s_pending_frame.valid = true;
+}
+
+static bool pop_queued_video_frame(unix_pending_video_frame *frame)
+{
+    std::lock_guard<std::mutex> lock(s_pending_frame_mutex);
+    if (!s_pending_frame.valid) {
+        return false;
+    }
+    *frame = std::move(s_pending_frame);
+    s_pending_frame = unix_pending_video_frame();
+    return true;
 }
 
 static void destroy_frame_textures(void)
@@ -1323,6 +1391,7 @@ bool unix_video_setup(void)
     s_event_thread = uae_thread_get_id();
     s_event_thread_valid = true;
     s_wrong_event_thread_logged = false;
+    s_queued_present_logged = false;
     s_setup_done = true;
     s_available = true;
     return true;
@@ -1516,6 +1585,11 @@ void unix_video_shutdown(void)
     s_auto_window_height = 0;
     s_event_thread_valid = false;
     s_wrong_event_thread_logged = false;
+    s_queued_present_logged = false;
+    {
+        std::lock_guard<std::mutex> lock(s_pending_frame_mutex);
+        s_pending_frame = unix_pending_video_frame();
+    }
 
     if (s_setup_done && s_available) {
         SDL_QuitSubSystem(SDL_INIT_EVENTS | SDL_INIT_VIDEO);
@@ -1540,6 +1614,21 @@ static int unix_video_poll_internal(bool *quit_requested, bool input_events)
             write_log(_T("SDL3: ignoring event poll from non-video thread\n"));
         }
         return 0;
+    }
+
+    unix_pending_video_frame pending;
+    if (pop_queued_video_frame(&pending)) {
+        struct unix_video_frame frame;
+        frame.pixels = pending.pixels.data();
+        frame.width = pending.width;
+        frame.height = pending.height;
+        frame.rowbytes = pending.rowbytes;
+        frame.pixbytes = pending.pixbytes;
+        frame.filter_index = pending.filter_index;
+        frame.monitor_id = pending.monitor_id;
+        frame.backbuffers = pending.backbuffers;
+        unix_video_present_on_event_thread(&frame);
+        got = 1;
     }
 
     while (SDL_PollEvent(&event)) {
@@ -1651,7 +1740,7 @@ int unix_video_poll_window_events(bool *quit_requested)
     return unix_video_poll_internal(quit_requested, false);
 }
 
-void unix_video_present(const struct unix_video_frame *frame)
+static void unix_video_present_on_event_thread(const struct unix_video_frame *frame)
 {
     if (!frame || !frame->pixels || frame->width <= 0 || frame->height <= 0 || frame->rowbytes <= 0) {
         return;
@@ -1694,6 +1783,15 @@ void unix_video_present(const struct unix_video_frame *frame)
         SDL_RenderTexture(s_renderer, s_status_texture, NULL, &status_dst);
     }
     SDL_RenderPresent(s_renderer);
+}
+
+void unix_video_present(const struct unix_video_frame *frame)
+{
+    if (!unix_video_on_event_thread()) {
+        queue_video_frame_for_event_thread(frame);
+        return;
+    }
+    unix_video_present_on_event_thread(frame);
 }
 
 void unix_video_set_title(const TCHAR *title)
