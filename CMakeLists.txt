@@ -292,6 +292,7 @@ endif()
 
 target_compile_options(winuae_core PRIVATE
     $<$<COMPILE_LANGUAGE:CXX>:-Wno-c++11-narrowing>
+    $<$<COMPILE_LANG_AND_ID:CXX,GNU>:-Wno-narrowing>
     $<$<COMPILE_LANGUAGE:CXX>:-Wno-deprecated-declarations>
     $<$<COMPILE_LANGUAGE:CXX>:-Wno-deprecated-register>
     $<$<COMPILE_LANGUAGE:CXX>:-Wno-format-security>
