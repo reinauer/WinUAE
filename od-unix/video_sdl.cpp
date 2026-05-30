@@ -14,6 +14,7 @@
 #endif
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstring>
 #include <vector>
@@ -25,6 +26,7 @@
 #include "gui.h"
 #include "input.h"
 #include "options.h"
+#include "threaddep/thread.h"
 #include "uae.h"
 #include "video.h"
 
@@ -55,6 +57,9 @@ static unsigned int s_gl_frame_counter;
 #endif
 static bool s_setup_done;
 static bool s_available;
+static std::atomic<bool> s_event_thread_valid;
+static std::atomic<bool> s_wrong_event_thread_logged;
+static uae_thread_id s_event_thread;
 static bool s_mouse_grabbed;
 static enum unix_video_window_mode s_requested_window_mode = UNIX_VIDEO_WINDOWED;
 static enum unix_video_window_mode s_active_window_mode = UNIX_VIDEO_WINDOWED;
@@ -1315,6 +1320,9 @@ bool unix_video_setup(void)
         return false;
     }
 
+    s_event_thread = uae_thread_get_id();
+    s_event_thread_valid = true;
+    s_wrong_event_thread_logged = false;
     s_setup_done = true;
     s_available = true;
     return true;
@@ -1506,6 +1514,8 @@ void unix_video_shutdown(void)
     s_status_height = 0;
     s_auto_window_width = 0;
     s_auto_window_height = 0;
+    s_event_thread_valid = false;
+    s_wrong_event_thread_logged = false;
 
     if (s_setup_done && s_available) {
         SDL_QuitSubSystem(SDL_INIT_EVENTS | SDL_INIT_VIDEO);
@@ -1523,6 +1533,12 @@ static int unix_video_poll_internal(bool *quit_requested, bool input_events)
         *quit_requested = false;
     }
     if (!s_setup_done || !s_available) {
+        return 0;
+    }
+    if (s_event_thread_valid.load() && !pthread_equal(uae_thread_get_id(), s_event_thread)) {
+        if (!s_wrong_event_thread_logged.exchange(true)) {
+            write_log(_T("SDL3: ignoring event poll from non-video thread\n"));
+        }
         return 0;
     }
 
