@@ -25,8 +25,10 @@
 #include "archivers/mp2/kjmp2.h"
 
 #ifdef WITH_LIBMPEG2
+extern "C" {
 #include "mpeg2.h"
 #include "mpeg2convert.h"
+}
 #endif
 
 #define FMV_DEBUG 0
@@ -1600,4 +1602,3 @@ addrbank *cd32_fmv_init (struct autoconfig_info *aci)
 
 	return &fmv_rom_bank;
 }
-
