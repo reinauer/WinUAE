@@ -12,23 +12,20 @@ extern volatile bool cd_audio_mode_changed;
 
 class cda_audio
 {
+private:
+    int bufsize;
+    int num_sectors;
+    int sectorsize;
+    int volume[2];
+    bool playing;
+    bool active;
+
 public:
     uae_u8 *buffers[2];
 
-    cda_audio(int num_sectors, int sectorsize, int)
-    {
-        int size = num_sectors * sectorsize;
-        buffers[0] = (uae_u8*)calloc(1, size);
-        buffers[1] = (uae_u8*)calloc(1, size);
-    }
-
-    ~cda_audio()
-    {
-        free(buffers[0]);
-        free(buffers[1]);
-    }
-
-    void setvolume(int, int) {}
+    cda_audio(int num_sectors, int sectorsize, int samplerate);
+    ~cda_audio();
+    void setvolume(int left, int right);
 };
 
 struct cda_play;
@@ -59,8 +56,8 @@ struct cda_play
     cda_play_read_block read_block;
 };
 
-static inline void ciw_cdda_play(void*) {}
-static inline void ciw_cdda_stop(struct cda_play*) {}
-static inline int ciw_cdda_setstate(struct cda_play*, int, int) { return 0; }
+void ciw_cdda_play(void *ciw);
+void ciw_cdda_stop(struct cda_play *ciw);
+int ciw_cdda_setstate(struct cda_play *ciw, int state, int playpos);
 
 #endif /* WINUAE_OD_UNIX_CDA_PLAY_H */
