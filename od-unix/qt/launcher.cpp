@@ -5550,12 +5550,20 @@ static QString initialConfigPathFromArguments(const QStringList &arguments)
     return QString();
 }
 
+static int &prepareQtApplicationArguments(int &argc)
+{
+#if defined(__linux__)
+    QCoreApplication::setAttribute(Qt::AA_DontUseNativeDialogs);
+#endif
+    return argc;
+}
+
 class WinUaeQtApplication final : public QApplication {
 public:
     using ConfigOpenHandler = std::function<void(const QString &)>;
 
     WinUaeQtApplication(int &argc, char **argv)
-        : QApplication(argc, argv)
+        : QApplication(prepareQtApplicationArguments(argc), argv)
     {
     }
 
