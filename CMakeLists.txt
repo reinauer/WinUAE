@@ -179,6 +179,7 @@ option(WINUAE_UNIX_WITH_NATIVE_HARDDRIVES "Build Unix raw hard-drive enumeration
 option(WINUAE_UNIX_WITH_NATIVE_CD "Build Unix native CD/DVD drive access" ON)
 option(WINUAE_UNIX_WITH_NATIVE_SCSI "Build native SCSI/tape passthrough (macOS SCSITaskLib, Linux SG_IO)" ON)
 option(WINUAE_UNIX_WITH_MIDI "Build native Unix MIDI support" ON)
+option(WINUAE_UNIX_WITH_MIDIEMU "Build Munt MT-32/CM-32L MIDI emulation when mt32emu is available" ON)
 option(WINUAE_UNIX_WITH_CPUBOARD "Build shared non-PPC CPU accelerator board support" ON)
 option(WINUAE_UNIX_WITH_PPC_QEMU "Build Unix PPC accelerator support through the qemu-uae plugin ABI" ON)
 option(WINUAE_UNIX_BUILD_QEMU_UAE_PLUGIN "Build the sibling qemu-uae plugin for Unix packaging" ON)
@@ -315,6 +316,7 @@ set(WINUAE_UNIX_ENABLE_NATIVE_HARDDRIVES OFF)
 set(WINUAE_UNIX_ENABLE_NATIVE_CD OFF)
 set(WINUAE_UNIX_ENABLE_NATIVE_SCSI OFF)
 set(WINUAE_UNIX_ENABLE_MIDI OFF)
+set(WINUAE_UNIX_ENABLE_MIDIEMU OFF)
 set(WINUAE_UNIX_ENABLE_CPUBOARD OFF)
 set(WINUAE_UNIX_ENABLE_PPC OFF)
 set(WINUAE_UNIX_ENABLE_DSP OFF)
@@ -681,6 +683,52 @@ elseif(WINUAE_UNIX_WITH_LIBMPEG2 AND NOT WINUAE_UNIX_LIBMPEG2_FOUND)
     message(STATUS "libmpeg2 development package not found; CD32 FMV video decode disabled")
 endif()
 
+set(WINUAE_UNIX_MT32EMU_OK OFF)
+set(WINUAE_UNIX_MT32EMU_FOUND OFF)
+if(WINUAE_UNIX_WITH_MIDIEMU AND PkgConfig_FOUND)
+    pkg_check_modules(MT32EMU QUIET mt32emu)
+    if(MT32EMU_FOUND)
+        set(WINUAE_UNIX_MT32EMU_FOUND ON)
+        set(WINUAE_UNIX_MT32EMU_OK ON)
+        if(APPLE)
+            unset(WINUAE_UNIX_MT32EMU_LIBRARY CACHE)
+            find_library(WINUAE_UNIX_MT32EMU_LIBRARY
+                NAMES mt32emu
+                PATHS ${MT32EMU_LIBRARY_DIRS}
+                NO_DEFAULT_PATH
+            )
+            if(WINUAE_UNIX_MT32EMU_LIBRARY)
+                execute_process(
+                    COMMAND
+                        "${CMAKE_CURRENT_SOURCE_DIR}/tools/macos-check-deployment-target.sh"
+                        "${WINUAE_UNIX_MT32EMU_LIBRARY}"
+                        "${CMAKE_OSX_DEPLOYMENT_TARGET}"
+                    RESULT_VARIABLE WINUAE_UNIX_MT32EMU_DEPLOYMENT_RESULT
+                    OUTPUT_VARIABLE WINUAE_UNIX_MT32EMU_DEPLOYMENT_OUTPUT
+                    ERROR_VARIABLE WINUAE_UNIX_MT32EMU_DEPLOYMENT_ERROR
+                    OUTPUT_STRIP_TRAILING_WHITESPACE
+                    ERROR_STRIP_TRAILING_WHITESPACE
+                )
+                if(NOT WINUAE_UNIX_MT32EMU_DEPLOYMENT_RESULT EQUAL 0)
+                    message(STATUS
+                        "libmt32emu is newer than "
+                        "CMAKE_OSX_DEPLOYMENT_TARGET=${CMAKE_OSX_DEPLOYMENT_TARGET}; "
+                        "Munt MIDI emulation disabled. "
+                        "${WINUAE_UNIX_MT32EMU_DEPLOYMENT_ERROR}"
+                    )
+                    set(WINUAE_UNIX_MT32EMU_OK OFF)
+                endif()
+            else()
+                message(STATUS
+                    "mt32emu was found by pkg-config but not as a library "
+                    "path; Munt MIDI emulation disabled"
+                )
+                set(WINUAE_UNIX_MT32EMU_OK OFF)
+            endif()
+        endif()
+    endif()
+endif()
+
 if(WINUAE_UNIX_WITH_NATIVE_HARDDRIVES)
     set(WINUAE_UNIX_ENABLE_NATIVE_HARDDRIVES ON)
     target_compile_definitions(winuae_core PRIVATE WINUAE_UNIX_WITH_NATIVE_HARDDRIVES=1)
@@ -715,6 +763,26 @@ if(WINUAE_UNIX_WITH_MIDI)
     else()
         message(STATUS "pkg-config not available; native Unix MIDI disabled")
     endif()
+endif()
+
+if(WINUAE_UNIX_WITH_MIDIEMU AND WINUAE_UNIX_ENABLE_MIDI)
+    if(WINUAE_UNIX_MT32EMU_OK)
+        set(WINUAE_UNIX_ENABLE_MIDIEMU ON)
+        target_compile_definitions(winuae_core PRIVATE WITH_MIDIEMU=1)
+        target_include_directories(winuae_core PRIVATE ${MT32EMU_INCLUDE_DIRS})
+        target_compile_options(winuae_core PRIVATE ${MT32EMU_CFLAGS_OTHER})
+        list(APPEND WINUAE_UNIX_EXTRA_SOURCES midiemu.cpp)
+        if(APPLE)
+            list(APPEND WINUAE_UNIX_EXTRA_LIBRARIES "${WINUAE_UNIX_MT32EMU_LIBRARY}")
+        else()
+            list(APPEND WINUAE_UNIX_EXTRA_LIBRARIES ${MT32EMU_LIBRARIES})
+        endif()
+        list(APPEND WINUAE_UNIX_EXTRA_LIBRARY_DIRS ${MT32EMU_LIBRARY_DIRS})
+    elseif(NOT WINUAE_UNIX_MT32EMU_FOUND)
+        message(STATUS "mt32emu development package not found; Munt MIDI emulation disabled")
+    endif()
+elseif(WINUAE_UNIX_WITH_MIDIEMU AND NOT WINUAE_UNIX_ENABLE_MIDI)
+    message(STATUS "Native Unix MIDI disabled; Munt MIDI emulation disabled")
 endif()
 
 if(WINUAE_UNIX_WITH_CPUBOARD)

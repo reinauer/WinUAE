@@ -16,6 +16,9 @@
 #ifdef WITH_MIDI
 #include "midi.h"
 #endif
+#ifdef WITH_MIDIEMU
+#include "midiemu.h"
+#endif
 
 #define SERIALDEBUG 0
 #define SERIAL_LOOPBACK _T("LOOPBACK_SERIAL")
@@ -288,6 +291,11 @@ int openser(const TCHAR *sername)
 
 void closeser(void)
 {
+#ifdef WITH_MIDIEMU
+	if (midi_emu) {
+		midi_emu_close();
+	}
+#endif
 	if (serial_fd >= 0 && saved_tios_valid) {
 		tcsetattr(serial_fd, TCSANOW, &saved_tios);
 	}
@@ -428,6 +436,13 @@ void writeser(int c)
 		}
 		return;
 	}
+#ifdef WITH_MIDIEMU
+	if (midi_emu) {
+		uae_u8 outchar = (uae_u8)c;
+		midi_emu_parse(&outchar, 1);
+		return;
+	}
+#endif
 #ifdef WITH_MIDI
 	if (midi_ready) {
 		BYTE outchar = (BYTE)c;
@@ -481,6 +496,15 @@ int setbaud(int baud, int org_baud)
 {
 #ifdef WITH_MIDI
 	if (org_baud == 31400 && currprefs.win32_midioutdev >= -1) {
+#ifdef WITH_MIDIEMU
+		if (currprefs.win32_midioutdev >= 0) {
+			const TCHAR *name = unix_midi_output_device_config_name_for_id(currprefs.win32_midioutdev);
+			if (!_tcsncmp(name, _T("Munt "), 5)) {
+				midi_emu_open(name);
+				return 1;
+			}
+		}
+#endif
 		if (!midi_ready && Midi_Open()) {
 			write_log(_T("Midi enabled\n"));
 		}
@@ -488,6 +512,11 @@ int setbaud(int baud, int org_baud)
 	}
 	if (midi_ready) {
 		Midi_Close();
+	}
+#endif
+#ifdef WITH_MIDIEMU
+	if (midi_emu) {
+		midi_emu_close();
 	}
 #endif
 	if (serial_fd < 0) {
