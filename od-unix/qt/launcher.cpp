@@ -6362,9 +6362,7 @@ private:
         connect(quickstartSetConfig, &QPushButton::clicked, this, [this]() { applyQuickstartSelectionToUi(); });
         connect(quickstartMode, &QCheckBox::toggled, this, [this](bool checked) {
             quickstartSetConfig->setVisible(!checked);
-            if (checked) {
-                applyQuickstartSelectionToUi();
-            }
+            applyQuickstartSelectionToUi();
         });
         refreshQuickstartConfigurationChoices();
         return page;
@@ -6399,6 +6397,65 @@ private:
         return QStringLiteral("%1,%2").arg(QString::fromLatin1(choice->configValue)).arg(qMax(0, quickConfiguration->currentIndex()));
     }
 
+    void clearQuickstartCd32ExpansionBoards()
+    {
+        expansionBoardStates.remove(expansionBoardConfigName(QStringLiteral("cd32fmv"), 0));
+        expansionBoardStates.remove(expansionBoardConfigName(QStringLiteral("cubo"), 0));
+    }
+
+    void setQuickstartExpansionBoard(const QString &boardKey, const QString &romFile)
+    {
+        const QString configName = expansionBoardConfigName(boardKey, 0);
+        if (configName.isEmpty()) {
+            return;
+        }
+        WinUaeQtExpansionBoardState state = expansionBoardStates.value(configName);
+        state.present = true;
+        state.romFile = romFile;
+        expansionBoardStates.insert(configName, state);
+    }
+
+    QString cuboNvramPath() const
+    {
+        const QString configured = nvramPath ? expandedPathText(nvramPath->text()) : QString();
+        const QString root = configured.isEmpty()
+            ? expandedPathText(unixDefaultDataSubPath(QStringLiteral("NVRAMs")))
+            : configured;
+        return QDir(root).filePath(QStringLiteral("cd32cubo.nvr"));
+    }
+
+    void applyQuickstartExpansionPreset(const QString &model, int config)
+    {
+        clearQuickstartCd32ExpansionBoards();
+        const bool explicitPreset = !quickstartMode || !quickstartMode->isChecked();
+        const QString generatedCuboNvram = cuboNvramPath();
+        if (flashFile && flashFile->text().trimmed() == generatedCuboNvram
+            && (model != QStringLiteral("CD32") || config <= 1)) {
+            flashFile->clear();
+        }
+
+        if (model != QStringLiteral("CD32")) {
+            refreshExpansionBoardChoiceLabels();
+            refreshHardwareInfoPage();
+            return;
+        }
+
+        if (config == 1 && quickstartMode && !quickstartMode->isChecked()) {
+            const QString fmvRom = cartFile ? cartFile->currentText().trimmed() : QString();
+            if (!fmvRom.isEmpty()) {
+                setQuickstartExpansionBoard(QStringLiteral("cd32fmv"), fmvRom);
+            }
+        } else if (config > 1) {
+            setQuickstartExpansionBoard(QStringLiteral("cubo"), QStringLiteral(":ENABLED"));
+            if (explicitPreset && flashFile && flashFile->text().trimmed().isEmpty()) {
+                flashFile->setText(generatedCuboNvram);
+            }
+        }
+
+        refreshExpansionBoardChoiceLabels();
+        refreshHardwareInfoPage();
+    }
+
     void applyQuickstartSelectionToUi()
     {
         if (quickstartUpdating) {
@@ -6422,6 +6479,7 @@ private:
         applyModelPreset(compatible);
         applyAdvancedChipsetPreset(compatible);
         applyQuickstartConfigurationMemory(quickModel->currentText(), config);
+        applyQuickstartExpansionPreset(quickModel->currentText(), config);
         applyQuickstartCompatibilityToUi();
         quickstartUpdating = false;
     }
@@ -14914,6 +14972,12 @@ private:
             && cpu >= 68020 && !cpu24BitAddressing && requestedJitCacheSize > 0;
         if (configDescription && !configDescription->text().trimmed().isEmpty()) {
             settings.insert(QStringLiteral("config_description"), configDescription->text().trimmed());
+        }
+        if (quickstartMode && quickstartMode->isChecked()) {
+            const QString quickstart = quickstartConfigValue();
+            if (!quickstart.isEmpty()) {
+                settings.insert(QStringLiteral("quickstart"), quickstart);
+            }
         }
         if (romsPath && !romsPath->text().trimmed().isEmpty()) {
             settings.insert(QStringLiteral("unix.rom_path"), romsPath->text().trimmed());
