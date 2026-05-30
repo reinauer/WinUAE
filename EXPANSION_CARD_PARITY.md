@@ -192,8 +192,10 @@ their ROM/SCSI/PPC side effects are validated board by board.
 Most of these use shared core code and are compiled on Unix, including
 NCR/NCR9x where applicable. They are not listed as missing. They are
 still not fully complete from a Unix parity perspective until their
-board ROMs, disk attachment UI, DMA paths, and guest boot behavior have
-been validated against Windows.
+board ROMs, DMA paths, and guest boot behavior have been validated
+against Windows. The Unix Qt hardfile, CD, and tape dialogs now derive
+their active IDE/SCSI controller choices from the same shared
+`expansionroms[]` catalog as Windows instead of a separate reduced list.
 
 - `cdtvscsi` - CDTV SCSI.
 - `scsi_a3000` - A3000 SCSI.
