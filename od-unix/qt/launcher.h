@@ -85,6 +85,7 @@ struct WinUaeQtExpansionBoardCatalogItem {
     bool idJumper = false;
     bool noRomFile = false;
     bool clockPort = false;
+    int extraHdPorts = 0;
     QVector<WinUaeQtBoardSubtype> subtypes;
     QVector<WinUaeQtBoardSetting> settings;
 };

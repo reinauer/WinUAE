@@ -194,6 +194,7 @@ static WinUaeQtBoardCatalog winUaeQtLoadExternalBoardCatalog()
             board.idJumper = fields.value(10).toInt() != 0;
             board.noRomFile = fields.size() >= 12 && fields.value(11).toInt() != 0;
             board.clockPort = fields.size() >= 13 && fields.value(12).toInt() != 0;
+            board.extraHdPorts = fields.size() >= 14 ? fields.value(13).toInt() : 0;
             if (!board.key.isEmpty() && !board.display.isEmpty()) {
                 catalog.expansionBoards.append(board);
             }
@@ -873,53 +874,11 @@ enum WinUaeQtMountControllerBus {
 };
 
 struct WinUaeQtMountControllerChoice {
-    const char *display;
-    const char *boardKey;
-    WinUaeQtMountControllerBus bus;
-    int maxUnit;
-};
-
-static const WinUaeQtMountControllerChoice mountControllerChoices[] = {
-    { "UAE (uaehf.device)", "", MountControllerBusUae, MaxControllerUnits - 1 },
-    { "IDE (Auto)", "", MountControllerBusIde, 3 },
-    { "SCSI (Auto)", "", MountControllerBusScsi, MaxControllerUnits - 1 },
-
-    { "A590/A2091 (SCSI)", "a2091", MountControllerBusScsi, MaxControllerUnits - 1 },
-    { "A4091 (SCSI)", "a4091", MountControllerBusScsi, MaxControllerUnits - 1 },
-    { "A2090a (SCSI)", "a2090a", MountControllerBusScsi, MaxControllerUnits - 1 },
-    { "A2090 Combitec (SCSI)", "a2090b", MountControllerBusScsi, MaxControllerUnits - 1 },
-    { "ADD-500 (SCSI)", "add500", MountControllerBusScsi, MaxControllerUnits - 1 },
-    { "AddHard (SCSI)", "addhard", MountControllerBusScsi, MaxControllerUnits - 1 },
-    { "AdIDE (IDE)", "adide", MountControllerBusIde, 1 },
-    { "AdSCSI Advantage 2000/2080 (SCSI)", "adscsi2000", MountControllerBusScsi, MaxControllerUnits - 1 },
-    { "AlfaPower/AT-Bus 2008 (IDE)", "alfapower", MountControllerBusIde, 1 },
-    { "AlfaPower Plus (IDE)", "alfapowerplus", MountControllerBusIde, 1 },
-    { "Apollo 500/2000 (IDE)", "apollo", MountControllerBusIde, 1 },
-    { "Apollo 500/2000 (SCSI)", "apollo", MountControllerBusScsi, MaxControllerUnits - 1 },
-    { "Buddha (IDE)", "buddha", MountControllerBusIde, 5 },
-    { "SA series (SCSI)", "comspec", MountControllerBusScsi, MaxControllerUnits - 1 },
-    { "DataFlyer Plus (IDE)", "dataflyerplus", MountControllerBusIde, 1 },
-    { "DataFlyer Plus (SCSI)", "dataflyerplus", MountControllerBusScsi, MaxControllerUnits - 1 },
-    { "DataFlyer SCSI+ (SCSI)", "dataflyerscsiplus", MountControllerBusScsi, MaxControllerUnits - 1 },
-    { "FastATA 4000 (IDE)", "fastata4000", MountControllerBusIde, 3 },
-    { "Fastlane (SCSI)", "fastlane", MountControllerBusScsi, MaxControllerUnits - 1 },
-    { "GVP Series II (SCSI)", "gvp", MountControllerBusScsi, MaxControllerUnits - 1 },
-    { "GVP Series I (SCSI)", "gvp1", MountControllerBusScsi, MaxControllerUnits - 1 },
-    { "GVP A1208 (SCSI)", "gvpa1208", MountControllerBusScsi, MaxControllerUnits - 1 },
-    { "HardFrame (SCSI)", "hardframe", MountControllerBusScsi, MaxControllerUnits - 1 },
-    { "Oktagon 2008 (SCSI)", "oktagon2008", MountControllerBusScsi, MaxControllerUnits - 1 },
-    { "PCMCIA IDE (IDE)", "pcmciaide", MountControllerBusIde, 1 },
-    { "RapidFire/SpitFire (SCSI)", "rapidfire", MountControllerBusScsi, MaxControllerUnits - 1 },
-    { "RIPPLE (IDE)", "ripple", MountControllerBusIde, 3 },
-    { "SupraDrive (SCSI)", "supradrive", MountControllerBusScsi, MaxControllerUnits - 1 },
-    { "Surf Squirrel (SCSI)", "surfsquirrel", MountControllerBusScsi, MaxControllerUnits - 1 },
-    { "Tandem (IDE)", "tandem", MountControllerBusIde, 1 },
-    { "Trifecta (IDE)", "trifecta", MountControllerBusIde, 1 },
-    { "Trifecta (SCSI)", "trifecta", MountControllerBusScsi, MaxControllerUnits - 1 },
-    { "Trumpcard (SCSI)", "trumpcard", MountControllerBusScsi, MaxControllerUnits - 1 },
-    { "Trumpcard 500AT (IDE)", "trumpcardat", MountControllerBusIde, 1 },
-    { "Grand Slam (SCSI)", "trumpcardpro", MountControllerBusScsi, MaxControllerUnits - 1 },
-    { nullptr, nullptr, MountControllerBusUnknown, 0 }
+    QString display;
+    QString boardKey;
+    WinUaeQtMountControllerBus bus = MountControllerBusUnknown;
+    int maxUnit = 0;
+    bool valid = false;
 };
 
 static QStringList mountControllerParts(QString tail)
@@ -1024,25 +983,124 @@ static int mountControllerDuplicateFromConfigValue(const QString &value)
     return ok && oneBased >= 2 ? qBound(1, oneBased - 1, 8) : 0;
 }
 
-static const WinUaeQtMountControllerChoice *mountControllerChoiceByDisplay(const QString &display)
+static QString mountControllerBusName(WinUaeQtMountControllerBus bus)
 {
-    const QString baseDisplay = mountControllerBaseDisplay(display);
-    for (const WinUaeQtMountControllerChoice *choice = mountControllerChoices; choice->display; choice++) {
-        if (baseDisplay == QString::fromLatin1(choice->display)) {
-            return choice;
-        }
+    if (bus == MountControllerBusIde) {
+        return QStringLiteral("IDE");
     }
-    return nullptr;
+    if (bus == MountControllerBusScsi) {
+        return QStringLiteral("SCSI");
+    }
+    return QString();
 }
 
-static const WinUaeQtMountControllerChoice *mountControllerChoiceByKeyAndBus(const QString &key, WinUaeQtMountControllerBus bus)
+static QString mountControllerBoardBaseName(const WinUaeQtExpansionBoardCatalogItem &board)
 {
-    for (const WinUaeQtMountControllerChoice *choice = mountControllerChoices; choice->display; choice++) {
-        if (choice->bus == bus && key.compare(QString::fromLatin1(choice->boardKey), Qt::CaseInsensitive) == 0) {
+    const int manufacturer = board.display.lastIndexOf(QStringLiteral(" ("));
+    if (manufacturer > 0 && board.display.endsWith(QLatin1Char(')'))) {
+        return board.display.left(manufacturer);
+    }
+    return board.display;
+}
+
+static bool mountControllerBoardSupportsBus(
+    const WinUaeQtExpansionBoardCatalogItem &board,
+    WinUaeQtMountControllerBus bus)
+{
+    if (bus == MountControllerBusIde) {
+        return board.categoryMask & WinUaeQtExpansionCategoryIde;
+    }
+    if (bus == MountControllerBusScsi) {
+        return board.categoryMask & WinUaeQtExpansionCategoryScsi;
+    }
+    return false;
+}
+
+static int mountControllerBoardMaxUnit(
+    const WinUaeQtExpansionBoardCatalogItem &board,
+    WinUaeQtMountControllerBus bus)
+{
+    if (bus == MountControllerBusIde) {
+        return qMax(1, 1 + board.extraHdPorts);
+    }
+    if (bus == MountControllerBusScsi
+        && (board.categoryMask & (WinUaeQtExpansionCategorySasi | WinUaeQtExpansionCategoryCustom))) {
+        return 1;
+    }
+    return MaxControllerUnits - 1;
+}
+
+static WinUaeQtMountControllerChoice mountControllerGenericChoice(WinUaeQtMountControllerBus bus)
+{
+    WinUaeQtMountControllerChoice choice;
+    choice.bus = bus;
+    choice.valid = true;
+    if (bus == MountControllerBusUae) {
+        choice.display = QStringLiteral("UAE (uaehf.device)");
+        choice.maxUnit = MaxControllerUnits - 1;
+    } else if (bus == MountControllerBusIde) {
+        choice.display = QStringLiteral("IDE (Auto)");
+        choice.maxUnit = 3;
+    } else if (bus == MountControllerBusScsi) {
+        choice.display = QStringLiteral("SCSI (Auto)");
+        choice.maxUnit = MaxControllerUnits - 1;
+    } else {
+        choice.valid = false;
+        choice.maxUnit = 0;
+    }
+    return choice;
+}
+
+static WinUaeQtMountControllerChoice mountControllerChoiceForBoard(
+    const WinUaeQtExpansionBoardCatalogItem &board,
+    WinUaeQtMountControllerBus bus)
+{
+    WinUaeQtMountControllerChoice choice;
+    if (!mountControllerBoardSupportsBus(board, bus)) {
+        return choice;
+    }
+    choice.display = QStringLiteral("%1 (%2)")
+        .arg(mountControllerBoardBaseName(board), mountControllerBusName(bus));
+    choice.boardKey = board.key;
+    choice.bus = bus;
+    choice.maxUnit = mountControllerBoardMaxUnit(board, bus);
+    choice.valid = true;
+    return choice;
+}
+
+static WinUaeQtMountControllerChoice mountControllerChoiceByDisplay(
+    const WinUaeQtBoardCatalog &catalog,
+    const QString &display)
+{
+    const QString baseDisplay = mountControllerBaseDisplay(display);
+    for (WinUaeQtMountControllerBus bus : { MountControllerBusUae, MountControllerBusIde, MountControllerBusScsi }) {
+        WinUaeQtMountControllerChoice choice = mountControllerGenericChoice(bus);
+        if (choice.valid && baseDisplay == choice.display) {
             return choice;
         }
     }
-    return nullptr;
+    for (const WinUaeQtExpansionBoardCatalogItem &board : catalog.expansionBoards) {
+        for (WinUaeQtMountControllerBus bus : { MountControllerBusIde, MountControllerBusScsi }) {
+            WinUaeQtMountControllerChoice choice = mountControllerChoiceForBoard(board, bus);
+            if (choice.valid && baseDisplay == choice.display) {
+                return choice;
+            }
+        }
+    }
+    return {};
+}
+
+static WinUaeQtMountControllerChoice mountControllerChoiceByKeyAndBus(
+    const WinUaeQtBoardCatalog &catalog,
+    const QString &key,
+    WinUaeQtMountControllerBus bus)
+{
+    for (const WinUaeQtExpansionBoardCatalogItem &board : catalog.expansionBoards) {
+        if (key.compare(board.key, Qt::CaseInsensitive) == 0) {
+            return mountControllerChoiceForBoard(board, bus);
+        }
+    }
+    return {};
 }
 
 static QString mountControllerGenericDisplay(WinUaeQtMountControllerBus bus)
@@ -1056,31 +1114,36 @@ static QString mountControllerGenericDisplay(WinUaeQtMountControllerBus bus)
     return QStringLiteral("UAE (uaehf.device)");
 }
 
-static QString mountControllerDisplayForConfigValue(const QString &value)
+static QString mountControllerDisplayForConfigValue(const WinUaeQtBoardCatalog &catalog, const QString &value)
 {
     const QString trimmed = value.trimmed();
     const WinUaeQtMountControllerBus bus = mountControllerBusFromConfigValue(trimmed);
     const QString key = mountControllerExpansionKeyFromConfigValue(trimmed);
     if (!key.isEmpty()) {
-        if (const WinUaeQtMountControllerChoice *choice = mountControllerChoiceByKeyAndBus(key, bus)) {
-            return QString::fromLatin1(choice->display) + mountControllerDuplicateDisplaySuffix(mountControllerDuplicateFromConfigValue(trimmed));
+        const WinUaeQtMountControllerChoice choice = mountControllerChoiceByKeyAndBus(catalog, key, bus);
+        if (choice.valid) {
+            return choice.display + mountControllerDuplicateDisplaySuffix(mountControllerDuplicateFromConfigValue(trimmed));
         }
         return trimmed;
     }
     return mountControllerGenericDisplay(bus);
 }
 
-static WinUaeQtMountControllerBus mountControllerBusFromDisplay(const QString &display)
+static WinUaeQtMountControllerBus mountControllerBusFromDisplay(const WinUaeQtBoardCatalog &catalog, const QString &display)
 {
-    if (const WinUaeQtMountControllerChoice *choice = mountControllerChoiceByDisplay(display)) {
-        return choice->bus;
+    const WinUaeQtMountControllerChoice choice = mountControllerChoiceByDisplay(catalog, display);
+    if (choice.valid) {
+        return choice.bus;
     }
     return mountControllerBusFromConfigValue(display);
 }
 
-static QString mountControllerFamily(const WinUaeQtMountEntry &entry, const QString &fallback)
+static QString mountControllerFamily(
+    const WinUaeQtBoardCatalog &catalog,
+    const WinUaeQtMountEntry &entry,
+    const QString &fallback)
 {
-    return mountControllerDisplayForConfigValue(mountControllerValue(entry, fallback));
+    return mountControllerDisplayForConfigValue(catalog, mountControllerValue(entry, fallback));
 }
 
 static int mountControllerUnit(const WinUaeQtMountEntry &entry, const QString &fallback)
@@ -1111,40 +1174,43 @@ static QString mountControllerConfigPrefix(WinUaeQtMountControllerBus bus)
     return QStringLiteral("uae");
 }
 
-static int mountControllerMaxUnit(const QString &display)
+static int mountControllerMaxUnit(const WinUaeQtBoardCatalog &catalog, const QString &display)
 {
-    if (const WinUaeQtMountControllerChoice *choice = mountControllerChoiceByDisplay(display)) {
-        return choice->maxUnit;
+    const WinUaeQtMountControllerChoice choice = mountControllerChoiceByDisplay(catalog, display);
+    if (choice.valid) {
+        return choice.maxUnit;
     }
-    return mountControllerBusFromDisplay(display) == MountControllerBusIde ? 3 : MaxControllerUnits - 1;
+    return mountControllerBusFromDisplay(catalog, display) == MountControllerBusIde ? 3 : MaxControllerUnits - 1;
 }
 
-static QString mountControllerConfigValue(const QString &display, int unit)
+static QString mountControllerConfigValue(const WinUaeQtBoardCatalog &catalog, const QString &display, int unit)
 {
     const int duplicate = mountControllerDuplicateFromDisplay(display);
-    if (const WinUaeQtMountControllerChoice *choice = mountControllerChoiceByDisplay(display)) {
-        QString value = mountControllerConfigPrefix(choice->bus) + QString::number(qBound(0, unit, choice->maxUnit));
-        if (choice->boardKey && choice->boardKey[0]) {
-            value += QStringLiteral("_") + QString::fromLatin1(choice->boardKey) + mountControllerDuplicateConfigSuffix(duplicate);
+    const WinUaeQtMountControllerChoice choice = mountControllerChoiceByDisplay(catalog, display);
+    if (choice.valid) {
+        QString value = mountControllerConfigPrefix(choice.bus) + QString::number(qBound(0, unit, choice.maxUnit));
+        if (!choice.boardKey.isEmpty()) {
+            value += QStringLiteral("_") + choice.boardKey + mountControllerDuplicateConfigSuffix(duplicate);
         }
         return value;
     }
 
     const WinUaeQtMountControllerBus bus = mountControllerBusFromConfigValue(display);
     const QString key = mountControllerExpansionKeyFromConfigValue(display);
-    QString value = mountControllerConfigPrefix(bus) + QString::number(qBound(0, unit, mountControllerMaxUnit(display)));
+    QString value = mountControllerConfigPrefix(bus) + QString::number(qBound(0, unit, mountControllerMaxUnit(catalog, display)));
     if (!key.isEmpty()) {
         value += QStringLiteral("_") + key + mountControllerDuplicateConfigSuffix(mountControllerDuplicateFromConfigValue(display));
     }
     return value;
 }
 
-static QString mountControllerDisplay(const WinUaeQtMountEntry &entry)
+static QString mountControllerDisplay(const WinUaeQtBoardCatalog &catalog, const WinUaeQtMountEntry &entry)
 {
     const QString fallback = entry.kind == QStringLiteral("cd") ? QStringLiteral("ide0") : QStringLiteral("uae0");
     const QString value = mountControllerValue(entry, fallback);
-    const QString display = mountControllerDisplayForConfigValue(value);
-    if (mountControllerChoiceByDisplay(display) && display != QStringLiteral("IDE (Auto)") && display != QStringLiteral("SCSI (Auto)") && display != QStringLiteral("UAE (uaehf.device)")) {
+    const QString display = mountControllerDisplayForConfigValue(catalog, value);
+    const WinUaeQtMountControllerChoice choice = mountControllerChoiceByDisplay(catalog, display);
+    if (choice.valid && !choice.boardKey.isEmpty()) {
         return QStringLiteral("%1:%2").arg(mountControllerBaseDisplay(display)).arg(mountControllerUnit(entry, fallback));
     }
     const QString upper = value.toUpper();
@@ -1260,9 +1326,12 @@ static bool hardfileTailHasToken(const WinUaeQtMountEntry &entry, const QString 
     return false;
 }
 
-static QString hardfileFeatureText(const WinUaeQtMountEntry &entry, const QString &controllerFamily)
+static QString hardfileFeatureText(
+    const WinUaeQtBoardCatalog &catalog,
+    const WinUaeQtMountEntry &entry,
+    const QString &controllerFamily)
 {
-    const WinUaeQtMountControllerBus bus = mountControllerBusFromDisplay(controllerFamily);
+    const WinUaeQtMountControllerBus bus = mountControllerBusFromDisplay(catalog, controllerFamily);
     if (bus == MountControllerBusIde) {
         if (hardfileTailHasToken(entry, QStringLiteral("ATA2+S"))) {
             return QStringLiteral("ATA-2+ Strict");
@@ -14041,12 +14110,12 @@ private:
         QString blockSizeText = QStringLiteral("n/a");
         QString bootPriText = QString::number(normalized.bootPri);
         if (normalized.kind == QStringLiteral("cd")) {
-            deviceText = mountControllerDisplay(normalized);
+            deviceText = mountControllerDisplay(boardCatalog, normalized);
             volumeText = QStringLiteral("CD");
             blockSizeText = QStringLiteral("2048");
             bootPriText = QStringLiteral("n/a");
         } else if (normalized.kind == QStringLiteral("tape")) {
-            deviceText = mountControllerDisplay(normalized);
+            deviceText = mountControllerDisplay(boardCatalog, normalized);
             volumeText = QStringLiteral("TAPE");
             blockSizeText = QStringLiteral("512");
             bootPriText = QStringLiteral("n/a");
@@ -14297,17 +14366,17 @@ private:
             }
             int slot = 0;
             const QString boardKey = expansionBoardBaseKey(it.key(), &slot);
-            if (!expansionBoardChoiceByKey(boardCatalog, boardKey)) {
+            const WinUaeQtExpansionBoardCatalogItem *board = expansionBoardChoiceByKey(boardCatalog, boardKey);
+            if (!board) {
                 continue;
             }
-            for (const WinUaeQtMountControllerChoice *choice = mountControllerChoices; choice->display; choice++) {
-                if (choice->bus != bus || boardKey.compare(QString::fromLatin1(choice->boardKey), Qt::CaseInsensitive) != 0) {
-                    continue;
-                }
-                const QString display = QString::fromLatin1(choice->display) + mountControllerDuplicateDisplaySuffix(slot);
-                if (!items->contains(display)) {
-                    items->append(display);
-                }
+            const WinUaeQtMountControllerChoice choice = mountControllerChoiceForBoard(*board, bus);
+            if (!choice.valid) {
+                continue;
+            }
+            const QString display = choice.display + mountControllerDuplicateDisplaySuffix(slot);
+            if (!items->contains(display)) {
+                items->append(display);
             }
         }
     }
@@ -14327,7 +14396,7 @@ private:
             appendActiveMountControllerChoices(&items, MountControllerBusScsi);
         }
 
-        const QString current = mountControllerFamily(entry, fallback);
+        const QString current = mountControllerFamily(boardCatalog, entry, fallback);
         if (!current.isEmpty() && !items.contains(current)) {
             items.append(current);
         }
@@ -14385,7 +14454,7 @@ private:
         physicalHeads->setValue(physicalGeometry.value(1).toInt());
         physicalSectors->setValue(physicalGeometry.value(2).toInt());
 
-        QComboBox *controller = combo(mountControllerItemsForDialog(true, true, true, *entry, QStringLiteral("uae0")), mountControllerFamily(*entry, QStringLiteral("uae0")));
+        QComboBox *controller = combo(mountControllerItemsForDialog(true, true, true, *entry, QStringLiteral("uae0")), mountControllerFamily(boardCatalog, *entry, QStringLiteral("uae0")));
         QSpinBox *controllerUnit = new QSpinBox;
         controllerUnit->setRange(0, MaxControllerUnits - 1);
         controllerUnit->setValue(mountControllerUnit(*entry, QStringLiteral("uae0")));
@@ -14463,8 +14532,8 @@ private:
             physicalHeads->setEnabled(enabled);
             physicalSectors->setEnabled(enabled);
         };
-        auto setFeatureItems = [controller, featureLevel, mediaType](const QString &preferred) {
-            const WinUaeQtMountControllerBus bus = mountControllerBusFromDisplay(controller->currentText());
+        auto setFeatureItems = [this, controller, featureLevel, mediaType](const QString &preferred) {
+            const WinUaeQtMountControllerBus bus = mountControllerBusFromDisplay(boardCatalog, controller->currentText());
             QSignalBlocker blocker(featureLevel);
             featureLevel->clear();
             featureLevel->addItem(QStringLiteral("Default"));
@@ -14490,7 +14559,7 @@ private:
         updateBootChecks();
         updatePhysicalControls();
         updateControllerUnitRange(controllerUnit, controller->currentText());
-        setFeatureItems(hardfileFeatureText(*entry, controller->currentText()));
+        setFeatureItems(hardfileFeatureText(boardCatalog, *entry, controller->currentText()));
         updateNativeDriveControls();
 
         connect(browse, &QPushButton::clicked, this, [this, path]() {
@@ -14575,7 +14644,7 @@ private:
 
         QStringList tailFields;
         tailFields.append(filesys->text().trimmed());
-        tailFields.append(mountControllerConfigValue(controller->currentText(), controllerUnit->value()));
+        tailFields.append(mountControllerConfigValue(boardCatalog, controller->currentText(), controllerUnit->value()));
         if (manualGeometry->isChecked() || !geometryFile->text().trimmed().isEmpty()) {
             tailFields.append(QString::number(physicalCylinders->value()));
             tailFields.append(QStringLiteral("%1/%2/%3")
@@ -14586,7 +14655,7 @@ private:
                 tailFields.append(geometryFile->text().trimmed());
             }
         }
-        if (mountControllerBusFromDisplay(controller->currentText()) == MountControllerBusIde && mediaType->currentText() == QStringLiteral("CF")) {
+        if (mountControllerBusFromDisplay(boardCatalog, controller->currentText()) == MountControllerBusIde && mediaType->currentText() == QStringLiteral("CF")) {
             tailFields.append(QStringLiteral("CF"));
         }
         const QString featureToken = hardfileFeatureToken(featureLevel->currentText());
@@ -14603,7 +14672,7 @@ private:
         if (!unit) {
             return;
         }
-        unit->setMaximum(mountControllerMaxUnit(family));
+        unit->setMaximum(mountControllerMaxUnit(boardCatalog, family));
     }
 
     bool showCdDriveMountDialog(WinUaeQtMountEntry *entry, const QString &title)
@@ -14618,7 +14687,7 @@ private:
         QSpinBox *cdUnit = new QSpinBox;
         cdUnit->setRange(0, MaxControllerUnits - 1);
         cdUnit->setValue(qBound(0, entry->emuUnit, MaxControllerUnits - 1));
-        QComboBox *controller = combo(mountControllerItemsForDialog(false, true, true, *entry, QStringLiteral("ide0")), mountControllerFamily(*entry, QStringLiteral("ide0")));
+        QComboBox *controller = combo(mountControllerItemsForDialog(false, true, true, *entry, QStringLiteral("ide0")), mountControllerFamily(boardCatalog, *entry, QStringLiteral("ide0")));
         QSpinBox *controllerUnit = new QSpinBox;
         controllerUnit->setRange(0, MaxControllerUnits - 1);
         controllerUnit->setValue(mountControllerUnit(*entry, QStringLiteral("ide0")));
@@ -14655,7 +14724,7 @@ private:
         entry->readOnly = true;
         entry->bootPri = 0;
         entry->hardfileGeometry = QStringLiteral("0,0,0,2048");
-        entry->hardfileTail = mountTailWithController(*entry, mountControllerConfigValue(controller->currentText(), controllerUnit->value()));
+        entry->hardfileTail = mountTailWithController(*entry, mountControllerConfigValue(boardCatalog, controller->currentText(), controllerUnit->value()));
         return true;
     }
 
@@ -14672,7 +14741,7 @@ private:
         QSpinBox *tapeUnit = new QSpinBox;
         tapeUnit->setRange(0, MaxControllerUnits - 1);
         tapeUnit->setValue(qBound(0, entry->emuUnit, MaxControllerUnits - 1));
-        QComboBox *controller = combo(mountControllerItemsForDialog(true, true, true, *entry, QStringLiteral("uae0")), mountControllerFamily(*entry, QStringLiteral("uae0")));
+        QComboBox *controller = combo(mountControllerItemsForDialog(true, true, true, *entry, QStringLiteral("uae0")), mountControllerFamily(boardCatalog, *entry, QStringLiteral("uae0")));
         QSpinBox *controllerUnit = new QSpinBox;
         controllerUnit->setRange(0, MaxControllerUnits - 1);
         controllerUnit->setValue(mountControllerUnit(*entry, QStringLiteral("uae0")));
@@ -14736,7 +14805,7 @@ private:
         entry->readOnly = !readWrite->isChecked();
         entry->bootPri = 0;
         entry->hardfileGeometry = QStringLiteral("0,0,0,512");
-        entry->hardfileTail = mountTailWithController(*entry, mountControllerConfigValue(controller->currentText(), controllerUnit->value()));
+        entry->hardfileTail = mountTailWithController(*entry, mountControllerConfigValue(boardCatalog, controller->currentText(), controllerUnit->value()));
         return true;
     }
 
