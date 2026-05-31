@@ -11,7 +11,7 @@
 #include "custom.h"
 #include "inputdevice.h"
 #include "gui.h"
-#include "gui_unix.h"
+#include "target_main.h"
 #include "savestate.h"
 #include "sounddep/sound.h"
 
@@ -24,10 +24,22 @@ unsigned int gui_ledstate;
 static int unix_gui_argc;
 static TCHAR **unix_gui_argv;
 
-void unix_gui_set_main_args(int argc, TCHAR **argv)
+void target_main_set_args(int argc, TCHAR **argv)
 {
     unix_gui_argc = argc;
     unix_gui_argv = argv;
+}
+
+int target_main_handle_early(int argc, TCHAR **argv)
+{
+#ifdef WINUAE_UNIX_WITH_INTEGRATED_QT_UI
+    for (int i = 1; i < argc; i++) {
+        if (!_tcscmp(argv[i], _T("--qt-board-catalog"))) {
+            return runWinUaeQtBoardCatalogDump();
+        }
+    }
+#endif
+    return -1;
 }
 
 int gui_init(void)
