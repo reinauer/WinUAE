@@ -1403,6 +1403,7 @@ set(WINUAE_CORE_SOURCES
     od-unix/clipboard.cpp
     od-unix/config.cpp
     od-unix/driveclick.cpp
+    od-unix/dlopen.cpp
     od-unix/filesys_host.cpp
     od-unix/graphics.cpp
     od-unix/gui.cpp
