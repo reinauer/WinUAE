@@ -9,8 +9,8 @@ Build macOS dependencies into a private prefix with a fixed deployment target.
 Use the resulting prefix as CMAKE_PREFIX_PATH when configuring WinUAE.
 
 Arguments:
-  prefix  Install prefix for SDL3, Qt, and optional libpng/libFLAC. Defaults to
-          WINUAE_DEPS_PREFIX or <repo>/../winuae-macos-deps.
+  prefix  Install prefix for SDL3, Qt, and optional libpng/libFLAC/libmpeg2.
+          Defaults to WINUAE_DEPS_PREFIX or <repo>/../winuae-macos-deps.
 
 Environment:
   WINUAE_MACOS_DEPLOYMENT_TARGET  Minimum macOS version. Defaults to 13.0.
@@ -24,18 +24,23 @@ Environment:
                                   WINUAE_REQUIRE_LIBPNG=1.
   WINUAE_FLAC_SOURCE              FLAC source tree. Optional unless
                                   WINUAE_REQUIRE_FLAC=1.
+  WINUAE_LIBMPEG2_SOURCE          libmpeg2 source tree. Optional unless
+                                  WINUAE_REQUIRE_LIBMPEG2=1.
   WINUAE_SKIP_SDL3=1              Do not build SDL3.
   WINUAE_SKIP_QT=1                Do not build Qt.
   WINUAE_SKIP_LIBPNG=1            Do not build libpng.
   WINUAE_SKIP_FLAC=1              Do not build libFLAC.
+  WINUAE_SKIP_LIBMPEG2=1          Do not build libmpeg2.
   WINUAE_REQUIRE_LIBPNG=1         Fail if WINUAE_LIBPNG_SOURCE is missing.
   WINUAE_REQUIRE_FLAC=1           Fail if WINUAE_FLAC_SOURCE is missing.
+  WINUAE_REQUIRE_LIBMPEG2=1       Fail if WINUAE_LIBMPEG2_SOURCE is missing.
   WINUAE_SDL3_CMAKE_ARGS          Extra arguments passed to SDL3 CMake.
   WINUAE_QT_CONFIGURE_ARGS        Extra arguments passed to Qt configure,
                                   in addition to the release-safe defaults.
   WINUAE_QT_CMAKE_ARGS            Extra arguments passed to Qt CMake.
   WINUAE_LIBPNG_CMAKE_ARGS        Extra arguments passed to libpng CMake.
   WINUAE_FLAC_CMAKE_ARGS          Extra arguments passed to FLAC CMake.
+  WINUAE_LIBMPEG2_CONFIGURE_ARGS  Extra arguments passed to libmpeg2 configure.
 EOF
 }
 
@@ -53,6 +58,7 @@ sdl_source="${WINUAE_SDL3_SOURCE:-}"
 qt_source="${WINUAE_QT_SOURCE:-}"
 libpng_source="${WINUAE_LIBPNG_SOURCE:-}"
 flac_source="${WINUAE_FLAC_SOURCE:-}"
+libmpeg2_source="${WINUAE_LIBMPEG2_SOURCE:-}"
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
     echo "error: macOS dependency builds require Darwin/macOS" >&2
@@ -86,6 +92,33 @@ run_cmake_build() {
     cmake -S "${src}" -B "${bld}" "$@"
     cmake --build "${bld}" -j "${jobs}"
     cmake --install "${bld}"
+}
+
+run_autotools_build() {
+    local src="$1"
+    local bld="$2"
+    shift 2
+    if [[ -z "${bld}" || "${bld}" == "/" ]]; then
+        echo "error: refusing unsafe autotools build directory: ${bld}" >&2
+        exit 1
+    fi
+    rm -rf "${bld}"
+    mkdir -p "${bld}/src"
+    cp -R "${src}/." "${bld}/src/"
+    (
+        cd "${bld}/src"
+        if [[ -f Makefile ]]; then
+            make distclean >/dev/null 2>&1 || true
+        fi
+        rm -f config.log config.status
+        env \
+            CFLAGS="${CFLAGS:-} -mmacosx-version-min=${target}" \
+            CXXFLAGS="${CXXFLAGS:-} -mmacosx-version-min=${target}" \
+            LDFLAGS="${LDFLAGS:-} -mmacosx-version-min=${target}" \
+            ./configure "$@"
+        make -j "${jobs}"
+        make install
+    )
 }
 
 patch_qtbase_source() {
@@ -156,6 +189,37 @@ if [[ "${WINUAE_SKIP_FLAC:-0}" != "1" ]]; then
         exit 1
     else
         echo "note: WINUAE_FLAC_SOURCE not set; skipping private libFLAC build" >&2
+    fi
+fi
+
+if [[ "${WINUAE_SKIP_LIBMPEG2:-0}" != "1" ]]; then
+    if [[ -n "${libmpeg2_source}" ]]; then
+        require_source "libmpeg2" "${libmpeg2_source}"
+        libmpeg2_configure_args=(
+            --prefix="${prefix}"
+            --disable-sdl
+            --without-x
+            --enable-shared
+            --disable-static
+            --disable-dependency-tracking
+        )
+        if [[ -n "${WINUAE_LIBMPEG2_CONFIGURE_ARGS:-}" ]]; then
+            split_extra_args "${WINUAE_LIBMPEG2_CONFIGURE_ARGS}"
+            libmpeg2_configure_args+=(${extra_args[@]+"${extra_args[@]}"})
+        fi
+        run_autotools_build "${libmpeg2_source}" "${build_dir}/libmpeg2" \
+            ${libmpeg2_configure_args[@]+"${libmpeg2_configure_args[@]}"}
+        (
+            cd "${build_dir}/libmpeg2/src"
+            make -C libmpeg2 install
+            make -C include install
+        )
+    elif [[ "${WINUAE_REQUIRE_LIBMPEG2:-0}" == "1" ]]; then
+        echo "error: libmpeg2 source path is required when WINUAE_REQUIRE_LIBMPEG2=1" >&2
+        usage >&2
+        exit 1
+    else
+        echo "note: WINUAE_LIBMPEG2_SOURCE not set; skipping private libmpeg2 build" >&2
     fi
 fi
 

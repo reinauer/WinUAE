@@ -170,6 +170,7 @@ option(WINUAE_UNIX_WITH_LIBPNG "Build optional PNG screenshot support when libpn
 option(WINUAE_UNIX_WITH_ARCHIVES "Build bundled ZIP/LHA/LZX/DMS/WRP archive support" ON)
 option(WINUAE_UNIX_WITH_CHD "Build CHD hardfile and CD image support" ON)
 option(WINUAE_UNIX_WITH_CHD_FLAC "Build CHD FLAC codecs when a compatible libFLAC is available" ON)
+option(WINUAE_UNIX_WITH_LIBMPEG2 "Build CD32 FMV video decode support when libmpeg2 is available" ON)
 option(WINUAE_UNIX_WITH_BSDSOCKET "Build bsdsocket.library on top of POSIX sockets" ON)
 option(WINUAE_UNIX_WITH_UAESCSI "Build uaescsi.device using the shared CD/tape SCSI emulation layer" ON)
 option(WINUAE_UNIX_WITH_UAESERIAL "Build uaeserial.device on top of the Unix serial backend" ON)
@@ -607,6 +608,77 @@ if(WINUAE_UNIX_WITH_CHD)
     else()
         target_compile_definitions(winuae_core PRIVATE WITH_CHD_FLAC=0)
     endif()
+endif()
+
+set(WINUAE_UNIX_LIBMPEG2_OK OFF)
+set(WINUAE_UNIX_LIBMPEG2_FOUND OFF)
+if(WINUAE_UNIX_WITH_LIBMPEG2 AND PkgConfig_FOUND)
+    pkg_check_modules(LIBMPEG2 QUIET libmpeg2 libmpeg2convert)
+    if(LIBMPEG2_FOUND)
+        set(WINUAE_UNIX_LIBMPEG2_FOUND ON)
+        set(WINUAE_UNIX_LIBMPEG2_OK ON)
+        if(APPLE)
+            unset(WINUAE_UNIX_LIBMPEG2_LIBRARY CACHE)
+            unset(WINUAE_UNIX_LIBMPEG2CONVERT_LIBRARY CACHE)
+            find_library(WINUAE_UNIX_LIBMPEG2_LIBRARY
+                NAMES mpeg2
+                PATHS ${LIBMPEG2_LIBRARY_DIRS}
+                NO_DEFAULT_PATH
+            )
+            find_library(WINUAE_UNIX_LIBMPEG2CONVERT_LIBRARY
+                NAMES mpeg2convert
+                PATHS ${LIBMPEG2_LIBRARY_DIRS}
+                NO_DEFAULT_PATH
+            )
+            if(WINUAE_UNIX_LIBMPEG2_LIBRARY AND WINUAE_UNIX_LIBMPEG2CONVERT_LIBRARY)
+                foreach(WINUAE_UNIX_LIBMPEG2_CHECK_LIBRARY IN ITEMS WINUAE_UNIX_LIBMPEG2_LIBRARY WINUAE_UNIX_LIBMPEG2CONVERT_LIBRARY)
+                    execute_process(
+                        COMMAND
+                            "${CMAKE_CURRENT_SOURCE_DIR}/tools/macos-check-deployment-target.sh"
+                            "${${WINUAE_UNIX_LIBMPEG2_CHECK_LIBRARY}}"
+                            "${CMAKE_OSX_DEPLOYMENT_TARGET}"
+                        RESULT_VARIABLE WINUAE_UNIX_LIBMPEG2_DEPLOYMENT_RESULT
+                        OUTPUT_VARIABLE WINUAE_UNIX_LIBMPEG2_DEPLOYMENT_OUTPUT
+                        ERROR_VARIABLE WINUAE_UNIX_LIBMPEG2_DEPLOYMENT_ERROR
+                        OUTPUT_STRIP_TRAILING_WHITESPACE
+                        ERROR_STRIP_TRAILING_WHITESPACE
+                    )
+                    if(NOT WINUAE_UNIX_LIBMPEG2_DEPLOYMENT_RESULT EQUAL 0)
+                        message(STATUS
+                            "libmpeg2 is newer than "
+                            "CMAKE_OSX_DEPLOYMENT_TARGET=${CMAKE_OSX_DEPLOYMENT_TARGET}; "
+                            "CD32 FMV video decode disabled. "
+                            "${WINUAE_UNIX_LIBMPEG2_DEPLOYMENT_ERROR}"
+                        )
+                        set(WINUAE_UNIX_LIBMPEG2_OK OFF)
+                    endif()
+                endforeach()
+            else()
+                message(STATUS
+                    "libmpeg2 was found by pkg-config but not as library "
+                    "paths; CD32 FMV video decode disabled"
+                )
+                set(WINUAE_UNIX_LIBMPEG2_OK OFF)
+            endif()
+        endif()
+    endif()
+endif()
+
+if(WINUAE_UNIX_LIBMPEG2_OK)
+    target_compile_definitions(winuae_core PRIVATE WITH_LIBMPEG2=1)
+    target_include_directories(winuae_core PRIVATE ${LIBMPEG2_INCLUDE_DIRS})
+    target_compile_options(winuae_core PRIVATE ${LIBMPEG2_CFLAGS_OTHER})
+    if(APPLE)
+        list(APPEND WINUAE_UNIX_EXTRA_LIBRARIES
+            "${WINUAE_UNIX_LIBMPEG2_LIBRARY}"
+            "${WINUAE_UNIX_LIBMPEG2CONVERT_LIBRARY}"
+        )
+    else()
+        list(APPEND WINUAE_UNIX_EXTRA_LIBRARIES ${LIBMPEG2_LIBRARIES})
+    endif()
+    list(APPEND WINUAE_UNIX_EXTRA_LIBRARY_DIRS ${LIBMPEG2_LIBRARY_DIRS})
+elseif(WINUAE_UNIX_WITH_LIBMPEG2 AND NOT WINUAE_UNIX_LIBMPEG2_FOUND)
+    message(STATUS "libmpeg2 development package not found; CD32 FMV video decode disabled")
 endif()
 
 if(WINUAE_UNIX_WITH_NATIVE_HARDDRIVES)
