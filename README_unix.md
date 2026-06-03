@@ -21,7 +21,7 @@ This is an early macOS/Linux port of the WinUAE source tree. The current Unix bu
 - Native CD/DVD access is available on macOS and Linux; `WINUAE_UNIX_WITH_NATIVE_SCSI` adds Linux SG_IO and macOS SCSITaskLib direct SCSI/tape passthrough through the same SPTI-style slot used by Windows.
 - The shared Toccata/Prelude/UAESND sound-board backend is built by default, with SDL3 host capture hooks when SDL3 is available.
 - UAE Zorro II/Zorro III RTG RAM can be configured and autoconfigured, with an initial Unix `uaegfx.card` install path and guest Picasso96 monitor-driver smoke coverage, including 8-bit Workbench mode open and direct 15-bit/16-bit/24-bit/32-bit P96 screen-open tests. Accelerated RTG operations are still incomplete.
-- The Qt Expansions page can enable common Zorro/expansion board ROM entries, non-PPC CPU boards, and shared sound boards using the same `*_rom_file`, `*_rom_options`, and CPU-board keys as WinUAE.
+- The Qt Expansions page can enable common Zorro/expansion board ROM entries, CPU boards, PPC quickstart presets, and shared sound boards using the same `*_rom_file`, `*_rom_options`, and CPU-board keys as WinUAE. PPC emulation still requires a compatible external `qemu-uae` plugin.
 - Full UI parity with the Windows configuration dialogs and platform packaging are still incomplete.
 - If SDL3 is not found, CMake currently builds a headless/null-video target.
 
@@ -497,6 +497,7 @@ export WINUAE_SMOKE_LOG=/tmp/winuae_unix_smoke.log
 -DWINUAE_UNIX_WITH_CHD=ON
 -DWINUAE_UNIX_WITH_CHD_FLAC=ON
 -DWINUAE_UNIX_WITH_JIT=ON
+-DWINUAE_UNIX_WITH_PPC_QEMU=ON
 -DWINUAE_UNIX_WITH_OPENGL_SHADER_PIPELINE=ON
 -DWINUAE_UNIX_WITH_SNDBOARD=ON
 -DWINUAE_UNIX_WITH_PROWIZARD=ON
@@ -513,6 +514,7 @@ export WINUAE_SMOKE_LOG=/tmp/winuae_unix_smoke.log
 `WINUAE_UNIX_WITH_NATIVE_CD` is enabled by default and builds native CD/DVD access on macOS and Linux. `WINUAE_UNIX_WITH_NATIVE_SCSI` is enabled by default on macOS and Linux and adds macOS SCSITaskLib plus Linux SG_IO direct SCSI/tape passthrough through the same device slot Windows uses for SPTI.
 `WINUAE_UNIX_WITH_CHD` is enabled by default and builds CHD hardfile/CD image support. `WINUAE_UNIX_WITH_CHD_FLAC` is also enabled by default, but macOS builds skip FLAC codecs if the available libFLAC was built for a newer deployment target.
 `WINUAE_UNIX_WITH_JIT` is enabled by default where the Unix host backend is wired, including ARM64 and x86_64.
+`WINUAE_UNIX_WITH_PPC_QEMU` is enabled by default and builds the WinUAE side of the PPC accelerator/QEMU plugin ABI. It still needs a compatible `qemu-uae` plugin beside the executable or in the loader path.
 `WINUAE_UNIX_WITH_OPENGL_SHADER_PIPELINE` is enabled by default when SDL3 and OpenGL development files are available. Runtime OpenGL context or shader setup failure falls back to the SDL renderer.
 `WINUAE_UNIX_WITH_SNDBOARD` is enabled by default and builds the shared Toccata/Prelude/UAESND sound-board backend. PCI sound devices remain part of the future PCI bridgeboard work.
 `WINUAE_UNIX_WITH_PROWIZARD` is enabled by default and builds the same Pro Wizard source set used by the Windows project.
