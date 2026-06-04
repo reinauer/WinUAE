@@ -130,7 +130,7 @@ static void moduleripper_filename(const char *aname, TCHAR *out, bool fullpath)
 	xfree(name);
 }
 
-extern "C" FILE *moduleripper_fopen (const char *aname, const char *amode)
+FILE *moduleripper_fopen (const char *aname, const char *amode)
 {
 	TCHAR outname[MAX_DPATH];
 	TCHAR *mode;
@@ -144,7 +144,7 @@ extern "C" FILE *moduleripper_fopen (const char *aname, const char *amode)
 	return f;
 }
 
-extern "C" FILE *moduleripper2_fopen (const char *name, const char *mode, const char *aid, int addr, int size)
+FILE *moduleripper2_fopen (const char *name, const char *mode, const char *aid, int addr, int size)
 {
 	TCHAR msg[MAX_DPATH], msg2[MAX_DPATH];
 	TCHAR outname[MAX_DPATH];
@@ -167,17 +167,17 @@ extern "C" FILE *moduleripper2_fopen (const char *name, const char *mode, const 
 	return moduleripper_fopen (name, mode);
 }
 
-extern "C" void pw_write_log (const char *format,...)
+void pw_write_log (const char *format,...)
 {
 }
 
 #else
 
-extern "C" FILE *moduleripper_fopen (const char *name, const char *mode)
+FILE *moduleripper_fopen (const char *name, const char *mode)
 {
 	return NULL;
 }
-extern "C" FILE *moduleripper2_fopen (const char *name, const char *mode, const char *id)
+FILE *moduleripper2_fopen (const char *name, const char *mode, const char *id)
 {
 	return NULL;
 }
