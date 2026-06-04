@@ -90,6 +90,64 @@ split_extra_args() {
     fi
 }
 
+path_in_list() {
+    local needle="$1"
+    shift
+    local item
+    for item in "$@"; do
+        if [[ "${item}" == "${needle}" ]]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+copy_private_dylib_deps() {
+    local root_binary="$1"
+    local install_prefix="$2"
+    local frameworks_dir="${contents_dir}/Frameworks"
+    local queue=("${root_binary}")
+    local visited=()
+
+    mkdir -p "${frameworks_dir}"
+    while [[ ${#queue[@]} -gt 0 ]]; do
+        local binary="${queue[0]}"
+        queue=("${queue[@]:1}")
+        if path_in_list "${binary}" "${visited[@]}"; then
+            continue
+        fi
+        visited+=("${binary}")
+
+        local dep
+        while IFS= read -r dep; do
+            case "${dep}" in
+                ""|@*|/usr/lib/*|/System/Library/*)
+                    continue
+                    ;;
+            esac
+            if [[ ! -f "${dep}" ]]; then
+                continue
+            fi
+
+            local name target
+            name="$(basename "${dep}")"
+            target="${frameworks_dir}/${name}"
+            if [[ ! -f "${target}" ]]; then
+                cp "${dep}" "${target}"
+                chmod u+w "${target}" 2>/dev/null || true
+                install_name_tool -id "@rpath/${name}" "${target}" \
+                    2>/dev/null || true
+            fi
+            install_name_tool -change "${dep}" "${install_prefix}/${name}" \
+                "${binary}" 2>/dev/null || true
+            if ! path_in_list "${target}" "${visited[@]}" \
+                    && ! path_in_list "${target}" "${queue[@]}"; then
+                queue+=("${target}")
+            fi
+        done < <(otool -L "${binary}" | awk 'NR > 1 { print $1 }')
+    done
+}
+
 rm -rf "${app_dir}"
 mkdir -p "${macos_dir}" "${resources_dir}/od-win32/resources"
 
@@ -164,12 +222,17 @@ do
     fi
 done
 
-if [[ -n "${qemu_uae_plugin}" ]]; then
-    mkdir -p "${contents_dir}/PlugIns"
-    cp "${qemu_uae_plugin}" "${contents_dir}/PlugIns/qemu-uae.so"
-    install_name_tool -add_rpath "@loader_path/../Frameworks" \
-        "${contents_dir}/PlugIns/qemu-uae.so" 2>/dev/null || true
-fi
+copy_qemu_uae_plugin() {
+    if [[ -n "${qemu_uae_plugin}" ]]; then
+        mkdir -p "${contents_dir}/PlugIns"
+        cp "${qemu_uae_plugin}" "${contents_dir}/PlugIns/qemu-uae.so"
+        install_name_tool -add_rpath "@loader_path/../Frameworks" \
+            "${contents_dir}/PlugIns/qemu-uae.so" 2>/dev/null || true
+        copy_private_dylib_deps \
+            "${contents_dir}/PlugIns/qemu-uae.so" \
+            "@loader_path/../Frameworks"
+    fi
+}
 
 macdeployqt_executable="${WINUAE_MACDEPLOYQT:-}"
 if [[ -z "${macdeployqt_executable}" ]]; then
@@ -238,6 +301,8 @@ if [[ "${WINUAE_SKIP_MACDEPLOYQT:-0}" != "1" && -n "${macdeployqt_executable}" &
         copy_qt_plugin "styles/libqmacstyle.dylib"
     fi
 fi
+
+copy_qemu_uae_plugin
 
 if [[ "${WINUAE_SKIP_MACOS_DEPLOYMENT_CHECK:-0}" != "1" ]]; then
     "${script_dir}/macos-check-deployment-target.sh" "${app_dir}" "${deployment_target}" >&2
