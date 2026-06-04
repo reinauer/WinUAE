@@ -1077,8 +1077,7 @@ if(WINUAE_UNIX_WITH_PROWIZARD)
     target_include_directories(winuae_core PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/prowizard/include"
     )
-    list(APPEND WINUAE_UNIX_EXTRA_SOURCES
-        moduleripper.cpp
+    set(WINUAE_UNIX_PROWIZARD_C_SOURCES
         prowizard/misc/misc.c
         prowizard/prowiz.c
         prowizard/misc/testbag.c
@@ -1192,6 +1191,13 @@ if(WINUAE_UNIX_WITH_PROWIZARD)
         prowizard/rippers/WantonPacker.c
         prowizard/rippers/XannPlayer.c
         prowizard/rippers/ZenPacker.c
+    )
+    list(APPEND WINUAE_UNIX_EXTRA_SOURCES
+        moduleripper.cpp
+        ${WINUAE_UNIX_PROWIZARD_C_SOURCES}
+    )
+    set_source_files_properties(${WINUAE_UNIX_PROWIZARD_C_SOURCES}
+        PROPERTIES LANGUAGE CXX
     )
 endif()
 
