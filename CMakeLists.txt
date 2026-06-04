@@ -1730,7 +1730,6 @@ if(WINUAE_UNIX_WITH_PPC_QEMU)
 endif()
 
 if(WINUAE_UNIX_PACKAGE_REQUIRE_QEMU_UAE_PLUGIN
-    AND NOT APPLE
     AND WINUAE_UNIX_WITH_PPC_QEMU
     AND NOT WINUAE_UNIX_HAS_QEMU_UAE_PLUGIN)
     message(FATAL_ERROR
@@ -1787,7 +1786,9 @@ if(APPLE AND TARGET winuae_unix)
         VERBATIM
     )
     add_custom_target(winuae_unix_macos_dmg
-        COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tools/macos-dmg.sh" "${CMAKE_BINARY_DIR}" "${CMAKE_BINARY_DIR}/package"
+        COMMAND "${CMAKE_COMMAND}" -E env
+            "WINUAE_QEMU_UAE_PLUGIN=${WINUAE_QEMU_UAE_PLUGIN_PATH}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tools/macos-dmg.sh" "${CMAKE_BINARY_DIR}" "${CMAKE_BINARY_DIR}/package"
         DEPENDS winuae_unix_macos_app
         COMMENT "Creating WinUAE drag-install DMG"
         VERBATIM
