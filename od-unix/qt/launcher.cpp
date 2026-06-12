@@ -12802,6 +12802,24 @@ private:
         return QDir(filterPresetDirectoryPath()).filePath(normalizedFilterPresetName(name) + QStringLiteral(".filter"));
     }
 
+    QString systemFilterPresetDirectory() const
+    {
+        return resourceFile(QStringLiteral("od-unix/share/filter-presets"));
+    }
+
+    QString findFilterPresetFile(const QString &name) const
+    {
+        const QString user = filterPresetPath(name);
+        if (QFileInfo::exists(user)) {
+            return user;
+        }
+        const QString system = QDir(systemFilterPresetDirectory()).filePath(normalizedFilterPresetName(name) + QStringLiteral(".filter"));
+        if (QFileInfo::exists(system)) {
+            return system;
+        }
+        return user;
+    }
+
     void refreshFilterPresetList(const QString &preferred = QString())
     {
         if (!filterPresetName) {
@@ -12811,11 +12829,19 @@ private:
         QSignalBlocker blocker(filterPresetName);
         filterPresetName->clear();
         filterPresetName->addItem(QString());
-        QDir dir(filterPresetDirectoryPath());
-        const QStringList files = dir.entryList({ QStringLiteral("*.filter") }, QDir::Files, QDir::Name | QDir::IgnoreCase);
-        for (const QString &file : files) {
-            filterPresetName->addItem(QFileInfo(file).completeBaseName());
+        QStringList names;
+        for (const QString &directory : { filterPresetDirectoryPath(), systemFilterPresetDirectory() }) {
+            QDir dir(directory);
+            const QStringList files = dir.entryList({ QStringLiteral("*.filter") }, QDir::Files, QDir::Name | QDir::IgnoreCase);
+            for (const QString &file : files) {
+                const QString name = QFileInfo(file).completeBaseName();
+                if (!names.contains(name, Qt::CaseInsensitive)) {
+                    names.append(name);
+                }
+            }
         }
+        names.sort(Qt::CaseInsensitive);
+        filterPresetName->addItems(names);
         filterPresetName->setCurrentText(current);
     }
 
@@ -12865,7 +12891,7 @@ private:
         if (name.isEmpty()) {
             return;
         }
-        QFile file(filterPresetPath(name));
+        QFile file(findFilterPresetFile(name));
         if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
             QMessageBox::warning(this, windowTitle(), QStringLiteral("Could not read %1:\n%2").arg(file.fileName(), file.errorString()));
             return;
