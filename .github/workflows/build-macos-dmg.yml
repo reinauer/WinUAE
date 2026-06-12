@@ -95,25 +95,6 @@ jobs:
 
           tools/macos-build-qemu-deps.sh "${DEPS_PREFIX}"
 
-      - name: Build QEMU-UAE PPC plugin
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          jobs="$(sysctl -n hw.ncpu)"
-          mkdir -p "${BUILD_DIR}"
-
-          export WINUAE_MACOS_DEPLOYMENT_TARGET="${MACOS_DEPLOYMENT_TARGET}"
-          export QEMU_UAE_DEPS_PREFIX="${DEPS_PREFIX}"
-          export QEMU_UAE_WORK_DIR="${GITHUB_WORKSPACE}/.deps/qemu-uae"
-          export QEMU_UAE_NINJA="$(command -v ninja)"
-
-          uae-ppc-plugin/build-qemu-uae-plugin.sh \
-            --output "${BUILD_DIR}/qemu-uae.so" \
-            --jobs "${jobs}"
-
-          strip -x "${BUILD_DIR}/qemu-uae.so"
-
       - name: Configure WinUAE
         shell: bash
         run: |
@@ -125,8 +106,7 @@ jobs:
             -DCMAKE_PREFIX_PATH="${DEPS_PREFIX}" \
             -DWINUAE_UNIX_MACOS_DEPS_PREFIX="${DEPS_PREFIX}" \
             -DWINUAE_QEMU_UAE_DEPS_PREFIX="${DEPS_PREFIX}" \
-            -DWINUAE_QEMU_UAE_PLUGIN_FILE="${BUILD_DIR}/qemu-uae.so" \
-            -DWINUAE_UNIX_BUILD_QEMU_UAE_PLUGIN=OFF \
+            -DWINUAE_QEMU_UAE_BUILDER_DIR="${GITHUB_WORKSPACE}/uae-ppc-plugin" \
             -DWINUAE_LZMA_SDK_FETCH=ON
 
       - name: Build and verify DMG
