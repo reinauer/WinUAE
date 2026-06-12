@@ -9128,7 +9128,44 @@ private:
 
         root->addLayout(left, 3);
         root->addLayout(right, 1);
+        connect(displayAutoResolution, &QComboBox::currentTextChanged, this, [this]() { updateDisplayControlState(); });
+        connect(displayResolution, &QComboBox::currentTextChanged, this, [this]() { updateDisplayControlState(); });
+        connect(displayLineModeButtons, QOverload<QAbstractButton *>::of(&QButtonGroup::buttonClicked), this, [this]() { updateDisplayControlState(); });
+        updateDisplayControlState();
         return page;
+    }
+
+    void updateDisplayControlState()
+    {
+        const bool autoRes = displayAutoResolution
+            && displayAutoResolution->currentText() != QStringLiteral("Disabled");
+        if (displayResolution) {
+            displayResolution->setEnabled(!autoRes);
+        }
+        if (displayLineModeButtons) {
+            for (QAbstractButton *button : displayLineModeButtons->buttons()) {
+                button->setEnabled(!autoRes);
+            }
+        }
+        const bool doubled = displayLineModeButtons && displayLineModeButtons->checkedId() > 0;
+        if (displayInterlacedLineModeButtons) {
+            for (QAbstractButton *button : displayInterlacedLineModeButtons->buttons()) {
+                const bool single = button == displayInterlacedLineModeButtons->button(0);
+                button->setEnabled(!autoRes && (single ? !doubled : doubled));
+            }
+        }
+        if (displayAutoResolutionVga) {
+            const bool vga = displayResolution
+                && displayResolution->currentText() != QStringLiteral("lores")
+                && doubled;
+            if (!vga) {
+                setCheckBoxIfChanged(displayAutoResolutionVga, false);
+            }
+            displayAutoResolutionVga->setEnabled(vga);
+        }
+        if (displayFrameRate) {
+            displayFrameRate->setEnabled(!(chipsetCycleExactMemory && chipsetCycleExactMemory->isChecked()));
+        }
     }
 
     QWidget *makeFilterPage()
@@ -12456,6 +12493,7 @@ private:
         updateJitCacheLabel();
         updateChipsetControlState();
         updateMemoryControlState();
+        updateDisplayControlState();
         lastSelectedCpuModel = cpu;
     }
 
