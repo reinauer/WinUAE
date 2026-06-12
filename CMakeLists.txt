@@ -1703,7 +1703,10 @@ if(UNIX
             message(STATUS
                 "QEMU-UAE plugin: builder will be cloned from ${WINUAE_QEMU_UAE_BUILDER_URL}")
         endif()
-        add_custom_target(winuae_unix_qemu_uae_plugin ${WINUAE_QEMU_UAE_PLUGIN_ALL}
+        # OUTPUT-based so repeated `all` builds (e.g. the CPack preinstall
+        # step) skip the builder once the plugin exists; the external
+        # builder's configure step is not re-entrant.
+        add_custom_command(OUTPUT "${WINUAE_QEMU_UAE_PLUGIN_PATH}"
             COMMAND "${CMAKE_COMMAND}" -E env
                 "WINUAE_MACOS_DEPLOYMENT_TARGET=${CMAKE_OSX_DEPLOYMENT_TARGET}"
                 "QEMU_UAE_DEPS_PREFIX=${WINUAE_QEMU_UAE_DEPS_PREFIX}"
@@ -1714,9 +1717,13 @@ if(UNIX
                 "WINUAE_QEMU_UAE_QEMU_TARBALL=${WINUAE_QEMU_UAE_QEMU_TARBALL}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tools/build-qemu-uae-via-builder.sh"
                 "${WINUAE_QEMU_UAE_PLUGIN_PATH}"
+            DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/tools/build-qemu-uae-via-builder.sh"
             WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
             COMMENT "Building QEMU-UAE PPC plugin through uae-ppc-plugin"
             VERBATIM
+        )
+        add_custom_target(winuae_unix_qemu_uae_plugin ${WINUAE_QEMU_UAE_PLUGIN_ALL}
+            DEPENDS "${WINUAE_QEMU_UAE_PLUGIN_PATH}"
         )
     endif()
 endif()
