@@ -17028,6 +17028,11 @@ static void armQtSmokeExit(QDialog &dialog, QApplication *app = nullptr)
     });
 }
 
+bool winUaeQtArgumentsSpecifyConfig(const QStringList &arguments)
+{
+    return !initialConfigPathFromArguments(arguments).isEmpty();
+}
+
 WinUaeQtLauncherResult runWinUaeQtLauncherForConfig(QApplication &app)
 {
     return runWinUaeQtLauncherForConfig(app, QString());
