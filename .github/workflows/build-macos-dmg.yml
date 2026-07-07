@@ -20,6 +20,8 @@ env:
   LIBPNG_REF: v1.6.50
   FLAC_REF: "1.5.0"
   GLIB_REF: "2.88.1"
+  LIBMPEG2_VERSION: "0.5.1"
+  LIBMPEG2_SHA256: dee22e893cb5fc2b2b6ebd60b88478ab8556cb3b93f9a0d7ce8f3b61851871d4
   BUILD_DIR: ${{ github.workspace }}/build/macos
   DEPS_PREFIX: ${{ github.workspace }}/.deps/macos
 
@@ -69,6 +71,10 @@ jobs:
             https://github.com/xiph/flac.git deps-src/flac
           git clone --depth 1 --branch "${GLIB_REF}" \
             https://github.com/GNOME/glib.git deps-src/glib
+          curl -fsSL -o deps-src/libmpeg2.tar.gz \
+            "https://download.videolan.org/contrib/libmpeg2/libmpeg2-${LIBMPEG2_VERSION}.tar.gz"
+          echo "${LIBMPEG2_SHA256}  deps-src/libmpeg2.tar.gz" | shasum -a 256 -c -
+          tar -xzf deps-src/libmpeg2.tar.gz -C deps-src
 
       - name: Build private macOS dependencies
         shell: bash
@@ -80,8 +86,10 @@ jobs:
           export WINUAE_QT_SOURCE="${GITHUB_WORKSPACE}/deps-src/qtbase"
           export WINUAE_LIBPNG_SOURCE="${GITHUB_WORKSPACE}/deps-src/libpng"
           export WINUAE_FLAC_SOURCE="${GITHUB_WORKSPACE}/deps-src/flac"
+          export WINUAE_LIBMPEG2_SOURCE="${GITHUB_WORKSPACE}/deps-src/libmpeg2-${LIBMPEG2_VERSION}"
           export WINUAE_REQUIRE_LIBPNG=1
           export WINUAE_REQUIRE_FLAC=1
+          export WINUAE_REQUIRE_LIBMPEG2=1
 
           tools/macos-build-deps.sh "${DEPS_PREFIX}"
 
