@@ -181,6 +181,8 @@ option(WINUAE_UNIX_WITH_ARCHIVES "Build bundled ZIP/LHA/LZX/DMS/WRP archive supp
 option(WINUAE_UNIX_WITH_CAPS "Build IPF/CAPS disk image support through the SoftPres runtime library" ON)
 option(WINUAE_UNIX_WITH_FLOPPYBRIDGE "Build real-time FloppyBridge drive support" ON)
 option(WINUAE_UNIX_WITH_UAENATIVE "Build uaenative.library host module support" ON)
+option(WINUAE_UNIX_WITH_PRINTER_EMULATION "Build Epson matrix printer emulation" ON)
+option(WINUAE_FREETYPE_FETCH "Fetch FreeType for portable macOS builds" ON)
 option(WINUAE_UNIX_BUILD_FLOPPYBRIDGE_PLUGIN "Build FloppyBridge.so for Unix packaging" ON)
 option(WINUAE_UNIX_WITH_CHD "Build CHD hardfile and CD image support" ON)
 option(WINUAE_UNIX_WITH_CHD_FLAC "Build CHD FLAC codecs; required by the bundled CHD sources" ON)
@@ -379,6 +381,35 @@ set(WINUAE_UNIX_ENABLE_BSDSOCKET OFF)
 if(WINUAE_UNIX_WITH_UAENATIVE)
     target_compile_definitions(winuae_core PRIVATE WITH_UAENATIVE=1)
     list(APPEND WINUAE_UNIX_EXTRA_SOURCES uaenative.cpp)
+endif()
+
+
+if(WINUAE_UNIX_WITH_PRINTER_EMULATION)
+    if(APPLE AND WINUAE_FREETYPE_FETCH)
+        include(FetchContent)
+        set(FT_DISABLE_BROTLI TRUE CACHE BOOL "" FORCE)
+        set(FT_DISABLE_BZIP2 TRUE CACHE BOOL "" FORCE)
+        set(FT_DISABLE_HARFBUZZ TRUE CACHE BOOL "" FORCE)
+        set(FT_DISABLE_PNG TRUE CACHE BOOL "" FORCE)
+        set(FT_DISABLE_ZLIB TRUE CACHE BOOL "" FORCE)
+        FetchContent_Declare(freetype
+            URL https://download.savannah.gnu.org/releases/freetype/freetype-2.13.2.tar.xz
+            URL_HASH SHA256=12991c4e55c506dd7f9b765933e62fd2be2e06d421505d7950a132e4f1bb484d
+            DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+        )
+        set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
+        FetchContent_MakeAvailable(freetype)
+        set(WINUAE_FREETYPE_TARGET freetype)
+        target_include_directories(winuae_core PRIVATE
+            "${freetype_SOURCE_DIR}/include")
+    else()
+        find_package(Freetype REQUIRED)
+        set(WINUAE_FREETYPE_TARGET ${FREETYPE_LIBRARIES})
+        target_include_directories(winuae_core PRIVATE ${FREETYPE_INCLUDE_DIRS})
+    endif()
+    target_compile_definitions(winuae_core PRIVATE WINUAE_UNIX_WITH_PRINTER_EMULATION=1)
+    list(APPEND WINUAE_UNIX_EXTRA_LIBRARIES ${WINUAE_FREETYPE_TARGET})
+    list(APPEND WINUAE_UNIX_EXTRA_SOURCES epsonprinter.cpp)
 endif()
 
 set(WINUAE_UNIX_ENABLE_UAESCSI OFF)
