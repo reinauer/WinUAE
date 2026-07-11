@@ -5,7 +5,7 @@ set -euo pipefail
 #
 # This mirrors tools/debian-build-package.sh: it configures and builds the
 # project, installs the exact same files the .deb ships (/usr/bin/winuae, the
-# .desktop file, the hicolor icon, and the qemu-uae.so PPC plugin) into a
+# .desktop file, the hicolor icon, qemu-uae.so, and FloppyBridge.so) into a
 # throwaway AppDir, and then wraps that AppDir with linuxdeploy + appimagetool.
 #
 # Because the integrated configuration UI is a Qt6 application, the Qt runtime
@@ -108,7 +108,7 @@ cmake -S "${source_dir}" -B "${build_dir}" \
     -DCMAKE_BUILD_TYPE="${build_type}" \
     "${cmake_args[@]}"
 
-echo "==> Building winuae_unix and the qemu-uae plugin"
+echo "==> Building winuae_unix and runtime plugins"
 cmake --build "${build_dir}" --parallel "${jobs}"
 
 echo "==> Installing into AppDir: ${appdir}"
@@ -124,6 +124,17 @@ for required in "${exe}" "${desktop}" "${icon}"; do
         exit 1
     fi
 done
+
+# Keep portable artifacts aligned with the Debian package: when the real-drive
+# backend is enabled, its FloppyBridge module must make it into the AppDir.
+if grep -Eq '^WINUAE_UNIX_WITH_FLOPPYBRIDGE:BOOL=(ON|TRUE|1)$' \
+    "${build_dir}/CMakeCache.txt"; then
+    if ! find "${appdir}/usr" -type f -path '*/winuae/plugins/FloppyBridge.so' \
+        -print -quit | grep -q .; then
+        echo "error: AppDir does not contain FloppyBridge.so" >&2
+        exit 1
+    fi
+fi
 
 # The PPC plugin is installed under /usr/lib*/winuae/plugins. Feed its directory
 # to linuxdeploy so its own shared-library dependencies get bundled too.
