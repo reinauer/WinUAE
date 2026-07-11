@@ -181,6 +181,8 @@ option(WINUAE_UNIX_WITH_ARCHIVES "Build bundled ZIP/LHA/LZX/DMS/WRP archive supp
 option(WINUAE_UNIX_WITH_CAPS "Build IPF/CAPS disk image support through the SoftPres runtime library" ON)
 option(WINUAE_UNIX_WITH_FLOPPYBRIDGE "Build real-time FloppyBridge drive support" ON)
 option(WINUAE_UNIX_WITH_UAENATIVE "Build uaenative.library host module support" ON)
+option(WINUAE_UNIX_WITH_LUA "Build Lua scripting support" ON)
+option(WINUAE_LUA_FETCH "Fetch Lua when no system package is available" ON)
 option(WINUAE_UNIX_WITH_PRINTER_EMULATION "Build Epson matrix printer emulation" ON)
 option(WINUAE_FREETYPE_FETCH "Fetch FreeType for portable macOS builds" ON)
 option(WINUAE_UNIX_BUILD_FLOPPYBRIDGE_PLUGIN "Build FloppyBridge.so for Unix packaging" ON)
@@ -381,6 +383,42 @@ set(WINUAE_UNIX_ENABLE_BSDSOCKET OFF)
 if(WINUAE_UNIX_WITH_UAENATIVE)
     target_compile_definitions(winuae_core PRIVATE WITH_UAENATIVE=1)
     list(APPEND WINUAE_UNIX_EXTRA_SOURCES uaenative.cpp)
+endif()
+
+if(WINUAE_UNIX_WITH_LUA)
+    find_package(Lua 5.4 QUIET)
+    if(LUA_FOUND)
+        target_include_directories(winuae_core PRIVATE ${LUA_INCLUDE_DIR})
+        list(APPEND WINUAE_UNIX_EXTRA_LIBRARIES ${LUA_LIBRARIES})
+    elseif(WINUAE_LUA_FETCH)
+        include(FetchContent)
+        FetchContent_Declare(lua
+            URL https://www.lua.org/ftp/lua-5.4.7.tar.gz
+            URL_HASH SHA256=9fbf5e28ef86c69858f6d3d34eccc32e911c1a28b4120ff3e84aaa70cfbf1e30
+            DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+        )
+        FetchContent_MakeAvailable(lua)
+        set(WINUAE_LUA_SOURCES
+            lapi.c lauxlib.c lbaselib.c lcode.c lcorolib.c lctype.c
+            ldblib.c ldebug.c ldo.c ldump.c lfunc.c lgc.c linit.c liolib.c
+            llex.c lmathlib.c lmem.c loadlib.c lobject.c lopcodes.c loslib.c
+            lparser.c lstate.c lstring.c lstrlib.c ltable.c ltablib.c
+            ltm.c lundump.c lutf8lib.c lvm.c lzio.c
+        )
+        list(TRANSFORM WINUAE_LUA_SOURCES PREPEND "${lua_SOURCE_DIR}/src/")
+        add_library(winuae_lua STATIC ${WINUAE_LUA_SOURCES})
+        target_include_directories(winuae_lua PUBLIC "${lua_SOURCE_DIR}/src")
+        target_compile_definitions(winuae_lua PRIVATE
+            $<$<PLATFORM_ID:Darwin>:LUA_USE_MACOSX>
+            $<$<PLATFORM_ID:Linux>:LUA_USE_LINUX>
+        )
+        target_include_directories(winuae_core PRIVATE "${lua_SOURCE_DIR}/src")
+        list(APPEND WINUAE_UNIX_EXTRA_LIBRARIES winuae_lua)
+    else()
+        message(FATAL_ERROR "Lua 5.4 was not found and WINUAE_LUA_FETCH is OFF")
+    endif()
+    target_compile_definitions(winuae_core PRIVATE WITH_LUA=1)
+    list(APPEND WINUAE_UNIX_EXTRA_SOURCES luascript.cpp)
 endif()
 
 
