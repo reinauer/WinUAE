@@ -9,10 +9,14 @@
 #include "sysconfig.h"
 #include "sysdeps.h"
 #ifdef WITH_LUA
+#ifndef _WIN32
 extern "C" {
+#endif
 #include <lauxlib.h>
 #include <lualib.h>
+#ifndef _WIN32
 }
+#endif
 #endif
 
 #include "options.h"
