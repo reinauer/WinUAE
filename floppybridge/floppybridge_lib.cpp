@@ -24,6 +24,7 @@
 #include <locale>
 #include <algorithm>
 #include <cstdlib>
+#include <cstring>
 
 
 // Used by BRIDGE_About
