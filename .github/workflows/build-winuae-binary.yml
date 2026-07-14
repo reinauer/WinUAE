@@ -5,12 +5,14 @@ on:
   push:
     branches:
       - master
+      - back-to-the-roots
   pull_request:
     branches:
       - master
 
 env:
   SOLUTION_FILE_PATH: od-win32\\winuae_msvc15
+  PROWIZARD_PROJECT_PATH: od-win32\\prowizard\\prowizard.vcxproj
 
 jobs:
   Build-WinUAE-32bit-binary:
@@ -54,6 +56,7 @@ jobs:
       # See https://docs.microsoft.com/visualstudio/msbuild/msbuild-command-line-reference
       run: |
         call "C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\Common7\Tools\VsDevCmd.bat"
+        msbuild /m /p:Platform=Win32 /p:Configuration=Release /p:TargetName=prowizard ${{env.PROWIZARD_PROJECT_PATH}}
         msbuild /m /p:Platform=Win32 /p:Configuration=FullRelease ${{env.SOLUTION_FILE_PATH}}
 
     - uses: actions/upload-artifact@v4
@@ -102,6 +105,7 @@ jobs:
       # See https://docs.microsoft.com/visualstudio/msbuild/msbuild-command-line-reference
       run: |
         call "C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\Common7\Tools\VsDevCmd.bat"
+        msbuild /m /p:Platform=x64 /p:Configuration=Release /p:TargetName=prowizard ${{env.PROWIZARD_PROJECT_PATH}}
         msbuild /m /p:Platform=x64 /p:Configuration=FullRelease ${{env.SOLUTION_FILE_PATH}}
 
     - uses: actions/upload-artifact@v4
@@ -150,6 +154,7 @@ jobs:
       # See https://docs.microsoft.com/visualstudio/msbuild/msbuild-command-line-reference
       run: |
         call "C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\Common7\Tools\VsDevCmd.bat"
+        msbuild /m /p:Platform=ARM64 /p:Configuration=Release /p:TargetName=prowizard ${{env.PROWIZARD_PROJECT_PATH}}
         msbuild /m /p:Platform=ARM64 /p:Configuration=FullRelease /p:BuildProjectReferences=false ${{env.SOLUTION_FILE_PATH}}\winuae_msvc.vcxproj
 
     - uses: actions/upload-artifact@v4
