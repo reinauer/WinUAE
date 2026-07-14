@@ -42,6 +42,9 @@ jobs:
             dpkg-dev \
             file \
             git \
+            libavcodec-dev \
+            libavformat-dev \
+            libavutil-dev \
             libasound2-dev \
             libfdt-dev \
             libflac-dev \
@@ -50,6 +53,8 @@ jobs:
             libglib2.0-dev \
             libpcap-dev \
             libpng-dev \
+            libswresample-dev \
+            libswscale-dev \
             libsdl3-dev \
             meson \
             ninja-build \
