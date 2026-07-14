@@ -19,6 +19,7 @@ env:
   QTBASE_REF: v6.11.1
   LIBPNG_REF: v1.6.50
   FLAC_REF: "1.5.0"
+  FFMPEG_REF: "n8.1.2"
   GLIB_REF: "2.88.1"
   LIBMPEG2_VERSION: "0.5.1"
   LIBMPEG2_SHA256: dee22e893cb5fc2b2b6ebd60b88478ab8556cb3b93f9a0d7ce8f3b61851871d4
@@ -69,6 +70,8 @@ jobs:
             https://github.com/pnggroup/libpng.git deps-src/libpng
           git clone --depth 1 --branch "${FLAC_REF}" \
             https://github.com/xiph/flac.git deps-src/flac
+          git clone --depth 1 --branch "${FFMPEG_REF}" \
+            https://github.com/FFmpeg/FFmpeg.git deps-src/FFmpeg
           git clone --depth 1 --branch "${GLIB_REF}" \
             https://github.com/GNOME/glib.git deps-src/glib
           curl -fsSL -o deps-src/libmpeg2.tar.gz \
@@ -87,9 +90,11 @@ jobs:
           export WINUAE_LIBPNG_SOURCE="${GITHUB_WORKSPACE}/deps-src/libpng"
           export WINUAE_FLAC_SOURCE="${GITHUB_WORKSPACE}/deps-src/flac"
           export WINUAE_LIBMPEG2_SOURCE="${GITHUB_WORKSPACE}/deps-src/libmpeg2-${LIBMPEG2_VERSION}"
+          export WINUAE_FFMPEG_SOURCE="${GITHUB_WORKSPACE}/deps-src/FFmpeg"
           export WINUAE_REQUIRE_LIBPNG=1
           export WINUAE_REQUIRE_FLAC=1
           export WINUAE_REQUIRE_LIBMPEG2=1
+          export WINUAE_REQUIRE_FFMPEG=1
 
           tools/macos-build-deps.sh "${DEPS_PREFIX}"
 
