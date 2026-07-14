@@ -203,8 +203,8 @@ jobs:
           echo "AppImage: ${image}"
           ls -lh "${image}"
 
-          # Confirm the binary, our Qt6 runtime + xcb plugin, and the PPC
-          # plugin were all bundled.
+          # Confirm the binary, our Qt6 runtime + xcb plugin, and both
+          # runtime plugins were bundled.
           rm -rf squashfs-root
           "${image}" --appimage-extract >/dev/null
           contents="$(find squashfs-root -type f | sort)"
@@ -215,6 +215,7 @@ jobs:
           grep -Eq 'libQt6Core\.so' <<<"${contents}"
           grep -Eq 'platforms/libqxcb\.so' <<<"${contents}"
           grep -Eq '/winuae/plugins/qemu-uae\.so$' <<<"${contents}"
+          grep -Eq '/winuae/plugins/FloppyBridge\.so$' <<<"${contents}"
 
           # Confirm portability: nothing in the payload requires a glibc newer
           # than 2.39 (the 24.04 build host).
