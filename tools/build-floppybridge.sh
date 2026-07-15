@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source_dir="${WINUAE_FLOPPYBRIDGE_SOURCE_DIR:-}"
 output="${1:-${WINUAE_FLOPPYBRIDGE_OUTPUT:-}}"
 work_dir="${WINUAE_FLOPPYBRIDGE_WORK_DIR:-$(pwd)/floppybridge-work}"
@@ -43,6 +44,21 @@ case "$(uname -s)" in
         shared_flags="-std=c++17 -dynamiclib -fPIC -mmacosx-version-min=${deployment_target} -Ifloppybridge -Iwindows"
         ;;
     Linux)
+        # The pinned upstream fallback passes numeric 2000000 to cfsetspeed(),
+        # which expects B2000000 and rejects DrawBridge ports on the Ubuntu
+        # versions used for portable builds. Carry the focused fix until an
+        # equivalent upstream commit is available.
+        serial_patch="${script_dir}/patches/floppybridge-linux-b2000000.patch"
+        if patch --batch --forward --silent --dry-run -d "${source_dir}" -p1 \
+            <"${serial_patch}" >/dev/null 2>&1; then
+            patch --batch --forward -d "${source_dir}" -p1 <"${serial_patch}"
+        elif patch --batch --reverse --silent --dry-run -d "${source_dir}" -p1 \
+            <"${serial_patch}" >/dev/null 2>&1; then
+            echo "FloppyBridge 2 Mbaud patch already applied"
+        else
+            echo "error: could not apply FloppyBridge 2 Mbaud patch" >&2
+            exit 1
+        fi
         shared_flags="-std=c++17 -shared -fPIC -Ifloppybridge -Iwindows"
         ;;
     *)
@@ -64,4 +80,17 @@ fi
 if [[ ! -f "${output}" ]]; then
     echo "error: FloppyBridge build did not produce ${output}" >&2
     exit 1
+fi
+
+if [[ "$(uname -s)" == "Linux" ]]; then
+    mkdir -p "${work_dir}"
+    baud_smoke="${work_dir}/floppybridge-linux-baud-smoke"
+    "${CXX:-c++}" -std=c++17 \
+        -I"${source_dir}/floppybridge" \
+        "${script_dir}/floppybridge-linux-baud-smoke.cpp" \
+        "${source_dir}/floppybridge/SerialIO.cpp" \
+        "${source_dir}/floppybridge/ftdi.cpp" \
+        -ldl \
+        -o "${baud_smoke}"
+    "${baud_smoke}"
 fi

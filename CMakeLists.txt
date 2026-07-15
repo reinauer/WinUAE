@@ -2124,7 +2124,10 @@ if(UNIX AND WINUAE_UNIX_WITH_FLOPPYBRIDGE
             "WINUAE_FLOPPYBRIDGE_FETCH=$<BOOL:${WINUAE_FLOPPYBRIDGE_FETCH}>"
             "${CMAKE_CURRENT_SOURCE_DIR}/tools/build-floppybridge.sh"
             "${WINUAE_FLOPPYBRIDGE_PLUGIN_PATH}"
-        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/tools/build-floppybridge.sh"
+        DEPENDS
+            "${CMAKE_CURRENT_SOURCE_DIR}/tools/build-floppybridge.sh"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tools/floppybridge-linux-baud-smoke.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tools/patches/floppybridge-linux-b2000000.patch"
         WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
         COMMENT "Building FloppyBridge real-drive plugin"
         VERBATIM
