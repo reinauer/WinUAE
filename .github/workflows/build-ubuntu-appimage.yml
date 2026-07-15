@@ -63,6 +63,7 @@ jobs:
             libavutil-dev \
             libdrm-dev \
             libdecor-0-dev \
+            libdecor-0-plugin-1-cairo \
             libegl1-mesa-dev \
             libfdt-dev \
             libflac-dev \
@@ -152,7 +153,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ env.DEPS_PREFIX }}
-          key: linux-appimage-deps-${{ runner.os }}-sdl-${{ env.SDL3_REF }}-qt-${{ env.QTBASE_REF }}
+          # Include the dependency-build script in the key. This invalidates
+          # cached SDL/Qt prefixes when required SDL features change.
+          key: linux-appimage-deps-v3-ubuntu-24.04-sdl-${{ env.SDL3_REF }}-qt-${{ env.QTBASE_REF }}-${{ hashFiles('tools/appimage-build-deps.sh') }}
 
       - name: Build SDL3 and Qt6 from source
         if: steps.deps-cache.outputs.cache-hit != 'true'
@@ -163,6 +166,20 @@ jobs:
           export WINUAE_QT_SOURCE="${GITHUB_WORKSPACE}/deps-src/qtbase"
 
           tools/appimage-build-deps.sh "${DEPS_PREFIX}"
+
+      - name: Verify SDL3 Wayland decorations
+        run: |
+          set -euo pipefail
+
+          sdl_library="$(readlink -e "${DEPS_PREFIX}/lib/libSDL3.so.0" || true)"
+          if [[ -z "${sdl_library}" ]]; then
+            echo "error: cached dependency prefix does not contain libSDL3.so.0" >&2
+            exit 1
+          fi
+          if ! grep -aFq 'libdecor-0.so.0' "${sdl_library}"; then
+            echo "error: cached SDL3 lacks libdecor Wayland-decoration support" >&2
+            exit 1
+          fi
 
       - name: Build AppImage
         run: |
@@ -216,6 +233,26 @@ jobs:
           grep -Eq 'platforms/libqxcb\.so' <<<"${contents}"
           grep -Eq '/winuae/plugins/qemu-uae\.so$' <<<"${contents}"
           grep -Eq '/winuae/plugins/FloppyBridge\.so$' <<<"${contents}"
+
+          sdl_library="$(readlink -e squashfs-root/usr/lib/libSDL3.so.0 || true)"
+          if [[ -z "${sdl_library}" ]] \
+              || ! grep -aFq 'libdecor-0.so.0' "${sdl_library}"; then
+            echo "error: AppImage SDL3 lacks libdecor Wayland-decoration support" >&2
+            exit 1
+          fi
+
+          libdecor_library="$(find squashfs-root/usr/lib -maxdepth 1 \
+            \( -type f -o -type l \) -name 'libdecor-0.so.0*' -print -quit)"
+          libdecor_plugin="$(find squashfs-root/usr/lib/libdecor/plugins-1 \
+            -type f -name 'libdecor-*.so' -print -quit 2>/dev/null)"
+          if [[ -z "${libdecor_library}" || -z "${libdecor_plugin}" ]]; then
+            echo "error: AppImage does not contain the libdecor runtime and plugin" >&2
+            exit 1
+          fi
+          if ! grep -Fq 'LIBDECOR_PLUGIN_DIR=' squashfs-root/AppRun; then
+            echo "error: AppImage AppRun does not select its bundled libdecor plugin" >&2
+            exit 1
+          fi
 
           # Confirm portability: nothing in the payload requires a glibc newer
           # than 2.39 (the 24.04 build host).
