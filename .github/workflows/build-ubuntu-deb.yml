@@ -118,6 +118,16 @@ jobs:
             ! grep -Eq ' \./usr/bin/winuae_unix$' <<<"${contents}"
             grep -Eq ' \./usr/lib.*/winuae/plugins/qemu-uae\.so$' \
               <<<"${contents}"
+
+            inspect_dir="$(mktemp -d)"
+            dpkg-deb --extract "${deb}" "${inspect_dir}"
+            drive_sounds_dir="$(find "${inspect_dir}/usr" -type d \
+              -path '*/winuae/plugins/floppysounds' -print -quit)"
+            if [[ -z "${drive_sounds_dir}" ]]; then
+              echo "error: package does not contain plugins/floppysounds" >&2
+              exit 1
+            fi
+            tools/require-drive-sounds.sh "${drive_sounds_dir}"
           done
 
       - name: Upload Debian package
