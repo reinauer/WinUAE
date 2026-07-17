@@ -234,6 +234,14 @@ jobs:
           grep -Eq '/winuae/plugins/qemu-uae\.so$' <<<"${contents}"
           grep -Eq '/winuae/plugins/FloppyBridge\.so$' <<<"${contents}"
 
+          drive_sounds_dir="$(find squashfs-root/usr -type d \
+            -path '*/winuae/plugins/floppysounds' -print -quit)"
+          if [[ -z "${drive_sounds_dir}" ]]; then
+            echo "error: AppImage does not contain plugins/floppysounds" >&2
+            exit 1
+          fi
+          tools/require-drive-sounds.sh "${drive_sounds_dir}"
+
           sdl_library="$(readlink -e squashfs-root/usr/lib/libSDL3.so.0 || true)"
           if [[ -z "${sdl_library}" ]] \
               || ! grep -aFq 'libdecor-0.so.0' "${sdl_library}"; then
