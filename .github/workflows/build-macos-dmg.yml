@@ -17,10 +17,10 @@ env:
   MACOS_DEPLOYMENT_TARGET: "13.0"
   SDL3_REF: release-3.4.8
   QTBASE_REF: v6.11.1
-  LIBPNG_REF: v1.6.50
+  LIBPNG_REF: v1.6.58
   FLAC_REF: "1.5.0"
   FFMPEG_REF: "n8.1.2"
-  GLIB_REF: "2.88.1"
+  GLIB_REF: "2.88.2"
   LIBMPEG2_VERSION: "0.5.1"
   LIBMPEG2_SHA256: dee22e893cb5fc2b2b6ebd60b88478ab8556cb3b93f9a0d7ce8f3b61851871d4
   BUILD_DIR: ${{ github.workspace }}/build/macos

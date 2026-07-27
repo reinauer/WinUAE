@@ -541,8 +541,8 @@ if(WINUAE_UNIX_WITH_LUA)
     elseif(WINUAE_LUA_FETCH)
         include(FetchContent)
         FetchContent_Declare(lua
-            URL https://www.lua.org/ftp/lua-5.4.7.tar.gz
-            URL_HASH SHA256=9fbf5e28ef86c69858f6d3d34eccc32e911c1a28b4120ff3e84aaa70cfbf1e30
+            URL https://www.lua.org/ftp/lua-5.4.8.tar.gz
+            URL_HASH SHA256=4f18ddae154e793e46eeab727c59ef1c0c0c2b744e7b94219710d76f530629ae
             DOWNLOAD_EXTRACT_TIMESTAMP TRUE
         )
         FetchContent_MakeAvailable(lua)
@@ -579,8 +579,10 @@ if(WINUAE_UNIX_WITH_PRINTER_EMULATION)
         set(FT_DISABLE_PNG TRUE CACHE BOOL "" FORCE)
         set(FT_DISABLE_ZLIB TRUE CACHE BOOL "" FORCE)
         FetchContent_Declare(freetype
-            URL https://download.savannah.gnu.org/releases/freetype/freetype-2.13.2.tar.xz
-            URL_HASH SHA256=12991c4e55c506dd7f9b765933e62fd2be2e06d421505d7950a132e4f1bb484d
+            URL
+                https://downloads.sourceforge.net/project/freetype/freetype2/2.14.3/freetype-2.14.3.tar.xz
+                https://download.savannah.gnu.org/releases/freetype/freetype-2.14.3.tar.xz
+            URL_HASH SHA256=36bc4f1cc413335368ee656c42afca65c5a3987e8768cc28cf11ba775e785a5f
             DOWNLOAD_EXTRACT_TIMESTAMP TRUE
         )
         set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
