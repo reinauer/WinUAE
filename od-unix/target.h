@@ -8,7 +8,7 @@
  * empty when Windows is not in a beta cycle). CMake fails the configure
  * when these drift from the Windows target. */
 #define WINUAEPUBLICBETA 1
-#define WINUAEBETA "10"
+#define WINUAEBETA "12"
 
 #define TARGET_ROM_PATH _T("~/")
 #define TARGET_FLOPPY_PATH _T("~/")
