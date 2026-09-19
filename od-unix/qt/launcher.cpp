@@ -68,6 +68,10 @@
 #define WINUAE_UNIX_VERSION_REVISION 0
 #endif
 
+#ifndef ENABLE_KDE_PLASMA
+#define ENABLE_KDE_PLASMA 0
+#endif
+
 #ifndef UAE_UNIX_WITH_BSDSOCKET
 #define UAE_UNIX_WITH_BSDSOCKET 0
 #endif
@@ -124,8 +128,10 @@
 #define UAE_UNIX_WITH_TABLET 0
 #endif
 
+#if !ENABLE_KDE_PLASMA
 static bool systemPrefersDarkMode();
 static void applyApplicationColors(QApplication &app, bool dark);
+#endif
 
 /* QButtonGroup ids must not be -1 (it means auto-assign, and checkedId()
  * returns -1 for "no selection"). */
@@ -5336,7 +5342,7 @@ QString winUaeQtInitialConfigPathFromArguments(const QStringList &arguments)
 
 static int &prepareQtApplicationArguments(int &argc)
 {
-#if defined(__linux__)
+#if defined(__linux__) && !ENABLE_KDE_PLASMA
     QCoreApplication::setAttribute(Qt::AA_DontUseNativeDialogs);
 #endif
     return argc;
@@ -11938,7 +11944,11 @@ private:
         miscGuiDarkMode->setTristate(true);
         disableUnavailable(osdFont, QStringLiteral("OSD font selection is not implemented yet."));
         disableUnavailable(resetLists, QStringLiteral("List customization storage is not implemented in the Unix Qt frontend yet."));
+#if ENABLE_KDE_PLASMA
+        disableUnavailable(miscGuiDarkMode, QStringLiteral("Appearance is controlled by KDE Plasma in this build."));
+#else
         miscGuiDarkMode->setToolTip(QStringLiteral("Matches Windows: unchecked is light, checked is dark, mixed follows the system appearance."));
+#endif
 
         QHBoxLayout *fontRow = new QHBoxLayout;
         fontRow->setContentsMargins(0, 0, 0, 0);
@@ -12142,6 +12152,9 @@ private:
 
     void applyGuiDarkModeSelection()
     {
+#if ENABLE_KDE_PLASMA
+        return;
+#else
         if (!miscGuiDarkMode || !qApp) {
             return;
         }
@@ -12152,6 +12165,7 @@ private:
             dark = systemPrefersDarkMode();
         }
         applyApplicationColors(*qApp, dark);
+#endif
     }
 
     void applyGuiFont(const QFont &font, const QString &config)
@@ -17714,6 +17728,7 @@ private:
     }
 };
 
+#if !ENABLE_KDE_PLASMA
 static bool systemPrefersDarkMode()
 {
 #if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
@@ -17787,9 +17802,13 @@ static void applyApplicationColors(QApplication &app, bool dark)
         "QWidget:disabled { color: #808080; }"
     ));
 }
+#endif
 
 static void setupApplicationStyle(QApplication &app)
 {
+#if ENABLE_KDE_PLASMA
+    Q_UNUSED(app);
+#else
     if (QStyle *style = QStyleFactory::create(QStringLiteral("Windows"))) {
         app.setStyle(style);
     } else if (QStyle *style = QStyleFactory::create(QStringLiteral("Fusion"))) {
@@ -17817,6 +17836,7 @@ static void setupApplicationStyle(QApplication &app)
     font.setPixelSize(12);
     app.setFont(font);
     applyApplicationColors(app, systemPrefersDarkMode());
+#endif
 }
 
 static void armQtSmokeExit(QDialog &dialog, QApplication *app = nullptr)
