@@ -121,7 +121,8 @@ jobs:
             -DWINUAE_UNIX_MACOS_DEPS_PREFIX="${DEPS_PREFIX}" \
             -DWINUAE_QEMU_UAE_DEPS_PREFIX="${DEPS_PREFIX}" \
             -DWINUAE_QEMU_UAE_BUILDER_DIR="${GITHUB_WORKSPACE}/uae-ppc-plugin" \
-            -DWINUAE_LZMA_SDK_FETCH=ON
+            -DWINUAE_LZMA_SDK_FETCH=ON \
+            -DENABLE_KDE_PLASMA=ON
 
       - name: Build and verify DMG
         shell: bash
