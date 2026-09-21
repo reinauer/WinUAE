@@ -5407,15 +5407,24 @@ public:
     {
         setWindowTitle(QStringLiteral("WinUAE Properties"));
         setWindowIcon(resourceIcon(QStringLiteral("winuae.ico")));
+#if !ENABLE_KDE_PLASMA
         resize(880, 640);
         setMinimumSize(820, 600);
+#else
+        resize(970, 670);
+        setMinimumSize(970, 670);
+#endif
 
         navigation = new QTreeWidget;
         navigation->setHeaderHidden(true);
         navigation->setRootIsDecorated(true);
         navigation->setIndentation(12);
         navigation->setIconSize(QSize(16, 16));
+#if !ENABLE_KDE_PLASMA
         navigation->setFixedWidth(166);
+#else
+        navigation->setMinimumWidth(200);
+#endif
 
         pageStack = new QStackedWidget;
         pageStack->setObjectName(QStringLiteral("pageStack"));
@@ -5468,18 +5477,36 @@ public:
             }
         });
 
+#if !ENABLE_KDE_PLASMA
         QFrame *outerFrame = new QFrame;
         outerFrame->setFrameShape(QFrame::Box);
         outerFrame->setObjectName(QStringLiteral("outerFrame"));
         QVBoxLayout *frameLayout = new QVBoxLayout(outerFrame);
+#else
+        QWidget *pageContainer = new QWidget;
+        QVBoxLayout *frameLayout = new QVBoxLayout(pageContainer);
+#endif
         frameLayout->setContentsMargins(4, 4, 4, 4);
         frameLayout->addWidget(pageStack);
 
+#if !ENABLE_KDE_PLASMA
         QHBoxLayout *content = new QHBoxLayout;
         content->setContentsMargins(0, 0, 0, 0);
         content->setSpacing(5);
+#else
+        QSplitter *content = new QSplitter(Qt::Horizontal);
+        content->setChildrenCollapsible(false);
+        content->setHandleWidth(5);
+#endif
         content->addWidget(navigation);
+#if !ENABLE_KDE_PLASMA
         content->addWidget(outerFrame, 1);
+#else
+        content->addWidget(pageContainer);
+        content->setStretchFactor(0, 0);
+        content->setStretchFactor(1, 1);
+        content->setSizes({200, 709});
+#endif
 
         runtimeMode = hardwareProvider.pollHostWindowEvents != nullptr;
         QPushButton *reset = new QPushButton(QStringLiteral("Reset"));
@@ -5538,7 +5565,11 @@ public:
         QVBoxLayout *root = new QVBoxLayout(this);
         root->setContentsMargins(6, 6, 6, 6);
         root->setSpacing(5);
+#if !ENABLE_KDE_PLASMA
         root->addLayout(content, 1);
+#else
+        root->addWidget(content, 1);
+#endif
         root->addWidget(status);
         root->addLayout(buttons);
 
@@ -17759,7 +17790,9 @@ static void applyApplicationColors(QApplication &app, bool dark)
         app.setPalette(palette);
         app.setStyleSheet(QStringLiteral(
             "QDialog, QWidget#page, QStackedWidget#pageStack { background: #202020; color: #f0f0f0; }"
+#if !ENABLE_KDE_PLASMA
             "QFrame#outerFrame { border: 1px solid #5a5a5a; background: #202020; }"
+#endif
             "QTreeWidget, QListWidget, QTableWidget, QPlainTextEdit { background: #121212; color: #f0f0f0; border: 1px solid #5a5a5a; alternate-background-color: #1a1a1a; }"
             "QGroupBox { margin-top: 14px; padding: 9px 6px 6px 6px; color: #f0f0f0; }"
             "QGroupBox::title { subcontrol-origin: margin; left: 8px; padding: 0 3px; font-size: 13px; }"
@@ -17791,7 +17824,9 @@ static void applyApplicationColors(QApplication &app, bool dark)
 
     app.setStyleSheet(QStringLiteral(
         "QDialog, QWidget#page, QStackedWidget#pageStack { background: #f0f0f0; color: #000000; }"
+#if !ENABLE_KDE_PLASMA
         "QFrame#outerFrame { border: 1px solid #808080; background: #f0f0f0; }"
+#endif
         "QTreeWidget, QListWidget, QTableWidget, QPlainTextEdit { background: #ffffff; color: #000000; border: 1px solid #7f9db9; alternate-background-color: #f7f7f7; }"
         "QGroupBox { margin-top: 14px; padding: 9px 6px 6px 6px; }"
         "QGroupBox::title { subcontrol-origin: margin; left: 8px; padding: 0 3px; font-size: 13px; }"
