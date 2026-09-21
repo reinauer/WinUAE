@@ -67,8 +67,8 @@
 #define WINUAE_UNIX_VERSION_REVISION 0
 #endif
 
-#ifndef ENABLE_KDE_PLASMA
-#define ENABLE_KDE_PLASMA 0
+#ifndef WINUAE_QT_DEFAULT_STYLE
+#define WINUAE_QT_DEFAULT_STYLE 0
 #endif
 
 #ifndef UAE_UNIX_WITH_BSDSOCKET
@@ -127,7 +127,7 @@
 #define UAE_UNIX_WITH_TABLET 0
 #endif
 
-#if !ENABLE_KDE_PLASMA
+#if !WINUAE_QT_DEFAULT_STYLE
 static bool systemPrefersDarkMode();
 static void applyApplicationColors(QApplication &app, bool dark);
 #endif
@@ -5341,7 +5341,7 @@ QString winUaeQtInitialConfigPathFromArguments(const QStringList &arguments)
 
 static int &prepareQtApplicationArguments(int &argc)
 {
-#if defined(__linux__) && !ENABLE_KDE_PLASMA
+#if defined(__linux__) && !WINUAE_QT_DEFAULT_STYLE
     QCoreApplication::setAttribute(Qt::AA_DontUseNativeDialogs);
 #endif
     return argc;
@@ -5407,7 +5407,7 @@ public:
     {
         setWindowTitle(QStringLiteral("WinUAE Properties"));
         setWindowIcon(resourceIcon(QStringLiteral("winuae.ico")));
-#if !ENABLE_KDE_PLASMA
+#if !WINUAE_QT_DEFAULT_STYLE
         resize(880, 640);
         setMinimumSize(820, 600);
 #else
@@ -5420,7 +5420,7 @@ public:
         navigation->setRootIsDecorated(true);
         navigation->setIndentation(12);
         navigation->setIconSize(QSize(16, 16));
-#if !ENABLE_KDE_PLASMA
+#if !WINUAE_QT_DEFAULT_STYLE
         navigation->setFixedWidth(166);
 #else
         navigation->setMinimumWidth(200);
@@ -5477,7 +5477,7 @@ public:
             }
         });
 
-#if !ENABLE_KDE_PLASMA
+#if !WINUAE_QT_DEFAULT_STYLE
         QFrame *outerFrame = new QFrame;
         outerFrame->setFrameShape(QFrame::Box);
         outerFrame->setObjectName(QStringLiteral("outerFrame"));
@@ -5489,7 +5489,7 @@ public:
         frameLayout->setContentsMargins(4, 4, 4, 4);
         frameLayout->addWidget(pageStack);
 
-#if !ENABLE_KDE_PLASMA
+#if !WINUAE_QT_DEFAULT_STYLE
         QHBoxLayout *content = new QHBoxLayout;
         content->setContentsMargins(0, 0, 0, 0);
         content->setSpacing(5);
@@ -5499,7 +5499,7 @@ public:
         content->setHandleWidth(5);
 #endif
         content->addWidget(navigation);
-#if !ENABLE_KDE_PLASMA
+#if !WINUAE_QT_DEFAULT_STYLE
         content->addWidget(outerFrame, 1);
 #else
         content->addWidget(pageContainer);
@@ -5565,7 +5565,7 @@ public:
         QVBoxLayout *root = new QVBoxLayout(this);
         root->setContentsMargins(6, 6, 6, 6);
         root->setSpacing(5);
-#if !ENABLE_KDE_PLASMA
+#if !WINUAE_QT_DEFAULT_STYLE
         root->addLayout(content, 1);
 #else
         root->addWidget(content, 1);
@@ -11974,7 +11974,7 @@ private:
         miscGuiDarkMode->setTristate(true);
         disableUnavailable(osdFont, QStringLiteral("OSD font selection is not implemented yet."));
         disableUnavailable(resetLists, QStringLiteral("List customization storage is not implemented in the Unix Qt frontend yet."));
-#if ENABLE_KDE_PLASMA
+#if WINUAE_QT_DEFAULT_STYLE
         disableUnavailable(miscGuiDarkMode, QStringLiteral("Appearance is controlled by KDE Plasma in this build."));
 #else
         miscGuiDarkMode->setToolTip(QStringLiteral("Matches Windows: unchecked is light, checked is dark, mixed follows the system appearance."));
@@ -12182,7 +12182,7 @@ private:
 
     void applyGuiDarkModeSelection()
     {
-#if ENABLE_KDE_PLASMA
+#if WINUAE_QT_DEFAULT_STYLE
         return;
 #else
         if (!miscGuiDarkMode || !qApp) {
@@ -17758,7 +17758,7 @@ private:
     }
 };
 
-#if !ENABLE_KDE_PLASMA
+#if !WINUAE_QT_DEFAULT_STYLE
 static bool systemPrefersDarkMode()
 {
 #if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
@@ -17790,7 +17790,7 @@ static void applyApplicationColors(QApplication &app, bool dark)
         app.setPalette(palette);
         app.setStyleSheet(QStringLiteral(
             "QDialog, QWidget#page, QStackedWidget#pageStack { background: #202020; color: #f0f0f0; }"
-#if !ENABLE_KDE_PLASMA
+#if !WINUAE_QT_DEFAULT_STYLE
             "QFrame#outerFrame { border: 1px solid #5a5a5a; background: #202020; }"
 #endif
             "QTreeWidget, QListWidget, QTableWidget, QPlainTextEdit { background: #121212; color: #f0f0f0; border: 1px solid #5a5a5a; alternate-background-color: #1a1a1a; }"
@@ -17824,7 +17824,7 @@ static void applyApplicationColors(QApplication &app, bool dark)
 
     app.setStyleSheet(QStringLiteral(
         "QDialog, QWidget#page, QStackedWidget#pageStack { background: #f0f0f0; color: #000000; }"
-#if !ENABLE_KDE_PLASMA
+#if !WINUAE_QT_DEFAULT_STYLE
         "QFrame#outerFrame { border: 1px solid #808080; background: #f0f0f0; }"
 #endif
         "QTreeWidget, QListWidget, QTableWidget, QPlainTextEdit { background: #ffffff; color: #000000; border: 1px solid #7f9db9; alternate-background-color: #f7f7f7; }"
@@ -17840,7 +17840,7 @@ static void applyApplicationColors(QApplication &app, bool dark)
 
 static void setupApplicationStyle(QApplication &app)
 {
-#if ENABLE_KDE_PLASMA
+#if WINUAE_QT_DEFAULT_STYLE
     Q_UNUSED(app);
 #else
     if (QStyle *style = QStyleFactory::create(QStringLiteral("Windows"))) {
