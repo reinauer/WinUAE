@@ -122,7 +122,7 @@ jobs:
             -DWINUAE_QEMU_UAE_DEPS_PREFIX="${DEPS_PREFIX}" \
             -DWINUAE_QEMU_UAE_BUILDER_DIR="${GITHUB_WORKSPACE}/uae-ppc-plugin" \
             -DWINUAE_LZMA_SDK_FETCH=ON \
-            -DWINUAE_QT_DEFAULT_STYLE=ON
+            -DWINUAE_UNIX_WITH_QT_DEFAULT_STYLE=ON
 
       - name: Build and verify DMG
         shell: bash
