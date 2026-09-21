@@ -305,7 +305,7 @@ option(WINUAE_UNIX_WITH_UAENET_PCAP "Build native libpcap and TAP/TUN packet net
 option(WINUAE_UNIX_WITH_PROWIZARD "Build Pro-Wizard module ripper support" ON)
 option(WINUAE_UNIX_WITH_QT_UI "Build the optional Unix Qt configuration UI" ON)
 option(WINUAE_UNIX_WITH_INTEGRATED_QT_UI "Allow winuae_unix to host the Unix Qt frontend" ON)
-option(WINUAE_QT_DEFAULT_STYLE "Let the Qt UI inherit the KDE Plasma style, colors, fonts, and native dialogs" OFF)
+option(WINUAE_UNIX_WITH_QT_DEFAULT_STYLE "Let the Qt UI inherit the KDE Plasma style, colors, fonts, and native dialogs" OFF)
 option(WINUAE_UNIX_WITH_LIBPNG "Build optional PNG screenshot support when libpng is available" ON)
 option(WINUAE_UNIX_WITH_PRINTER_EMULATION "Build Epson matrix printer emulation" ON)
 option(WINUAE_FREETYPE_FETCH "Fetch FreeType for portable macOS builds" ON)
@@ -2038,7 +2038,7 @@ if(WINUAE_UNIX_WITH_QT_UI)
             WINUAE_UNIX_VERSION_MAJOR=${WINUAE_UNIX_VERSION_MAJOR}
             WINUAE_UNIX_VERSION_MINOR=${WINUAE_UNIX_VERSION_MINOR}
             WINUAE_UNIX_VERSION_REVISION=${WINUAE_UNIX_VERSION_REVISION}
-            WINUAE_QT_DEFAULT_STYLE=$<BOOL:${WINUAE_QT_DEFAULT_STYLE}>
+            WINUAE_UNIX_WITH_QT_DEFAULT_STYLE=$<BOOL:${WINUAE_UNIX_WITH_QT_DEFAULT_STYLE}>
             $<$<BOOL:${WINUAE_UNIX_WITH_SLIRP}>:WITH_SLIRP=1>
             UAE_UNIX_WITH_SANA2=$<BOOL:${WINUAE_UNIX_ENABLE_SANA2}>
             UAE_UNIX_WITH_UAENET_PCAP=$<BOOL:${WINUAE_UNIX_ENABLE_UAENET_PCAP}>
