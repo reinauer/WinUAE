@@ -204,7 +204,7 @@ jobs:
             -DCMAKE_PREFIX_PATH="${DEPS_PREFIX}" \
             -DWINUAE_QEMU_UAE_BUILDER_DIR="${GITHUB_WORKSPACE}/uae-ppc-plugin" \
             -DWINUAE_LZMA_SDK_FETCH=ON \
-            -DENABLE_KDE_PLASMA=ON
+            -DWINUAE_QT_DEFAULT_STYLE=ON
 
       - name: Inspect and smoke-test AppImage
         run: |
