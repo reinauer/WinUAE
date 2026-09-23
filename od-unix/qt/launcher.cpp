@@ -67,6 +67,10 @@
 #define WINUAE_UNIX_VERSION_REVISION 0
 #endif
 
+#ifndef WINUAE_UNIX_WITH_QT_DEFAULT_STYLE
+#define WINUAE_UNIX_WITH_QT_DEFAULT_STYLE 0
+#endif
+
 #ifndef UAE_UNIX_WITH_BSDSOCKET
 #define UAE_UNIX_WITH_BSDSOCKET 0
 #endif
@@ -123,8 +127,10 @@
 #define UAE_UNIX_WITH_TABLET 0
 #endif
 
+#if !WINUAE_UNIX_WITH_QT_DEFAULT_STYLE
 static bool systemPrefersDarkMode();
 static void applyApplicationColors(QApplication &app, bool dark);
+#endif
 
 /* QButtonGroup ids must not be -1 (it means auto-assign, and checkedId()
  * returns -1 for "no selection"). */
@@ -5335,7 +5341,7 @@ QString winUaeQtInitialConfigPathFromArguments(const QStringList &arguments)
 
 static int &prepareQtApplicationArguments(int &argc)
 {
-#if defined(__linux__)
+#if defined(__linux__) && !WINUAE_UNIX_WITH_QT_DEFAULT_STYLE
     QCoreApplication::setAttribute(Qt::AA_DontUseNativeDialogs);
 #endif
     return argc;
@@ -5401,15 +5407,24 @@ public:
     {
         setWindowTitle(QStringLiteral("WinUAE Properties"));
         setWindowIcon(resourceIcon(QStringLiteral("winuae.ico")));
+#if !WINUAE_UNIX_WITH_QT_DEFAULT_STYLE
         resize(880, 640);
         setMinimumSize(820, 600);
+#else
+        resize(970, 670);
+        setMinimumSize(970, 670);
+#endif
 
         navigation = new QTreeWidget;
         navigation->setHeaderHidden(true);
         navigation->setRootIsDecorated(true);
         navigation->setIndentation(12);
         navigation->setIconSize(QSize(16, 16));
+#if !WINUAE_UNIX_WITH_QT_DEFAULT_STYLE
         navigation->setFixedWidth(166);
+#else
+        navigation->setMinimumWidth(200);
+#endif
 
         pageStack = new QStackedWidget;
         pageStack->setObjectName(QStringLiteral("pageStack"));
@@ -5462,18 +5477,36 @@ public:
             }
         });
 
+#if !WINUAE_UNIX_WITH_QT_DEFAULT_STYLE
         QFrame *outerFrame = new QFrame;
         outerFrame->setFrameShape(QFrame::Box);
         outerFrame->setObjectName(QStringLiteral("outerFrame"));
         QVBoxLayout *frameLayout = new QVBoxLayout(outerFrame);
+#else
+        QWidget *pageContainer = new QWidget;
+        QVBoxLayout *frameLayout = new QVBoxLayout(pageContainer);
+#endif
         frameLayout->setContentsMargins(4, 4, 4, 4);
         frameLayout->addWidget(pageStack);
 
+#if !WINUAE_UNIX_WITH_QT_DEFAULT_STYLE
         QHBoxLayout *content = new QHBoxLayout;
         content->setContentsMargins(0, 0, 0, 0);
         content->setSpacing(5);
+#else
+        QSplitter *content = new QSplitter(Qt::Horizontal);
+        content->setChildrenCollapsible(false);
+        content->setHandleWidth(5);
+#endif
         content->addWidget(navigation);
+#if !WINUAE_UNIX_WITH_QT_DEFAULT_STYLE
         content->addWidget(outerFrame, 1);
+#else
+        content->addWidget(pageContainer);
+        content->setStretchFactor(0, 0);
+        content->setStretchFactor(1, 1);
+        content->setSizes({200, 709});
+#endif
 
         runtimeMode = hardwareProvider.pollHostWindowEvents != nullptr;
         QPushButton *reset = new QPushButton(QStringLiteral("Reset"));
@@ -5532,7 +5565,11 @@ public:
         QVBoxLayout *root = new QVBoxLayout(this);
         root->setContentsMargins(6, 6, 6, 6);
         root->setSpacing(5);
+#if !WINUAE_UNIX_WITH_QT_DEFAULT_STYLE
         root->addLayout(content, 1);
+#else
+        root->addWidget(content, 1);
+#endif
         root->addWidget(status);
         root->addLayout(buttons);
 
@@ -11937,7 +11974,11 @@ private:
         miscGuiDarkMode->setTristate(true);
         disableUnavailable(osdFont, QStringLiteral("OSD font selection is not implemented yet."));
         disableUnavailable(resetLists, QStringLiteral("List customization storage is not implemented in the Unix Qt frontend yet."));
+#if WINUAE_UNIX_WITH_QT_DEFAULT_STYLE
+        disableUnavailable(miscGuiDarkMode, QStringLiteral("Appearance is controlled by KDE Plasma in this build."));
+#else
         miscGuiDarkMode->setToolTip(QStringLiteral("Matches Windows: unchecked is light, checked is dark, mixed follows the system appearance."));
+#endif
 
         QHBoxLayout *fontRow = new QHBoxLayout;
         fontRow->setContentsMargins(0, 0, 0, 0);
@@ -12141,6 +12182,9 @@ private:
 
     void applyGuiDarkModeSelection()
     {
+#if WINUAE_UNIX_WITH_QT_DEFAULT_STYLE
+        return;
+#else
         if (!miscGuiDarkMode || !qApp) {
             return;
         }
@@ -12151,6 +12195,7 @@ private:
             dark = systemPrefersDarkMode();
         }
         applyApplicationColors(*qApp, dark);
+#endif
     }
 
     void applyGuiFont(const QFont &font, const QString &config)
@@ -17713,6 +17758,7 @@ private:
     }
 };
 
+#if !WINUAE_UNIX_WITH_QT_DEFAULT_STYLE
 static bool systemPrefersDarkMode()
 {
 #if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
@@ -17744,7 +17790,9 @@ static void applyApplicationColors(QApplication &app, bool dark)
         app.setPalette(palette);
         app.setStyleSheet(QStringLiteral(
             "QDialog, QWidget#page, QStackedWidget#pageStack { background: #202020; color: #f0f0f0; }"
+#if !WINUAE_UNIX_WITH_QT_DEFAULT_STYLE
             "QFrame#outerFrame { border: 1px solid #5a5a5a; background: #202020; }"
+#endif
             "QTreeWidget, QListWidget, QTableWidget, QPlainTextEdit { background: #121212; color: #f0f0f0; border: 1px solid #5a5a5a; alternate-background-color: #1a1a1a; }"
             "QGroupBox { margin-top: 14px; padding: 9px 6px 6px 6px; color: #f0f0f0; }"
             "QGroupBox::title { subcontrol-origin: margin; left: 8px; padding: 0 3px; font-size: 13px; }"
@@ -17776,7 +17824,9 @@ static void applyApplicationColors(QApplication &app, bool dark)
 
     app.setStyleSheet(QStringLiteral(
         "QDialog, QWidget#page, QStackedWidget#pageStack { background: #f0f0f0; color: #000000; }"
+#if !WINUAE_UNIX_WITH_QT_DEFAULT_STYLE
         "QFrame#outerFrame { border: 1px solid #808080; background: #f0f0f0; }"
+#endif
         "QTreeWidget, QListWidget, QTableWidget, QPlainTextEdit { background: #ffffff; color: #000000; border: 1px solid #7f9db9; alternate-background-color: #f7f7f7; }"
         "QGroupBox { margin-top: 14px; padding: 9px 6px 6px 6px; }"
         "QGroupBox::title { subcontrol-origin: margin; left: 8px; padding: 0 3px; font-size: 13px; }"
@@ -17786,9 +17836,13 @@ static void applyApplicationColors(QApplication &app, bool dark)
         "QWidget:disabled { color: #808080; }"
     ));
 }
+#endif
 
 static void setupApplicationStyle(QApplication &app)
 {
+#if WINUAE_UNIX_WITH_QT_DEFAULT_STYLE
+    Q_UNUSED(app);
+#else
     if (QStyle *style = QStyleFactory::create(QStringLiteral("Windows"))) {
         app.setStyle(style);
     } else if (QStyle *style = QStyleFactory::create(QStringLiteral("Fusion"))) {
@@ -17816,6 +17870,7 @@ static void setupApplicationStyle(QApplication &app)
     font.setPixelSize(12);
     app.setFont(font);
     applyApplicationColors(app, systemPrefersDarkMode());
+#endif
 }
 
 static void armQtSmokeExit(QDialog &dialog, QApplication *app = nullptr)
