@@ -423,6 +423,88 @@ The Unix serial backend follows the same target-prefixed config style as Windows
 
 `TCP:host:port`, `TCP://host:port`, and `TCP:port` are accepted. Add `/wait` to delay startup until a client connects, for example `TCP://0.0.0.0:1234/wait`. Connect locally with `telnet 127.0.0.1 1234` or `nc 127.0.0.1 1234`.
 
+## GDB and MCP debugging
+
+The optional GDB remote server uses the existing debugger and is disabled
+by default. Enable it in a `.uae` configuration or with `-s` overrides:
+
+```ini
+debugging_features=gdbserver
+gdb_port=2345
+```
+
+The same settings apply to Windows builds. The server listens only on
+`127.0.0.1`, accepts one client, and stops at a CPU debugger boundary on
+attach. It supports the 18 m68k integer registers, physical RAM/ROM reads,
+RAM writes, stepping, PC breakpoints, and CPU data watchpoints. Disconnect
+resumes execution and removes only the remote client's breakpoints and
+watchpoints. Commands execute on the emulation thread; no networking thread
+accesses guest state. An enabled but unattached server does not trace the CPU.
+Release a host UI pause before attaching; the CPU must reach a debugger
+boundary to stop. The MCP launcher disables Windows focus/minimize pause
+settings through command-line overrides for its own process.
+
+Custom register reads at `$DFF000` use WinUAE's saved register snapshot;
+aligned word writes use its existing debugger hardware-write path. Other
+I/O banks and ROM writes return errors. Memory addresses are physical, not
+guest MMU translations. Watchpoints use the existing debugger's supported
+range below `$7FFF0000`, with a maximum length of 64 KiB; they are unavailable
+while its MMU debugger mode is enabled. The remote interface provides
+`monitor disasm <hex-address> <decimal-count>` (1–100 instructions) and
+`monitor screenshot <native-host-path>` (PNG; requires libpng on Unix).
+Screenshot paths may contain spaces. The server is unauthenticated and
+grants local clients control of the guest and screenshot output paths.
+
+Use the [WinUAE MCP server fork](https://github.com/reinauer/mcp-winuae-emu),
+which carries the protocol and cross-platform launcher fixes directly:
+
+```sh
+git clone https://github.com/reinauer/mcp-winuae-emu.git
+cd mcp-winuae-emu
+npm ci
+npm run build
+```
+
+Configure the MCP client to run `node /path/to/mcp-winuae-emu/dist/index.js`
+with these environment variables:
+
+```text
+WINUAE_PATH=/path/to/winuae
+WINUAE_CONFIG=/path/to/machine.uae
+WINUAE_GDB_PORT=2345
+```
+
+`WINUAE_PATH` accepts an executable, executable directory, or macOS app
+bundle. The fork fixes `OK` reply handling, pauses before guest-state
+access, preserves native paths, and enables GDB through command-line
+overrides without editing the configuration. Disconnect terminates only a
+process the MCP server launched; restart waits for that process to exit.
+Reset and disk changes restart an owned instance. They cannot restart an
+externally launched instance. Binary loading copies bytes to RAM; it does
+not relocate or launch Amiga Hunk executables. CPU/DMA profiling and the
+debug overlay are outside this interface.
+
+The packet parser test is included in `winuae_unix_tests`. It also builds
+independently with a C++17 compiler (`gdb_protocol.cpp` plus
+`gdb_protocol_test.cpp`). To exercise registers, RAM, custom registers,
+stepping, breakpoints, watchpoints and reconnect against a real emulator:
+
+```sh
+WINUAE_PATH=/path/to/winuae \
+WINUAE_ROM=/path/to/A500.rom \
+WINUAE_MCP_PATH=/path/to/mcp-winuae-emu \
+node tools/gdb-smoke.mjs
+```
+
+The smoke test creates one headless instance on a temporary local port,
+retains its log in a temporary directory, and waits for shutdown. It writes
+test instructions into guest RAM. Use `WINUAE_CPU_MODEL=68020` to repeat
+with that CPU model.
+`WINUAE_CPU_COMPATIBLE=false WINUAE_CACHE_SIZE=16384` selects JIT where the
+build supports it. Run `node tools/mcp-smoke.mjs` with the same three path
+variables to test the MCP stdio tools, disassembly, PNG output, reset and
+process ownership. Both tests require a built checkout of the MCP fork.
+
 ## Smoke Test
 
 The repository includes a headless A1200 smoke test. It uses SDL dummy video/audio by default and checks that ROM loading, audio initialization, and hard reset reached the expected log points:

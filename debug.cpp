@@ -54,6 +54,8 @@
 #include "ini.h"
 #include "readcpu.h"
 #include "keybuf.h"
+#include "gdb_server.h"
+#include "gdb_protocol.h"
 
 static int trace_mode;
 static uae_u32 trace_param[3];
@@ -8077,6 +8079,210 @@ void debug_exception(int nr)
 	}
 }
 
+// Keep remote ownership separate from console breakpoints and trainers.
+#ifdef DEBUGGER
+class GdbTarget : public winuae_gdb::Target {
+	bool breakpoints[BREAKPOINT_TOTAL]{};
+	bool watchpoints[MEMWATCH_TOTAL]{};
+	bool initialized_watchpoints = false;
+public:
+	winuae_gdb::Registers registers() override
+	{
+		MakeSR();
+		winuae_gdb::Registers values;
+		for (int i = 0; i < 16; ++i) values[i] = regs.regs[i];
+		values[16] = regs.sr;
+		values[17] = m68k_getpc();
+		return values;
+	}
+	bool write_registers(const winuae_gdb::Registers& values, uint32_t mask) override
+	{
+		if ((mask & (1 << 16)) && values[16] > 0xffff) return false;
+		if ((mask & (1 << 17)) && (values[17] & 1)) return false;
+		// MakeFromSR switches stack banks: apply it before writing the new A7.
+		if (mask & (1 << 16)) { regs.sr = values[16]; MakeFromSR(); }
+		for (int i = 0; i < 16; ++i) if (mask & (1 << i)) regs.regs[i] = values[i];
+		if (mask & (1 << 17)) {
+			m68k_setpc_normal(values[17]);
+			fill_prefetch();
+		}
+		return true;
+	}
+	bool read_memory(uint32_t address, size_t length, std::vector<uint8_t>& bytes) override
+	{
+		// Physical memory, independent of the console debugger's MMU mode.
+		// Custom registers use the existing snapshot, never live I/O reads.
+		uae_u8 snapshot[4 + 512 + 4];
+		bool have_snapshot = false;
+		size_t snapshot_size = 0;
+		for (size_t i = 0; i < length; ++i) {
+			uaecptr addr = address + static_cast<uaecptr>(i);
+			if (addr >= 0xdff000 && addr <= 0xdff1ff) {
+				if (!have_snapshot) {
+					save_custom(&snapshot_size, snapshot, 1);
+					have_snapshot = true;
+				}
+				size_t offset = 4 + (addr & 511);
+				if (offset >= snapshot_size) return false;
+				bytes.push_back(snapshot[offset]);
+			} else {
+				addrbank& bank = get_mem_bank(addr);
+				if (!(bank.flags & (ABFLAG_RAM | ABFLAG_ROM | ABFLAG_ROMIN)) || !bank.check(addr, 1)) return false;
+				bytes.push_back(static_cast<uint8_t>(bank.bget(addr)));
+			}
+		}
+		return true;
+	}
+	bool write_memory(uint32_t address, const std::vector<uint8_t>& bytes) override
+	{
+		// Validate the entire range before changing any guest state. Hardware
+		// writes require complete aligned words; ROM writes must report failure.
+		if (address >= 0xdff000 && uint64_t(address) + bytes.size() <= 0xdff200) {
+			if ((address & 1) || (bytes.size() & 1)) return false;
+			for (size_t i = 0; i < bytes.size(); i += 2)
+				debug_write_memory_16(address + static_cast<uaecptr>(i), (bytes[i] << 8) | bytes[i + 1]);
+			return true;
+		}
+		for (size_t i = 0; i < bytes.size(); ++i) {
+			uaecptr addr = address + static_cast<uaecptr>(i);
+			addrbank& bank = get_mem_bank(addr);
+			if (!(bank.flags & ABFLAG_RAM) || !bank.check(addr, 1)) return false;
+		}
+		for (size_t i = 0; i < bytes.size(); ++i) {
+			uaecptr addr = address + static_cast<uaecptr>(i);
+			get_mem_bank(addr).bput(addr, bytes[i]);
+		}
+		if (!bytes.empty()) {
+			flush_cpu_caches(true);
+			flush_icache(3);
+			fill_prefetch();
+		}
+		return true;
+	}
+	bool breakpoint(bool insert, unsigned type, uint32_t address, uint32_t length) override
+	{
+		if (type <= 1) {
+			if (length != 2 || (address & 1)) return false;
+			int free_slot = -1;
+			for (int i = 0; i < BREAKPOINT_TOTAL; ++i) {
+				if (breakpoints[i] && bpnodes[i].value1 == address) {
+					if (!insert) { bpnodes[i] = {}; breakpoints[i] = false; }
+					return true;
+				}
+				if (!bpnodes[i].enabled) free_slot = i;
+			}
+			if (!insert) return true;
+			if (free_slot < 0) return false;
+			breakpoint_node& bp = bpnodes[free_slot];
+			bp = {};
+			bp.type = BREAKPOINT_REG_PC; bp.value1 = address; bp.enabled = 1;
+			bp.mask = 0xffffffff; bp.chain = -1;
+			breakpoints[free_slot] = true;
+			return true;
+		}
+		// The existing watchpoint mapper uses signed bank boundaries. Keep
+		// remote ranges within its supported address space and preserve MMU mode.
+		if (type > 4 || mmu_enabled || length > 0x10000 || uint64_t(address) + length > 0x7fff0000) return false;
+		int rwi = type == 2 ? 2 : type == 3 ? 1 : 3;
+		int free_slot = -1;
+		for (int i = 0; i < MEMWATCH_TOTAL; ++i) {
+			memwatch_node& wp = mwnodes[i];
+			if (watchpoints[i] && wp.addr == address && wp.size == length && wp.rwi == rwi) {
+				if (!insert) { wp = {}; watchpoints[i] = false; memwatch_setup(); }
+				return true;
+			}
+			if (!wp.size) free_slot = i;
+		}
+		if (!insert) return true;
+		if (free_slot < 0) return false;
+		if (!memwatch_enabled) {
+			initialize_memwatch(0);
+			initialized_watchpoints = true;
+		}
+		memwatch_node& wp = mwnodes[free_slot];
+		wp = {}; wp.addr = address; wp.size = length; wp.rwi = rwi;
+		wp.access_mask = MW_MASK_CPU_D_R | MW_MASK_CPU_D_W;
+		wp.reg = wp.pc = wp.val_mask = 0xffffffff;
+		watchpoints[free_slot] = true;
+		memwatch_setup();
+		return true;
+	}
+	bool disassemble(uint32_t address, unsigned count, std::string& output) override
+	{
+		if (address & 1) return false;
+		for (unsigned i = 0; i < count; ++i) {
+			// Check instruction and extension words before calling the existing
+			// debugger disassembler. Never disassemble hardware registers.
+			if (address > 0xffffffe0) return false;
+			addrbank& bank = get_mem_bank(address);
+			if (!(bank.flags & (ABFLAG_RAM | ABFLAG_ROM | ABFLAG_ROMIN)) ||
+				!bank.check(address, 32)) return false;
+			TCHAR line[1024] = {};
+			uaecptr next = address;
+			int flags = disasm_flags;
+			disasm_flags &= ~(DISASM_FLAG_VAL | DISASM_FLAG_VAL_FORCE);
+			m68k_disasm_2(line, 1024, address, NULL, 0, &next, 1, NULL, NULL, 0xffffffff, 1);
+			disasm_flags = flags;
+			char* text = uutf8(line);
+			if (!text) return false;
+			output += text;
+			xfree(text);
+			if (next <= address || output.size() > winuae_gdb::Session::packet_size / 2) return false;
+			address = next;
+		}
+		return true;
+	}
+	bool screenshot(const std::string& path) override
+	{
+		TCHAR* filename = utf8u(path.c_str());
+		if (!filename) return false;
+		bool ok = screenshot_save(0, filename);
+		xfree(filename);
+		return ok;
+	}
+	void interrupt() override
+	{
+		trace_mode = TRACE_IMMEDIATE;
+		debugging = 1;
+		set_special(SPCFLAG_BRK);
+	}
+	void resume(bool step) override
+	{
+		inside_debugger = debugger_active = 0;
+		trace_mode = 0;
+		for (const auto& bp : bpnodes) if (bp.enabled > 0) trace_mode = TRACE_CHECKONLY;
+		if (step) { trace_mode = TRACE_SKIP_INS; trace_param[0] = 1; }
+		exception_debugging = step ? 1 : 0;
+		debugging = trace_mode ? -1 : 0;
+		if (trace_mode) set_special(SPCFLAG_BRK);
+	}
+	void detach() override
+	{
+		for (int i = 0; i < BREAKPOINT_TOTAL; ++i) {
+			if (breakpoints[i]) bpnodes[i] = {};
+			breakpoints[i] = false;
+		}
+		bool changed = false;
+		for (int i = 0; i < MEMWATCH_TOTAL; ++i) {
+			if (watchpoints[i]) { mwnodes[i] = {}; changed = true; }
+			watchpoints[i] = false;
+		}
+		bool have_watchpoints = false;
+		for (const auto& wp : mwnodes) if (wp.size) have_watchpoints = true;
+		if (initialized_watchpoints && !have_watchpoints) deinitialize_memwatch();
+		else if (changed && memwatch_enabled) memwatch_setup();
+		initialized_watchpoints = false;
+		resume(false);
+	}
+};
+
+winuae_gdb::Target& debug_gdb_target()
+{
+	static GdbTarget target;
+	return target;
+}
+#endif
+
 static bool check_breakpoint(struct breakpoint_node *bpn, uaecptr pc)
 {
 	int bpnum = -1;
@@ -8188,6 +8394,7 @@ static bool check_breakpoint_count(struct breakpoint_node *bpn, uaecptr pc)
 void debug (void)
 {
 	int wasactive;
+	char remote_reason[64] = "S05";
 
 	if (savestate_state || quit_program)
 		return;
@@ -8356,8 +8563,20 @@ void debug (void)
 			}
 		}
 	} else {
+		if (gdb_server_connected()) {
+			const char* kind = mwnodes[memwatch_triggered - 1].rwi == 3 ? "awatch" :
+				(mwhit.rwi & 2) ? "watch" : "rwatch";
+			snprintf(remote_reason, sizeof(remote_reason), "T05%s:%08x;", kind, mwhit.addr);
+		}
 		memwatch_hit_msg(memwatch_triggered - 1);
 		memwatch_triggered = 0;
+	}
+
+	if (gdb_server_connected()) {
+		inside_debugger = 1;
+		trace_mode = 0;
+		gdb_server_stop(remote_reason);
+		return;
 	}
 
 	wasactive = ismouseactive ();

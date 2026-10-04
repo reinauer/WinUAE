@@ -274,6 +274,12 @@
     <ClCompile Include="..\..\custom.cpp">
       <Filter>common</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\gdb_protocol.cpp">
+      <Filter>common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\gdb_server.cpp">
+      <Filter>common</Filter>
+    </ClCompile>
     <ClCompile Include="..\..\debug.cpp">
       <Filter>common</Filter>
     </ClCompile>

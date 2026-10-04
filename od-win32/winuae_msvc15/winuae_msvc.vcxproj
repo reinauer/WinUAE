@@ -1242,6 +1242,8 @@
     <ClCompile Include="..\..\crc32.cpp" />
     <ClCompile Include="..\..\custom.cpp" />
     <ClCompile Include="..\..\debug.cpp" />
+    <ClCompile Include="..\..\gdb_protocol.cpp" />
+    <ClCompile Include="..\..\gdb_server.cpp" />
     <ClCompile Include="..\..\disk.cpp" />
     <ClCompile Include="..\..\diskutil.cpp" />
     <ClCompile Include="..\..\dongle.cpp" />
