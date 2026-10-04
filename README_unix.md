@@ -732,3 +732,12 @@ export WINUAE_SMOKE_LOG=/tmp/winuae_unix_smoke.log
 `WINUAE_UNIX_WITH_PROWIZARD` is enabled by default and builds the same Pro Wizard source set used by the Windows project.
 `WINUAE_UNIX_WITH_QT_UI` is enabled by default, but Qt UI targets are skipped when Qt Widgets is not installed.
 `WINUAE_UNIX_WITH_INTEGRATED_QT_UI` is enabled by default. When Qt Widgets is not installed, the build continues without the integrated UI.
+
+`monitor segments [process-address-in-hex]` reports the current or selected
+AmigaDOS Process and its loaded segments as JSON. Each segment includes its
+zero-based load order, first payload address and allocated payload size.
+CLI and Workbench process segment lists are supported; corrupt, cyclic or
+unreadable lists fail without partial results. The limit is 256 segments.
+Use these addresses in the MCP client to relocate host symbols by hunk
+index; allocation sizes are bounds, not exact source/code lengths.
+The matching MCP tool is `winuae_loaded_segments`.

@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <string>
+#include <vector>
 
 namespace winuae_gdb {
 class GuestReader {
@@ -65,6 +66,35 @@ inline bool read_process(GuestReader& memory, uint32_t address, AmigaProcess& ou
 			!memory.bptr(table + 12, out.segments)) return false;
 	}
 	return out.segments >= 4 && out.segments <= 0xfffffff8;
+}
+
+struct AmigaSegment {
+	uint32_t link, address, size;
+};
+
+// LoadSeg headers contain the allocation size, followed by the next BPTR.
+// Bound both traversal and guest reads: corrupt lists must never hang a stop.
+inline bool read_segments(GuestReader& memory, uint32_t head,
+	std::vector<AmigaSegment>& segments)
+{
+	std::vector<AmigaSegment> found;
+	while (head) {
+		if ((head & 3) || head < 4 || head > 0xfffffff8 || found.size() == 256) return false;
+		for (const auto& segment : found) if (segment.link == head) return false;
+		uint32_t size, next;
+		if (!memory.u32(head - 4, size) || size < 8 || (size & 3) ||
+			uint64_t(head) + size - 4 > (uint64_t(1) << 32) ||
+			!memory.bptr(head, next)) return false;
+		// Inspect only metadata and the bounds, never allocate guest-sized data.
+		uint8_t byte;
+		if (size > 8 && (!memory.read(head + 4, &byte, 1) ||
+			!memory.read(head + size - 5, &byte, 1))) return false;
+		found.push_back({head, head + 4, size - 8});
+		head = next;
+	}
+	if (found.empty()) return false;
+	segments.swap(found);
+	return true;
 }
 
 inline std::string json_string(const std::string& value)

@@ -56,7 +56,8 @@ try {
  const long = value => { const b = Buffer.alloc(4); b.writeUInt32BE(value); return b; };
  const putLong = async (address, value) => g.writeMemory(address, long(value));
  await g.writeMemory(0x10000, Buffer.from('700152804e7160fe', 'hex'));
- await g.writeMemory(0xfffe, Buffer.from('4e71', 'hex'));
+ await g.writeMemory(0x10100, Buffer.from('4ef900010000', 'hex'));
+ await putLong(0xfff8, 16); await putLong(0xfffc, 0);
  await putLong(4, 0x21000); await putLong(0x21000 + 276, 0x22000);
  await g.writeMemory(0x22008, Buffer.from([13])); await putLong(0x2200a, 0x24000);
  await g.writeMemory(0x24000, Buffer.from('GDB fixture\0'));
@@ -65,10 +66,17 @@ try {
  await putLong(0x23000 + 60, 0xfffc / 4);
  await g.sendMonitorCommand('process-break name fixture');
  assert.equal(JSON.parse(await g.sendMonitorCommand('process-break status')).armed, true);
- await g.writeRegister(17, 0xfffe); await g.continue(); await delay(100);
+ await g.writeRegister(17, 0x10100); await g.continue(); await delay(100);
  assert.match(await g.pause(), /winuae-entry:00022000/);
  assert.equal((await g.readRegisters()).PC, 0x10000);
  assert.equal(JSON.parse(await g.sendMonitorCommand('process-break status')).armed, false);
+ const segments = JSON.parse(await g.sendMonitorCommand('segments'));
+ assert.equal(segments.process, 0x22000);
+ assert.deepEqual(segments.segments, [{index:0,address:0x10000,size:8}]);
+ assert.deepEqual(JSON.parse(await g.sendMonitorCommand('segments 22000')),segments);
+ await putLong(0xfffc, 0xfffc / 4);
+ await assert.rejects(g.sendMonitorCommand('segments'));
+ await putLong(0xfffc, 0);
  await g.sendMonitorCommand('process-break clear');
  await g.writeMemory(4, oldExec);
  await g.sendCommand('D');g.disconnect();g=new GdbProtocol();await g.connect('127.0.0.1',port);

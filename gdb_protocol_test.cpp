@@ -88,6 +88,18 @@ static void process_reader_tests()
 		"CLI process metadata");
 	require(process_name_matches(process.command, "demo"), "process basename matching");
 	require(!process_name_matches(process.command, "dem"), "process prefix must not match");
+	std::vector<AmigaSegment> segments;
+	memory.put32(4092, 24); memory.put32(4096, 5000 / 4);
+	memory.put32(4996, 16); memory.put32(5000, 0);
+	require(read_segments(memory, process.segments, segments) && segments.size() == 2 &&
+		segments[0].address == 4100 && segments[0].size == 16 && segments[1].address == 5004,
+		"segment load addresses and sizes");
+	memory.put32(5000, 4096 / 4);
+	require(!read_segments(memory, process.segments, segments), "cyclic segment list accepted");
+	memory.put32(5000, 0); memory.put32(4996, 0xfffffffc);
+	require(!read_segments(memory, process.segments, segments), "segment size overflow accepted");
+	memory.put32(4996, 4);
+	require(!read_segments(memory, process.segments, segments), "short segment header accepted");
 	memory.put32(1024 + 172, 0); memory.put32(1024 + 128, 2048 / 4);
 	memory.put32(2048 + 12, 4096 / 4);
 	require(read_process(memory, 1024, process) && process.segments == 4096 && process.command.empty(), "Workbench process metadata");

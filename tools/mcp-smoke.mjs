@@ -40,6 +40,16 @@ try {
  assert.equal(JSON.parse(await call('winuae_process_breakpoint', {action:'set',name:'Fixture'})).armed,true);
  assert.equal(JSON.parse(await call('winuae_process_breakpoint', {action:'status'})).name,'Fixture');
  assert.equal(JSON.parse(await call('winuae_process_breakpoint', {action:'clear'})).armed,false);
+ const ram = Buffer.alloc(0x310);
+ ram[8] = 13; ram.writeUInt32BE(0x20200, 10);
+ ram.writeUInt32BE(0x20100 / 4, 172);
+ ram.writeUInt32BE(0x20220 / 4, 0x100 + 16);
+ ram.writeUInt32BE(0x20300 / 4, 0x100 + 60);
+ ram.write('Fixture', 0x200); ram[0x220] = 7; ram.write('Fixture', 0x221);
+ ram.writeUInt32BE(16, 0x2fc);
+ await call('winuae_memory_write',{address:'$20000',data:ram.toString('hex')});
+ const segments=JSON.parse(await call('winuae_loaded_segments',{address:'$20000'}));
+ assert.deepEqual(segments.segments,[{index:0,address:0x20304,size:8}]);
  await call('winuae_status');
  await call('winuae_reset');
  await call('winuae_eject_disk',{drive:0});

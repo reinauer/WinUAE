@@ -8104,6 +8104,31 @@ public:
 	winuae_gdb::MonitorResult monitor(const std::string& command, std::string& result) override
 	{
 		using winuae_gdb::MonitorResult;
+		if (command == "segments" || command.compare(0, 9, "segments ") == 0) {
+			uaecptr address = 0;
+			if (command.size() > 8) {
+				auto text = command.substr(9);
+				if (text.empty() || text.size() > 8 || text.find_first_not_of("0123456789abcdefABCDEF") != std::string::npos)
+					return MonitorResult::error;
+				address = static_cast<uaecptr>(strtoul(text.c_str(), NULL, 16));
+				if (!address || (address & 3)) return MonitorResult::error;
+			}
+			winuae_gdb::AmigaProcess process;
+			std::vector<winuae_gdb::AmigaSegment> segments;
+			if (!winuae_gdb::read_process(*this, address, process) ||
+				!winuae_gdb::read_segments(*this, process.segments, segments)) return MonitorResult::error;
+			result = "{\"process\":" + std::to_string(process.address) +
+				",\"name\":" + winuae_gdb::json_string(process.name) +
+				",\"command\":" + winuae_gdb::json_string(process.command) + ",\"segments\":[";
+			for (size_t i = 0; i < segments.size(); ++i) {
+				const auto& segment = segments[i];
+				if (i) result += ",";
+				result += "{\"index\":" + std::to_string(i) + ",\"address\":" + std::to_string(segment.address) +
+					",\"size\":" + std::to_string(segment.size) + "}";
+			}
+			result += "]}";
+			return MonitorResult::ok;
+		}
 		if (command == "process-break clear") {
 			process_armed = false; process_name.clear(); process_address = 0;
 			return MonitorResult::ok;
