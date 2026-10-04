@@ -56,6 +56,7 @@
 #include "keybuf.h"
 #include "gdb_server.h"
 #include "gdb_protocol.h"
+#include "gdb_amiga.h"
 
 static int trace_mode;
 static uae_u32 trace_param[3];
@@ -8081,11 +8082,69 @@ void debug_exception(int nr)
 
 // Keep remote ownership separate from console breakpoints and trainers.
 #ifdef DEBUGGER
-class GdbTarget : public winuae_gdb::Target {
+class GdbTarget : public winuae_gdb::Target, private winuae_gdb::GuestReader {
+	std::string process_name;
+	uaecptr process_address = 0;
+	bool process_armed = false;
+	bool read(uint32_t address, uint8_t* bytes, size_t length) override
+	{
+		if (uint64_t(address) + length > (uint64_t(1) << 32)) return false;
+		for (size_t i = 0; i < length; ++i) {
+			uaecptr addr = address + static_cast<uaecptr>(i);
+			addrbank& bank = get_mem_bank(addr);
+			if (!(bank.flags & ABFLAG_RAM) || !bank.check(addr, 1)) return false;
+			bytes[i] = static_cast<uint8_t>(bank.bget(addr));
+		}
+		return true;
+	}
 	bool breakpoints[BREAKPOINT_TOTAL]{};
 	bool watchpoints[MEMWATCH_TOTAL]{};
 	bool initialized_watchpoints = false;
 public:
+	winuae_gdb::MonitorResult monitor(const std::string& command, std::string& result) override
+	{
+		using winuae_gdb::MonitorResult;
+		if (command == "process-break clear") {
+			process_armed = false; process_name.clear(); process_address = 0;
+			return MonitorResult::ok;
+		}
+		if (command == "process-break status") {
+			result = "{\"armed\":" + std::string(process_armed ? "true" : "false") +
+				",\"name\":" + winuae_gdb::json_string(process_name) +
+				",\"address\":" + std::to_string(process_address) + "}";
+			return MonitorResult::ok;
+		}
+		if (command.compare(0, 19, "process-break name ") == 0) {
+			auto name = command.substr(19);
+			if (name.empty() || name.size() > 255) return MonitorResult::error;
+			for (unsigned char c : name) if (c < 32 || c >= 127) return MonitorResult::error;
+			process_name = name; process_address = 0; process_armed = true;
+			return MonitorResult::ok;
+		}
+		if (command.compare(0, 22, "process-break address ") == 0) {
+			auto text = command.substr(22);
+			if (text.empty() || text.size() > 8 || text.find_first_not_of("0123456789abcdefABCDEF") != std::string::npos)
+				return MonitorResult::error;
+			uaecptr address = static_cast<uaecptr>(strtoul(text.c_str(), NULL, 16));
+			if (!address || (address & 3)) return MonitorResult::error;
+			process_address = address; process_name.clear(); process_armed = true;
+			return MonitorResult::ok;
+		}
+		return MonitorResult::unsupported;
+	}
+	bool process_stop(uaecptr pc, char* reason, size_t size)
+	{
+		if (!process_armed || isrom(pc)) return false;
+		winuae_gdb::AmigaProcess process;
+		if (!winuae_gdb::read_process(*this, 0, process) || pc != process.segments + 4) return false;
+		if (process_address ? process.address != process_address :
+			!winuae_gdb::process_name_matches(process.name, process_name) &&
+			!winuae_gdb::process_name_matches(process.command, process_name)) return false;
+		// This is a one-shot entry breakpoint, not an Amiga task switch stop.
+		process_armed = false;
+		snprintf(reason, size, "T05winuae-entry:%08x;11:%08x;", process.address, pc);
+		return true;
+	}
 	winuae_gdb::Registers registers() override
 	{
 		MakeSR();
@@ -8251,6 +8310,7 @@ public:
 		inside_debugger = debugger_active = 0;
 		trace_mode = 0;
 		for (const auto& bp : bpnodes) if (bp.enabled > 0) trace_mode = TRACE_CHECKONLY;
+		if (process_armed || processptr || processname) trace_mode = TRACE_CHECKONLY;
 		if (step) { trace_mode = TRACE_SKIP_INS; trace_param[0] = 1; }
 		exception_debugging = step ? 1 : 0;
 		debugging = trace_mode ? -1 : 0;
@@ -8258,6 +8318,7 @@ public:
 	}
 	void detach() override
 	{
+		process_armed = false; process_name.clear(); process_address = 0;
 		for (int i = 0; i < BREAKPOINT_TOTAL; ++i) {
 			if (breakpoints[i]) bpnodes[i] = {};
 			breakpoints[i] = false;
@@ -8276,10 +8337,11 @@ public:
 	}
 };
 
+static GdbTarget gdb_target;
+
 winuae_gdb::Target& debug_gdb_target()
 {
-	static GdbTarget target;
-	return target;
+	return gdb_target;
 }
 #endif
 
@@ -8551,6 +8613,9 @@ void debug (void)
 					bp = -2;
 				}
 			}
+#ifdef DEBUGGER
+			if (gdb_server_connected() && gdb_target.process_stop(pc, remote_reason, sizeof(remote_reason))) bp = -1;
+#endif
 			if (!bp && bpnum < 0) {
 				debug_continue();
 				return;

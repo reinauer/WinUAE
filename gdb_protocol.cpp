@@ -141,9 +141,18 @@ void Session::command(const std::string& s)
 			for (unsigned char c : result) { encoded += hex[c >> 4]; encoded += hex[c & 15]; }
 			reply(encoded); return;
 		}
-		if (command.compare(0, 11, "screenshot ") != 0) { reply(""); return; }
-		std::string path = command.substr(11);
-		reply(!path.empty() && target.screenshot(path) ? "OK" : "E01"); return;
+		if (command.compare(0, 11, "screenshot ") == 0) {
+			std::string path = command.substr(11);
+			reply(!path.empty() && target.screenshot(path) ? "OK" : "E01"); return;
+		}
+		std::string result;
+		auto status = target.monitor(command, result);
+		if (status == MonitorResult::unsupported) { reply(""); return; }
+		if (status == MonitorResult::error || result.size() > packet_size / 2) { reply("E01"); return; }
+		if (result.empty()) { reply("OK"); return; }
+		std::string encoded;
+		for (unsigned char c : result) { encoded += hex[c >> 4]; encoded += hex[c & 15]; }
+		reply(encoded); return;
 	}
 	bool step = s == "s" || s == "vCont;s" || s == "vCont;s:1";
 	bool run = step || s == "c" || s == "vCont;c" || s == "vCont;c:1" || s == "vCont;c:-1";

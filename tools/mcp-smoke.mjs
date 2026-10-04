@@ -37,6 +37,9 @@ try {
  assert.match(await call('winuae_disassemble',{address:'$10000',count:3}), /moveq/i);
  await call('winuae_screenshot',{filename:screenshot});
  const png=fs.readFileSync(screenshot);assert.equal(png.subarray(0,8).toString('hex'),'89504e470d0a1a0a');
+ assert.equal(JSON.parse(await call('winuae_process_breakpoint', {action:'set',name:'Fixture'})).armed,true);
+ assert.equal(JSON.parse(await call('winuae_process_breakpoint', {action:'status'})).name,'Fixture');
+ assert.equal(JSON.parse(await call('winuae_process_breakpoint', {action:'clear'})).armed,false);
  await call('winuae_status');
  await call('winuae_reset');
  await call('winuae_eject_disk',{drive:0});

@@ -11,6 +11,8 @@ namespace winuae_gdb {
 
 using Registers = std::array<uint32_t, 18>;
 
+enum class MonitorResult { unsupported, ok, error };
+
 class Target {
 public:
 	virtual ~Target() = default;
@@ -22,6 +24,7 @@ public:
 	virtual bool breakpoint(bool insert, unsigned type, uint32_t, uint32_t) = 0;
 	virtual bool screenshot(const std::string&) { return false; }
 	virtual bool disassemble(uint32_t, unsigned, std::string&) { return false; }
+	virtual MonitorResult monitor(const std::string&, std::string&) { return MonitorResult::unsupported; }
 	virtual void interrupt() = 0;
 	virtual void resume(bool step) = 0;
 	virtual void detach() = 0;

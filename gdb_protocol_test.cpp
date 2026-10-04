@@ -1,4 +1,6 @@
 #include "include/gdb_protocol.h"
+#include "include/gdb_amiga.h"
+#include <cstring>
 #include <cstdio>
 #include <cstdlib>
 
@@ -18,6 +20,12 @@ struct FakeTarget : Target {
 	Registers values{};
 	unsigned writes = 0, interrupts = 0, runs = 0, breaks = 0;
 	bool stepped = false;
+	MonitorResult monitor(const std::string& command, std::string& out) override {
+		if (command == "test-query") { out = "{}"; return MonitorResult::ok; }
+		if (command == "test-arm") return MonitorResult::ok;
+		if (command == "test-invalid") return MonitorResult::error;
+		return MonitorResult::unsupported;
+	}
 	std::string screenshot_path;
 	bool screenshot(const std::string& path) override { screenshot_path = path; return true; }
 	bool disassemble(uint32_t address, unsigned count, std::string& out) override {
@@ -52,8 +60,50 @@ static std::string send(Session& session, const std::string& command)
 	return session.take_output();
 }
 
+struct GuestFixture : GuestReader {
+	std::array<uint8_t, 8192> ram{};
+	size_t reads = 0;
+	bool read(uint32_t address, uint8_t* out, size_t length) override {
+		++reads;
+		if (uint64_t(address) + length > ram.size()) return false;
+		std::memcpy(out, ram.data() + address, length); return true;
+	}
+	void put32(size_t address, uint32_t value) {
+		for (int i = 3; i >= 0; --i, value >>= 8) ram[address + i] = value;
+	}
+	GuestFixture() {
+		put32(4, 256); put32(256 + 276, 1024); ram[1024 + 8] = 13;
+		put32(1024 + 10, 1600); std::memcpy(ram.data() + 1600, "Task", 5);
+		put32(1024 + 172, 2048 / 4); put32(2048 + 16, 2400 / 4);
+		ram[2400] = 10; std::memcpy(ram.data() + 2401, "SYS:C/Demo", 10);
+		put32(2048 + 60, 4096 / 4);
+	}
+};
+static void process_reader_tests()
+{
+	GuestFixture memory;
+	AmigaProcess process;
+	require(read_process(memory, 0, process) && process.address == 1024 &&
+		process.name == "Task" && process.command == "SYS:C/Demo" && process.segments == 4096,
+		"CLI process metadata");
+	require(process_name_matches(process.command, "demo"), "process basename matching");
+	require(!process_name_matches(process.command, "dem"), "process prefix must not match");
+	memory.put32(1024 + 172, 0); memory.put32(1024 + 128, 2048 / 4);
+	memory.put32(2048 + 12, 4096 / 4);
+	require(read_process(memory, 1024, process) && process.segments == 4096 && process.command.empty(), "Workbench process metadata");
+	memory.put32(2048 + 12, 0x40000000);
+	require(!read_process(memory, 1024, process), "BPTR overflow accepted");
+	memory.put32(4, 0xfffffffc);
+	require(!read_process(memory, 0, process), "ExecBase overflow accepted");
+	memory.put32(1024 + 10, 1700); std::memset(memory.ram.data() + 1700, 'x', 255);
+	memory.reads = 0;
+	require(!read_process(memory, 1024, process) && memory.reads < 270, "unterminated guest name not bounded");
+	require(json_string("a\n\"") == "\"a\\u000a\\\"\"", "JSON escaping");
+}
+
 int main()
 {
+	process_reader_tests();
 	FakeTarget target;
 	Session s(target);
 	// Every split, including either checksum digit, must preserve the frame.
@@ -109,6 +159,9 @@ int main()
 	require(send(s, monitor("disasm 1000 10")) == frame("4e4f500a"), "decimal disassembly count");
 	for (const char* command : {"disasm 1000 0", "disasm 1000 101", "disasm z 1", "disasm 1000 1x", "disasm 1000 "})
 		require(send(s, monitor(command)) == frame("E01"), command);
+	require(send(s, monitor("test-query")) == frame("7b7d"), "monitor response encoding");
+	require(send(s, monitor("test-arm")) == frame("OK"), "monitor acknowledgement");
+	require(send(s, monitor("test-invalid")) == frame("E01"), "monitor rejection");
 	require(send(s, "D") == frame("OK") && s.finished(), "detach");
 	Session oversized(target);
 	std::string huge = "$" + std::string(Session::packet_size + 5, 'x');

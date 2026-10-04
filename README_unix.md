@@ -452,6 +452,15 @@ range below `$7FFF0000`, with a maximum length of 64 KiB; they are unavailable
 while its MMU debugger mode is enabled. The remote interface provides
 `monitor disasm <hex-address> <decimal-count>` (1–100 instructions) and
 `monitor screenshot <native-host-path>` (PNG; requires libpng on Unix).
+`monitor process-break name <name>` arms a one-shot breakpoint at the
+first segment's entry instruction of the matching AmigaDOS process. Names
+are case-insensitive ASCII and may be command basenames or complete names.
+`monitor process-break address <hex-task-address>` selects a Process by
+address. Use `process-break status` to inspect the selection, `process-break
+clear` to cancel it, and continue execution after arming. The selection is
+cleared on disconnect. This does not launch a program; launch it in the guest.
+The matching MCP tool is `winuae_process_breakpoint`.
+
 Screenshot paths may contain spaces. The server is unauthenticated and
 grants local clients control of the guest and screenshot output paths.
 
