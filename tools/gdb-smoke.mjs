@@ -60,6 +60,23 @@ try {
  assert.equal(await g.sendCommand('P0=zzzzzzzz'),'E01');
  assert.equal(await g.sendCommand('Mffffffff,2:0000'),'E01');
  assert.equal(await g.sendCommand('Mf80000,1:00'),'E01');
+ // Copper DMA watchpoint: source filtering must ignore a CPU write.
+ await g.writeMemory(0xdff096,Buffer.from('7fff','hex'));
+ await g.writeMemory(0x25000,Buffer.from('01800f00fffffffe','hex'));
+ const dmaId=Number(await g.sendMonitorCommand('dma-watch add 25000 8 3 200'));
+ assert.equal(Number(await g.sendMonitorCommand('dma-watch add 25000 8 3 200')),dmaId);
+ await g.writeMemory(0x10000,Buffer.from('33fc01800002500060fe','hex'));
+ await g.writeRegister(17,0x10000); await g.setBreakpoint(0x10008);
+ await g.continue(); await delay(100); assert.doesNotMatch(await g.pause(), /watch:/);
+ assert.equal((await g.readRegisters()).PC,0x10008); await g.clearBreakpoint(0x10008);
+ await g.writeMemory(0xdff080,Buffer.from('00025000','hex'));
+ await g.writeMemory(0xdff088,Buffer.from('0000','hex'));
+ await g.writeMemory(0xdff096,Buffer.from('8280','hex'));
+ await g.continue(); await delay(100);
+ assert.match(await g.pause(), /awatch:0002500[0246];winuae-source:00000200;/);
+ await g.sendMonitorCommand(`dma-watch remove ${dmaId.toString(16)}`);
+ assert.deepEqual(JSON.parse(await g.sendMonitorCommand('dma-watch list')),[]);
+ await g.writeMemory(0xdff096,Buffer.from('7fff','hex'));
  // A synthetic Exec process exercises entry detection without a guest disk.
  const oldExec = await g.readMemory(4, 4);
  const long = value => { const b = Buffer.alloc(4); b.writeUInt32BE(value); return b; };

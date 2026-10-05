@@ -760,3 +760,13 @@ breakpoints, selected exceptions and interrupts still stop execution. The
 MCP `winuae_range_step` tool starts this operation asynchronously; pause or
 query registers to inspect its eventual stop. Range state clears on any stop
 and disconnect, without adding a new CPU execution loop.
+
+`monitor dma-watch add ADDRESS LENGTH MODE MASK` adds an independently owned
+DMA watchpoint; all arguments are hexadecimal, MODE is 1=read, 2=write or
+3=access, and MASK uses the existing WinUAE DMA source bits in `debug.h`.
+CPU source bits are rejected. The reply is a decimal watchpoint ID; remove
+it with `monitor dma-watch remove ID` (hex ID), or inspect owned entries
+with `monitor dma-watch list`. Ranges are limited to 64 KiB and the existing
+watchpoint mapper's address space. Standard GDB CPU watchpoints remain
+separate. Stop replies include the actual source mask and custom register.
+The MCP `winuae_dma_watchpoint` tool provides named source groups.

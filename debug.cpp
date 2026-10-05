@@ -8113,11 +8113,76 @@ class GdbTarget : public winuae_gdb::Target, private winuae_gdb::GuestReader {
 	}
 	bool breakpoints[BREAKPOINT_TOTAL]{};
 	bool watchpoints[MEMWATCH_TOTAL]{};
+	bool dma_watchpoints[MEMWATCH_TOTAL]{};
+	static bool hex_words(const std::string& text, unsigned count, uint32_t* words)
+	{
+		size_t start = 0;
+		for (unsigned i = 0; i < count; ++i) {
+			auto end = text.find(' ', start);
+			if (end == std::string::npos) end = text.size();
+			auto word = text.substr(start, end - start);
+			if (word.empty() || word.size() > 8 || word.find_first_not_of("0123456789abcdefABCDEF") != std::string::npos)
+				return false;
+			words[i] = static_cast<uint32_t>(strtoul(word.c_str(), NULL, 16));
+			if (i + 1 == count) return end == text.size();
+			if (end == text.size()) return false;
+			start = end + 1;
+		}
+		return false;
+	}
 	bool initialized_watchpoints = false;
 public:
 	winuae_gdb::MonitorResult monitor(const std::string& command, std::string& result) override
 	{
 		using winuae_gdb::MonitorResult;
+		if (command == "dma-watch list") {
+			result = "[";
+			bool first = true;
+			for (int i = 0; i < MEMWATCH_TOTAL; ++i) if (dma_watchpoints[i]) {
+				const auto& wp = mwnodes[i];
+				if (!first) result += ",";
+				first = false;
+				result += "{\"id\":" + std::to_string(i) + ",\"address\":" + std::to_string(wp.addr) +
+					",\"length\":" + std::to_string(wp.size) + ",\"mode\":" + std::to_string(wp.rwi) +
+					",\"mask\":" + std::to_string(wp.access_mask) + "}";
+			}
+			result += "]";
+			return MonitorResult::ok;
+		}
+		if (command.compare(0, 17, "dma-watch remove ") == 0) {
+			uint32_t id;
+			if (!hex_words(command.substr(17), 1, &id) || id >= MEMWATCH_TOTAL || !dma_watchpoints[id])
+				return MonitorResult::error;
+			mwnodes[id] = {}; watchpoints[id] = dma_watchpoints[id] = false;
+			memwatch_setup();
+			return MonitorResult::ok;
+		}
+		if (command.compare(0, 14, "dma-watch add ") == 0) {
+			uint32_t args[4];
+			if (!hex_words(command.substr(14), 4, args) || !args[1] || args[1] > 0x10000 ||
+				uint64_t(args[0]) + args[1] > 0x7fff0000 || args[2] < 1 || args[2] > 3 ||
+				!args[3] || (args[3] & ~static_cast<uint32_t>(MW_MASK_ALL & ~7)) || mmu_enabled)
+				return MonitorResult::error;
+			int slot = -1;
+			for (int i = 0; i < MEMWATCH_TOTAL; ++i) {
+				const auto& wp = mwnodes[i];
+				if (dma_watchpoints[i] && wp.addr == args[0] && wp.size == args[1] &&
+					wp.rwi == args[2] && wp.access_mask == args[3]) {
+					result = std::to_string(i); return MonitorResult::ok;
+				}
+				if (!wp.size) slot = i;
+			}
+			if (slot < 0) return MonitorResult::error;
+			if (!memwatch_enabled) { initialize_memwatch(0); initialized_watchpoints = true; }
+			if (!memwatch_enabled) return MonitorResult::error;
+			auto& wp = mwnodes[slot];
+			wp = {}; wp.addr = args[0]; wp.size = args[1]; wp.rwi = args[2]; wp.access_mask = args[3];
+			wp.reg = wp.pc = wp.val_mask = 0xffffffff;
+			watchpoints[slot] = dma_watchpoints[slot] = true;
+			memwatch_setup();
+			result = std::to_string(slot);
+			return MonitorResult::ok;
+		}
 		if (command == "exception") {
 			char mask[17]; snprintf(mask, sizeof(mask), "%016llx", static_cast<unsigned long long>(exception_mask));
 			result = "{\"mask\":\"" + std::string(mask) + "\",\"last\":";
@@ -8345,7 +8410,7 @@ public:
 		int free_slot = -1;
 		for (int i = 0; i < MEMWATCH_TOTAL; ++i) {
 			memwatch_node& wp = mwnodes[i];
-			if (watchpoints[i] && wp.addr == address && wp.size == length && wp.rwi == rwi) {
+			if (watchpoints[i] && !dma_watchpoints[i] && wp.addr == address && wp.size == length && wp.rwi == rwi) {
 				if (!insert) { wp = {}; watchpoints[i] = false; memwatch_setup(); }
 				return true;
 			}
@@ -8428,7 +8493,7 @@ public:
 		bool changed = false;
 		for (int i = 0; i < MEMWATCH_TOTAL; ++i) {
 			if (watchpoints[i]) { mwnodes[i] = {}; changed = true; }
-			watchpoints[i] = false;
+			watchpoints[i] = dma_watchpoints[i] = false;
 		}
 		bool have_watchpoints = false;
 		for (const auto& wp : mwnodes) if (wp.size) have_watchpoints = true;
@@ -8741,7 +8806,8 @@ void debug (void)
 		if (gdb_server_connected()) {
 			const char* kind = mwnodes[memwatch_triggered - 1].rwi == 3 ? "awatch" :
 				(mwhit.rwi & 2) ? "watch" : "rwatch";
-			snprintf(remote_reason, sizeof(remote_reason), "T05%s:%08x;", kind, mwhit.addr);
+			snprintf(remote_reason, sizeof(remote_reason), "T05%s:%08x;winuae-source:%08x;winuae-reg:%04x;",
+				kind, mwhit.addr, mwhit.access_mask, mwhit.reg);
 		}
 		memwatch_hit_msg(memwatch_triggered - 1);
 		memwatch_triggered = 0;

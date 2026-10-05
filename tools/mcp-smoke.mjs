@@ -63,6 +63,9 @@ try {
  assert.match(await call('winuae_pause'),/winuae-exception:04/);
  assert.equal(JSON.parse(await call('winuae_exceptions',{action:'status'})).last.instruction_pc,0x10000);
  await call('winuae_exceptions',{action:'clear'});
+ const dma=JSON.parse(await call('winuae_dma_watchpoint',{action:'add',address:'$25000',length:8,mode:'read',sources:['copper']}));
+ assert.equal(JSON.parse(await call('winuae_dma_watchpoint',{action:'list'}))[0].mask,0x200);
+ assert.deepEqual(JSON.parse(await call('winuae_dma_watchpoint',{action:'remove',id:dma.id})),[]);
  await call('winuae_status');
  await call('winuae_reset');
  await call('winuae_eject_disk',{drive:0});
