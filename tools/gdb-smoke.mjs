@@ -79,6 +79,20 @@ try {
  await putLong(0xfffc, 0);
  await g.sendMonitorCommand('process-break clear');
  await g.writeMemory(4, oldExec);
+ // Illegal instruction: snapshot the faulting state, stop after frame entry.
+ const oldVector = await g.readMemory(16,4);
+ await putLong(16,0x10100);
+ await g.writeMemory(0x10100,Buffer.from('60fe','hex'));
+ await g.writeMemory(0x10000,Buffer.from('4afc','hex'));
+ await g.sendMonitorCommand('exception-mask 10');
+ await g.writeRegister(17,0x10000); await g.continue(); await delay(100);
+ assert.match(await g.pause(),/^T04winuae-exception:04;winuae-faultpc:00010000;/);
+ const exception=JSON.parse(await g.sendMonitorCommand('exception'));
+ assert.equal(exception.last.vector,4); assert.equal(exception.last.instruction_pc,0x10000);
+ assert.equal(exception.last.registers[15],0x30000);
+ assert.equal((await g.readRegisters()).PC,0x10100);
+ await g.sendMonitorCommand('exception-mask 0');
+ await g.writeMemory(16,oldVector);
  await g.sendCommand('D');g.disconnect();g=new GdbProtocol();await g.connect('127.0.0.1',port);
  console.log('MCP client live tests passed: registers, SR stack switch, RAM, custom snapshot/write, step, breakpoint, watchpoint, malformed writes, ROM rejection, reconnect');
 } finally {

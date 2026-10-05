@@ -8061,8 +8061,15 @@ static void addhistory(void)
 	}
 }
 
+#ifdef DEBUGGER
+static void gdb_exception(int nr);
+#endif
+
 void debug_exception(int nr)
 {
+#ifdef DEBUGGER
+	gdb_exception(nr);
+#endif
 	if (debug_illegal) {
 		if (nr <= 63 && (debug_illegal_mask & ((uae_u64)1 << nr))) {
 			console_out_f(_T("Exception %d breakpoint\n"), nr);
@@ -8086,6 +8093,11 @@ class GdbTarget : public winuae_gdb::Target, private winuae_gdb::GuestReader {
 	std::string process_name;
 	uaecptr process_address = 0;
 	bool process_armed = false;
+	uae_u64 exception_mask = 0;
+	int exception_vector = -1;
+	bool exception_pending = false;
+	uaecptr exception_instruction = 0;
+	winuae_gdb::Registers exception_registers{};
 	bool read(uint32_t address, uint8_t* bytes, size_t length) override
 	{
 		if (uint64_t(address) + length > (uint64_t(1) << 32)) return false;
@@ -8104,6 +8116,31 @@ public:
 	winuae_gdb::MonitorResult monitor(const std::string& command, std::string& result) override
 	{
 		using winuae_gdb::MonitorResult;
+		if (command == "exception") {
+			char mask[17]; snprintf(mask, sizeof(mask), "%016llx", static_cast<unsigned long long>(exception_mask));
+			result = "{\"mask\":\"" + std::string(mask) + "\",\"last\":";
+			if (exception_vector < 0) result += "null";
+			else {
+				result += "{\"vector\":" + std::to_string(exception_vector) +
+					",\"instruction_pc\":" + std::to_string(exception_instruction) + ",\"registers\":[";
+				for (size_t i = 0; i < exception_registers.size(); ++i) {
+					if (i) result += ",";
+					result += std::to_string(exception_registers[i]);
+				}
+				result += "]}";
+			}
+			result += "}";
+			return MonitorResult::ok;
+		}
+		if (command.compare(0, 15, "exception-mask ") == 0) {
+			auto text = command.substr(15);
+			if (text.empty() || text.size() > 16 || text.find_first_not_of("0123456789abcdefABCDEF") != std::string::npos)
+				return MonitorResult::error;
+			uae_u64 mask = strtoull(text.c_str(), NULL, 16);
+			if (mask & 3) return MonitorResult::error;
+			exception_mask = mask;
+			return MonitorResult::ok;
+		}
 		if (command == "segments" || command.compare(0, 9, "segments ") == 0) {
 			uaecptr address = 0;
 			if (command.size() > 8) {
@@ -8156,6 +8193,27 @@ public:
 			return MonitorResult::ok;
 		}
 		return MonitorResult::unsupported;
+	}
+	void exception(int nr)
+	{
+		if (nr < 2 || nr > 63 || !(exception_mask & (static_cast<uae_u64>(1) << nr)) || exception_pending) return;
+		// Capture before the CPU builds its exception frame, but enter the
+		// remote event loop only at the next normal debugger boundary.
+		exception_vector = nr;
+		exception_instruction = regs.instruction_pc;
+		exception_registers = registers();
+		exception_pending = true;
+		interrupt();
+	}
+	void stop_reason(char* reason, size_t size)
+	{
+		if (!exception_pending) return;
+		exception_pending = false;
+		unsigned signal = exception_vector == 2 || exception_vector == 3 ? 10 :
+			exception_vector == 4 || exception_vector == 10 || exception_vector == 11 ? 4 :
+			exception_vector >= 5 && exception_vector <= 7 ? 8 : 5;
+		snprintf(reason, size, "T%02xwinuae-exception:%02x;winuae-faultpc:%08x;11:%08x;",
+			signal, exception_vector, exception_instruction, m68k_getpc());
 	}
 	bool process_stop(uaecptr pc, char* reason, size_t size)
 	{
@@ -8343,6 +8401,7 @@ public:
 	}
 	void detach() override
 	{
+		exception_mask = 0; exception_vector = -1; exception_pending = false;
 		process_armed = false; process_name.clear(); process_address = 0;
 		for (int i = 0; i < BREAKPOINT_TOTAL; ++i) {
 			if (breakpoints[i]) bpnodes[i] = {};
@@ -8363,6 +8422,12 @@ public:
 };
 
 static GdbTarget gdb_target;
+
+static void gdb_exception(int nr)
+{
+	// No guest inspection or trace changes when the remote feature is idle.
+	gdb_target.exception(nr);
+}
 
 winuae_gdb::Target& debug_gdb_target()
 {
@@ -8481,7 +8546,7 @@ static bool check_breakpoint_count(struct breakpoint_node *bpn, uaecptr pc)
 void debug (void)
 {
 	int wasactive;
-	char remote_reason[64] = "S05";
+	char remote_reason[128] = "S05";
 
 	if (savestate_state || quit_program)
 		return;
@@ -8665,6 +8730,9 @@ void debug (void)
 	if (gdb_server_connected()) {
 		inside_debugger = 1;
 		trace_mode = 0;
+#ifdef DEBUGGER
+		gdb_target.stop_reason(remote_reason, sizeof(remote_reason));
+#endif
 		gdb_server_stop(remote_reason);
 		return;
 	}

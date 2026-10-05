@@ -741,3 +741,15 @@ unreadable lists fail without partial results. The limit is 256 segments.
 Use these addresses in the MCP client to relocate host symbols by hunk
 index; allocation sizes are bounds, not exact source/code lengths.
 The matching MCP tool is `winuae_loaded_segments`.
+
+`monitor exception-mask <hex-mask>` selects CPU exception vectors 2-63
+(bit N selects vector N); zero disables remote exception stops. The mask
+is independent of console exception settings and clears on disconnect.
+`monitor exception` reports that mask and the last selected exception as
+JSON, including its vector, instruction PC and pre-frame register snapshot
+(D0-D7, A0-A7, SR, PC). Stops occur at the normal CPU debugger boundary after
+exception-frame construction; current registers describe the handler entry.
+The stop packet carries the vector and fault instruction PC, with SIGBUS,
+SIGILL, SIGFPE or SIGTRAP as appropriate. The snapshot's PC may already have
+advanced; use instruction_pc to locate the instruction. The MCP tool is
+`winuae_exceptions`. Unselected exceptions retain normal WinUAE behavior.

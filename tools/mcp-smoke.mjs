@@ -50,6 +50,15 @@ try {
  await call('winuae_memory_write',{address:'$20000',data:ram.toString('hex')});
  const segments=JSON.parse(await call('winuae_loaded_segments',{address:'$20000'}));
  assert.deepEqual(segments.segments,[{index:0,address:0x20304,size:8}]);
+ assert.equal(JSON.parse(await call('winuae_exceptions',{action:'set',vectors:[4]})).mask,'0000000000000010');
+ await call('winuae_memory_write',{address:'$10',data:'00010100'});
+ await call('winuae_memory_write',{address:'$10000',data:'4afc'});
+ await call('winuae_memory_write',{address:'$10100',data:'60fe'});
+ await call('winuae_registers_set',{SR:'$2700',A7:'$30000',PC:'$10000'});
+ await call('winuae_continue'); await delay(100);
+ assert.match(await call('winuae_pause'),/winuae-exception:04/);
+ assert.equal(JSON.parse(await call('winuae_exceptions',{action:'status'})).last.instruction_pc,0x10000);
+ await call('winuae_exceptions',{action:'clear'});
  await call('winuae_status');
  await call('winuae_reset');
  await call('winuae_eject_disk',{drive:0});
