@@ -5,9 +5,11 @@ on:
   push:
     branches:
       - master
+      - debug
   pull_request:
     branches:
       - master
+      - debug
 
 env:
   SOLUTION_FILE_PATH: od-win32\\winuae_msvc15
