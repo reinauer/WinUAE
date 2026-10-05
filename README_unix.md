@@ -795,3 +795,9 @@ export WINUAE_SMOKE_LOG=/tmp/winuae_unix_smoke.log
 `WINUAE_UNIX_WITH_PROWIZARD` is enabled by default and builds the same Pro Wizard source set used by the Windows project.
 `WINUAE_UNIX_WITH_QT_UI` is enabled by default, but Qt UI targets are skipped when Qt Widgets is not installed.
 `WINUAE_UNIX_WITH_INTEGRATED_QT_UI` is enabled by default. When Qt Widgets is not installed, the build continues without the integrated UI.
+
+Exception snapshots also include CPU/MMU models, VBR and the pre-frame
+USP/ISP/MSP values. Bus/address faults include the fault address, access
+direction, access size and function code. MMU bus faults retain the raw
+68030/68040 SSW or 68060 FSLW; unknown transfer sizes are null. These are
+captured at the existing exception hook, without changing frame creation.

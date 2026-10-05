@@ -8102,6 +8102,7 @@ class GdbTarget : public winuae_gdb::Target, private winuae_gdb::GuestReader {
 	bool exception_pending = false;
 	uaecptr exception_instruction = 0;
 	winuae_gdb::Registers exception_registers{};
+	std::string exception_details;
 	bool read(uint32_t address, uint8_t* bytes, size_t length) override
 	{
 		if (uint64_t(address) + length > (uint64_t(1) << 32)) return false;
@@ -8249,7 +8250,7 @@ public:
 					if (i) result += ",";
 					result += std::to_string(exception_registers[i]);
 				}
-				result += "]}";
+				result += "]" + exception_details + "}";
 			}
 			result += "}";
 			return MonitorResult::ok;
@@ -8324,6 +8325,23 @@ public:
 		exception_vector = nr;
 		exception_instruction = regs.instruction_pc;
 		exception_registers = registers();
+        auto fault = cpu_get_debug_fault(nr);
+        exception_details = ",\"cpu_model\":" + std::to_string(currprefs.cpu_model) +
+            ",\"mmu_model\":" + std::to_string(currprefs.mmu_model) +
+            ",\"vbr\":" + std::to_string(regs.vbr) +
+            ",\"usp\":" + std::to_string(regs.s ? regs.usp : m68k_areg(regs, 7)) +
+            ",\"isp\":" + std::to_string(regs.s && (!regs.m || currprefs.cpu_model < 68020) ? m68k_areg(regs, 7) : regs.isp) +
+            ",\"msp\":" + std::to_string(regs.s && regs.m && currprefs.cpu_model >= 68020 ? m68k_areg(regs, 7) : regs.msp) +
+            ",\"memory_fault\":";
+        if (!fault.memory) exception_details += "null";
+        else {
+            const char* access[] = {"unknown", "read", "write", "read-modify-write"};
+            exception_details += "{\"address\":" + std::to_string(fault.address) +
+                ",\"access\":\"" + access[fault.access] + "\",\"size\":" +
+                (fault.size ? std::to_string(fault.size) : "null") +
+                ",\"function_code\":" + std::to_string(fault.function_code) +
+                ",\"mmu_status\":" + (nr == 2 && currprefs.mmu_model ? std::to_string(fault.status) : "null") + "}";
+        }
 		exception_pending = true;
 		interrupt();
 	}
