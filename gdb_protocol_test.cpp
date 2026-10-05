@@ -1,5 +1,6 @@
 #include "include/gdb_protocol.h"
 #include "include/gdb_amiga.h"
+#include "include/gdb_output.h"
 #include <cstring>
 #include <cstdio>
 #include <cstdlib>
@@ -119,6 +120,19 @@ static void process_reader_tests()
 int main()
 {
 	process_reader_tests();
+	GuestOutput output;
+	output.capture("disabled");
+	require(output.snapshot().find("disabled") == std::string::npos, "guest capture enabled by default");
+	output.enable(true);
+	output.capture("hello\n");
+	require(output.snapshot().find("hello\\u000a") != std::string::npos, "guest output escaping");
+	std::string flood(2048, char(255));
+	for (int i = 0; i < 100; ++i) output.capture(flood.c_str());
+	auto snapshot = output.snapshot();
+	require(snapshot.size() < Session::packet_size / 2 && snapshot.find("\"truncated\":true") != std::string::npos &&
+		snapshot.find("\"dropped\":97") != std::string::npos, "guest output flood not bounded");
+	output.clear(true); output.capture("detached");
+	require(output.snapshot() == "{\"enabled\":false,\"dropped\":0,\"records\":[]}", "guest output teardown");
 	FakeTarget target;
 	Session s(target);
 	// Every split, including either checksum digit, must preserve the frame.

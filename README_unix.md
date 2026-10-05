@@ -770,3 +770,13 @@ with `monitor dma-watch list`. Ranges are limited to 64 KiB and the existing
 watchpoint mapper's address space. Standard GDB CPU watchpoints remain
 separate. Stop replies include the actual source mask and custom register.
 The MCP `winuae_dma_watchpoint` tool provides named source groups.
+
+`monitor guest-output on|off|read|clear` captures the guest's existing uaelib
+function 86 debug messages. Capture is opt-in and retains at most 64 records
+and 4096 payload bytes, with each message capped at 1024 bytes. JSON output
+includes record IDs, truncation flags and an eviction count. Reads preserve
+the records; clear empties them while keeping the capture setting. Turning
+capture off retains records for inspection; disconnect/reset clears them.
+This is a guest debug-message channel, not AmigaDOS console or serial output.
+Host logging keeps its original behavior. The matching tool is
+`winuae_guest_output`.

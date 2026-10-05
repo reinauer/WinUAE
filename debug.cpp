@@ -57,6 +57,7 @@
 #include "gdb_server.h"
 #include "gdb_protocol.h"
 #include "gdb_amiga.h"
+#include "gdb_output.h"
 
 static int trace_mode;
 static uae_u32 trace_param[3];
@@ -8132,9 +8133,19 @@ class GdbTarget : public winuae_gdb::Target, private winuae_gdb::GuestReader {
 	}
 	bool initialized_watchpoints = false;
 public:
+	winuae_gdb::GuestOutput guest_output;
 	winuae_gdb::MonitorResult monitor(const std::string& command, std::string& result) override
 	{
 		using winuae_gdb::MonitorResult;
+		if (command.compare(0, 13, "guest-output ") == 0) {
+			auto action = command.substr(13);
+			if (action == "on") guest_output.enable(true);
+			else if (action == "off") guest_output.enable(false);
+			else if (action == "clear") guest_output.clear();
+			else if (action != "read") return MonitorResult::error;
+			result = guest_output.snapshot();
+			return MonitorResult::ok;
+		}
 		if (command == "dma-watch list") {
 			result = "[";
 			bool first = true;
@@ -8484,6 +8495,7 @@ public:
 	}
 	void detach() override
 	{
+		guest_output.clear(true);
 		exception_mask = 0; exception_vector = -1; exception_pending = false;
 		process_armed = false; process_name.clear(); process_address = 0;
 		for (int i = 0; i < BREAKPOINT_TOTAL; ++i) {
@@ -8505,6 +8517,11 @@ public:
 };
 
 static GdbTarget gdb_target;
+
+void gdb_server_guest_output(const char* text)
+{
+	gdb_target.guest_output.capture(text);
+}
 
 static void gdb_exception(int nr)
 {

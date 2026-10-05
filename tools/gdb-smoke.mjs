@@ -17,7 +17,7 @@ const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'winuae-gdb-smoke-'));
 console.log('Test files:', temp);
 const log=fs.openSync(path.join(temp, 'winuae.log'),'w');
 const exe=spawn(WINUAE_PATH,[
- '-s','use_gui=no','-s',`kickstart_rom_file=${WINUAE_ROM}`,
+ '-s','boot_rom_uae=full','-s','use_gui=no','-s',`kickstart_rom_file=${WINUAE_ROM}`,
  '-s',`cpu_model=${process.env.WINUAE_CPU_MODEL || '68000'}`,'-s',`cpu_compatible=${process.env.WINUAE_CPU_COMPATIBLE || 'true'}`,'-s','chipmem_size=2','-s',`cachesize=${process.env.WINUAE_CACHE_SIZE || '0'}`,
  '-s','cpu_cycle_exact=false','-s','cpu_memory_cycle_exact=false','-s','blitter_cycle_exact=false',
  '-s','debugging_features=gdbserver','-s',`gdb_port=${port}`
@@ -119,6 +119,19 @@ try {
  assert.equal((await g.readRegisters()).PC,0x10100);
  await g.sendMonitorCommand('exception-mask 0');
  await g.writeMemory(16,oldVector);
+ await g.sendMonitorCommand('guest-output on');
+ await g.writeMemory(0x26000,Buffer.from('Guest diagnostics\n\0'));
+ await g.writeMemory(0x10000,Buffer.from('487900026000487800564eb900f0ff60508f60fe','hex'));
+ await g.writeRegister(17,0x10000); await g.setBreakpoint(0x10012);
+ await g.continue(); await delay(100); await g.pause();
+ assert.equal((await g.readRegisters()).PC,0x10012);
+ const output=JSON.parse(await g.sendMonitorCommand('guest-output read'));
+ assert.equal(output.records[0].text,'Guest diagnostics\n');
+ await g.sendMonitorCommand('guest-output off');
+ await g.writeRegister(17,0x10000);await g.continue();await delay(100);await g.pause();
+ assert.deepEqual(JSON.parse(await g.sendMonitorCommand('guest-output read')).records,output.records);
+ await g.clearBreakpoint(0x10012);
+ assert.equal(JSON.parse(await g.sendMonitorCommand('guest-output clear')).records.length,0);
  await g.sendCommand('D');g.disconnect();g=new GdbProtocol();await g.connect('127.0.0.1',port);
  console.log('MCP client live tests passed: registers, SR stack switch, RAM, custom snapshot/write, step, breakpoint, watchpoint, malformed writes, ROM rejection, reconnect');
 } finally {
