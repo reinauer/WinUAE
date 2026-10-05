@@ -76,6 +76,12 @@ try {
  await call('winuae_breakpoint_clear',{address:'$10012'});
  await call('winuae_guest_output',{action:'off'});
  assert.deepEqual(JSON.parse(await call('winuae_guest_output',{action:'clear'})).records,[]);
+ const checkpoint=path.join(temp,'MCP checkpoint.uss');
+ await call('winuae_registers_set',{D0:123,PC:'$10000'});
+ await call('winuae_checkpoint',{action:'save',file:checkpoint});
+ await call('winuae_registers_set',{D0:456,PC:'$10004'});
+ const restored=JSON.parse(await call('winuae_checkpoint',{action:'restore',file:checkpoint}));
+ assert.equal(restored.registers.D0,123);assert.equal(restored.registers.PC,0x10000);
  await call('winuae_status');
  await call('winuae_reset');
  await call('winuae_eject_disk',{drive:0});

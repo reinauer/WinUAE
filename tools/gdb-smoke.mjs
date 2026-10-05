@@ -132,8 +132,34 @@ try {
  assert.deepEqual(JSON.parse(await g.sendMonitorCommand('guest-output read')).records,output.records);
  await g.clearBreakpoint(0x10012);
  assert.equal(JSON.parse(await g.sendMonitorCommand('guest-output clear')).records.length,0);
+ const checkpoint=path.join(temp,'debug checkpoint.uss');
+ await g.writeMemory(0x10000,Buffer.from('7001528060fe','hex'));
+ await g.writeMemory(0x26000,Buffer.from('deadbeef','hex'));
+ await g.writeRegister(0,123);await g.writeRegister(17,0x10000);
+ await g.setWatchpoint(0x26000,4,'write');
+ await g.sendMonitorCommand(`checkpoint save ${checkpoint}`);
+ assert.equal(fs.readFileSync(checkpoint).subarray(0,4).toString(),'ASF ');
+ await g.writeRegister(0,456);await g.writeRegister(17,0x10004);
+ await g.writeMemory(0x26000,Buffer.from('01020304','hex'));
+ await g.sendMonitorCommand('process-break name fixture');
+ await g.sendMonitorCommand('exception-mask 10');
+ await g.sendMonitorCommand('guest-output on');
+ await g.setBreakpoint(0x10002);
+ await g.sendMonitorCommand('dma-watch add 25000 8 3 200');
+ await assert.rejects(g.sendMonitorCommand(`checkpoint restore ${checkpoint}.missing`));
+ await g.sendMonitorCommand(`checkpoint restore ${checkpoint}`);
+ r=await g.readRegisters();assert.equal(r.PC,0x10000);assert.equal(r.D0,123);
+ assert.equal((await g.readMemory(0x26000,4)).toString('hex'),'deadbeef');
+ assert.equal(JSON.parse(await g.sendMonitorCommand('process-break status')).armed,false);
+ assert.equal(JSON.parse(await g.sendMonitorCommand('exception')).mask,'0000000000000000');
+ assert.equal(JSON.parse(await g.sendMonitorCommand('guest-output read')).enabled,false);
+ assert.deepEqual(JSON.parse(await g.sendMonitorCommand('dma-watch list')),[]);
+ await g.writeMemory(0x10000,Buffer.from('700123fc112233440002600060fe','hex'));
+ await g.continue();await delay(100);assert.doesNotMatch(await g.pause(),/watch:/);
+ assert.equal((await g.readRegisters()).PC,0x1000c);
+ assert.equal((await g.readMemory(0x26000,4)).toString('hex'),'11223344');
  await g.sendCommand('D');g.disconnect();g=new GdbProtocol();await g.connect('127.0.0.1',port);
- console.log('MCP client live tests passed: registers, SR stack switch, RAM, custom snapshot/write, step, breakpoint, watchpoint, malformed writes, ROM rejection, reconnect');
+ console.log('GDB live tests passed: registers, RAM/custom access, step/range, CPU/DMA watches, entry/segments, exception snapshots, guest output, checkpoint restore, reconnect');
 } finally {
  if (g) g.disconnect();
  if (exe.exitCode === null && exe.signalCode === null) {

@@ -58,6 +58,7 @@
 #include "gdb_protocol.h"
 #include "gdb_amiga.h"
 #include "gdb_output.h"
+#include "zfile.h"
 
 static int trace_mode;
 static uae_u32 trace_param[3];
@@ -8137,6 +8138,49 @@ public:
 	winuae_gdb::MonitorResult monitor(const std::string& command, std::string& result) override
 	{
 		using winuae_gdb::MonitorResult;
+		if (command.compare(0, 16, "checkpoint save ") == 0 ||
+			command.compare(0, 19, "checkpoint restore ") == 0) {
+#ifdef SAVESTATE
+			bool restore = command.compare(0, 19, "checkpoint restore ") == 0;
+			auto path = command.substr(restore ? 19 : 16);
+			if (path.empty() || savestate_state || quit_program || input_record || input_play ||
+				is_savestate_incompatible() || !save_filesys_cando()) return MonitorResult::error;
+			TCHAR* filename = utf8u(path.c_str());
+			if (!filename) return MonitorResult::error;
+			if (_tcslen(filename) >= MAX_DPATH) { xfree(filename); return MonitorResult::error; }
+			if (restore) {
+				// Reject missing files and obvious non-state input before reset.
+				struct zfile* file = zfile_fopen(filename, _T("rb"), 0);
+				char header[4];
+				bool valid = file && zfile_fread(header, 1, 4, file) == 4 && !memcmp(header, "ASF ", 4);
+				if (file) zfile_fclose(file);
+				if (!valid) { xfree(filename); return MonitorResult::error; }
+				savestate_initsave(filename, 1, true, false);
+				xfree(filename);
+				// Remote ownership cannot survive memory remapping. Clear it
+				// before loading saved console watches, while keeping transport.
+				detach();
+				inside_debugger = 1;
+				gdb_server_begin_restore();
+				savestate_state = STATE_DORESTORE;
+				uae_reset(1, 0);
+				return MonitorResult::pending;
+			}
+			// Do not serialize remote watchpoints as console-owned entries.
+			std::array<memwatch_node, MEMWATCH_TOTAL> saved;
+			for (int i = 0; i < MEMWATCH_TOTAL; ++i) {
+				saved[i] = mwnodes[i];
+				if (watchpoints[i]) mwnodes[i] = {};
+			}
+			savestate_initsave(filename, 1, true, true);
+			bool ok = save_state(filename, _T("WinUAE debug checkpoint")) > 0;
+			for (int i = 0; i < MEMWATCH_TOTAL; ++i) if (watchpoints[i]) mwnodes[i] = saved[i];
+			xfree(filename);
+			return ok ? MonitorResult::ok : MonitorResult::error;
+#else
+			return MonitorResult::unsupported;
+#endif
+		}
 		if (command.compare(0, 13, "guest-output ") == 0) {
 			auto action = command.substr(13);
 			if (action == "on") guest_output.enable(true);

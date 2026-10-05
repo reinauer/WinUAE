@@ -461,8 +461,71 @@ clear` to cancel it, and continue execution after arming. The selection is
 cleared on disconnect. This does not launch a program; launch it in the guest.
 The matching MCP tool is `winuae_process_breakpoint`.
 
+`monitor segments [process-address-in-hex]` reports the current or selected
+AmigaDOS Process and its loaded segments as JSON. Each segment includes its
+zero-based load order, first payload address and allocated payload size.
+CLI and Workbench process segment lists are supported; corrupt, cyclic or
+unreadable lists fail without partial results. The limit is 256 segments.
+Use these addresses in the MCP client to relocate host symbols by hunk
+index; allocation sizes are bounds, not exact source/code lengths.
+The matching MCP tool is `winuae_loaded_segments`.
+
+`monitor exception-mask <hex-mask>` selects CPU exception vectors 2-63
+(bit N selects vector N); zero disables remote exception stops. The mask
+is independent of console exception settings and clears on disconnect.
+`monitor exception` reports that mask and the last selected exception as
+JSON, including its vector, instruction PC and pre-frame register snapshot
+(D0-D7, A0-A7, SR, PC). Stops occur at the normal CPU debugger boundary after
+exception-frame construction; current registers describe the handler entry.
+The stop packet carries the vector and fault instruction PC, with SIGBUS,
+SIGILL, SIGFPE or SIGTRAP as appropriate. The snapshot's PC may already have
+advanced; use instruction_pc to locate the instruction. The MCP tool is
+`winuae_exceptions`. Unselected exceptions retain normal WinUAE behavior.
+
+Standard `vCont;rSTART,END` range stepping executes at least one instruction
+and stops when PC leaves [START,END). Empty ranges single-step. Existing
+breakpoints, selected exceptions and interrupts still stop execution. The
+MCP `winuae_range_step` tool starts this operation asynchronously; pause or
+query registers to inspect its eventual stop. Range state clears on any stop
+and disconnect, without adding a new CPU execution loop.
+
+`monitor dma-watch add ADDRESS LENGTH MODE MASK` adds an independently owned
+DMA watchpoint; all arguments are hexadecimal, MODE is 1=read, 2=write or
+3=access, and MASK uses the existing WinUAE DMA source bits in `debug.h`.
+CPU source bits are rejected. The reply is a decimal watchpoint ID; remove
+it with `monitor dma-watch remove ID` (hex ID), or inspect owned entries
+with `monitor dma-watch list`. Ranges are limited to 64 KiB and the existing
+watchpoint mapper's address space. Standard GDB CPU watchpoints remain
+separate. Stop replies include the actual source mask and custom register.
+The MCP `winuae_dma_watchpoint` tool provides named source groups.
+
+`monitor guest-output on|off|read|clear` captures the guest's existing uaelib
+function 86 debug messages. Capture is opt-in and retains at most 64 records
+and 4096 payload bytes, with each message capped at 1024 bytes. JSON output
+includes record IDs, truncation flags and an eviction count. Reads preserve
+the records; clear empties them while keeping the capture setting. Turning
+capture off retains records for inspection; disconnect/reset clears them.
+This is a guest debug-message channel, not AmigaDOS console or serial output.
+Host logging keeps its original behavior. The matching tool is
+`winuae_guest_output`.
+
+`monitor checkpoint save <native-path>` writes a standard WinUAE state file
+while stopped. `monitor checkpoint restore <native-path>` uses the normal
+restore/reset lifecycle and replies only after restoration, with the CPU
+still stopped and the connection retained. Restore clears remote breakpoints,
+watchpoints, exception selection, entry/range state and captured output.
+Re-arm them after inspecting restored state. Remote watches are excluded
+from saved console-watchpoint state. Ordinary resets continue to disconnect.
+
+Checkpoints follow WinUAE savestate limitations: external disk/file writes
+are not rolled back, and saving can finish an active blit. Incompatible
+devices, busy host filesystems and active input recording/playback are
+rejected. These are debugging checkpoints, not transactional disk snapshots.
+The MCP `winuae_checkpoint` tool exposes save and restore with a host path.
+
+
 Screenshot paths may contain spaces. The server is unauthenticated and
-grants local clients control of the guest and screenshot output paths.
+grants local clients control of the guest and screenshot/checkpoint paths.
 
 Use the [WinUAE MCP server fork](https://github.com/reinauer/mcp-winuae-emu),
 which carries the protocol and cross-platform launcher fixes directly:
@@ -732,51 +795,3 @@ export WINUAE_SMOKE_LOG=/tmp/winuae_unix_smoke.log
 `WINUAE_UNIX_WITH_PROWIZARD` is enabled by default and builds the same Pro Wizard source set used by the Windows project.
 `WINUAE_UNIX_WITH_QT_UI` is enabled by default, but Qt UI targets are skipped when Qt Widgets is not installed.
 `WINUAE_UNIX_WITH_INTEGRATED_QT_UI` is enabled by default. When Qt Widgets is not installed, the build continues without the integrated UI.
-
-`monitor segments [process-address-in-hex]` reports the current or selected
-AmigaDOS Process and its loaded segments as JSON. Each segment includes its
-zero-based load order, first payload address and allocated payload size.
-CLI and Workbench process segment lists are supported; corrupt, cyclic or
-unreadable lists fail without partial results. The limit is 256 segments.
-Use these addresses in the MCP client to relocate host symbols by hunk
-index; allocation sizes are bounds, not exact source/code lengths.
-The matching MCP tool is `winuae_loaded_segments`.
-
-`monitor exception-mask <hex-mask>` selects CPU exception vectors 2-63
-(bit N selects vector N); zero disables remote exception stops. The mask
-is independent of console exception settings and clears on disconnect.
-`monitor exception` reports that mask and the last selected exception as
-JSON, including its vector, instruction PC and pre-frame register snapshot
-(D0-D7, A0-A7, SR, PC). Stops occur at the normal CPU debugger boundary after
-exception-frame construction; current registers describe the handler entry.
-The stop packet carries the vector and fault instruction PC, with SIGBUS,
-SIGILL, SIGFPE or SIGTRAP as appropriate. The snapshot's PC may already have
-advanced; use instruction_pc to locate the instruction. The MCP tool is
-`winuae_exceptions`. Unselected exceptions retain normal WinUAE behavior.
-
-Standard `vCont;rSTART,END` range stepping executes at least one instruction
-and stops when PC leaves [START,END). Empty ranges single-step. Existing
-breakpoints, selected exceptions and interrupts still stop execution. The
-MCP `winuae_range_step` tool starts this operation asynchronously; pause or
-query registers to inspect its eventual stop. Range state clears on any stop
-and disconnect, without adding a new CPU execution loop.
-
-`monitor dma-watch add ADDRESS LENGTH MODE MASK` adds an independently owned
-DMA watchpoint; all arguments are hexadecimal, MODE is 1=read, 2=write or
-3=access, and MASK uses the existing WinUAE DMA source bits in `debug.h`.
-CPU source bits are rejected. The reply is a decimal watchpoint ID; remove
-it with `monitor dma-watch remove ID` (hex ID), or inspect owned entries
-with `monitor dma-watch list`. Ranges are limited to 64 KiB and the existing
-watchpoint mapper's address space. Standard GDB CPU watchpoints remain
-separate. Stop replies include the actual source mask and custom register.
-The MCP `winuae_dma_watchpoint` tool provides named source groups.
-
-`monitor guest-output on|off|read|clear` captures the guest's existing uaelib
-function 86 debug messages. Capture is opt-in and retains at most 64 records
-and 4096 payload bytes, with each message capped at 1024 bytes. JSON output
-includes record IDs, truncation flags and an eviction count. Reads preserve
-the records; clear empties them while keeping the capture setting. Turning
-capture off retains records for inspection; disconnect/reset clears them.
-This is a guest debug-message channel, not AmigaDOS console or serial output.
-Host logging keeps its original behavior. The matching tool is
-`winuae_guest_output`.

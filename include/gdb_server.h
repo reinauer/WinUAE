@@ -10,12 +10,18 @@ winuae_gdb::Target& debug_gdb_target();
 void gdb_server_poll();
 void gdb_server_guest_output(const char*);
 void gdb_server_close();
+void gdb_server_reset();
+void gdb_server_begin_restore();
+void gdb_server_restore_complete(bool);
 bool gdb_server_connected();
 bool gdb_server_stop(const char* reason);
 #else
 static inline void gdb_server_poll() {}
 static inline void gdb_server_guest_output(const char*) {}
 static inline void gdb_server_close() {}
+static inline void gdb_server_reset() {}
+static inline void gdb_server_begin_restore() {}
+static inline void gdb_server_restore_complete(bool) {}
 static inline bool gdb_server_connected() { return false; }
 static inline bool gdb_server_stop(const char*) { return false; }
 #endif

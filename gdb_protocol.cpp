@@ -48,6 +48,14 @@ std::string Session::take_output()
 	return result;
 }
 
+void Session::complete_monitor(bool success)
+{
+	if (!monitor_pending) return;
+	monitor_pending = false;
+	halted = true;
+	reply(success ? "OK" : "E01");
+}
+
 void Session::stop(const std::string& reason)
 {
 	halted = true;
@@ -147,6 +155,7 @@ void Session::command(const std::string& s)
 		}
 		std::string result;
 		auto status = target.monitor(command, result);
+		if (status == MonitorResult::pending) { halted = false; monitor_pending = true; return; }
 		if (status == MonitorResult::unsupported) { reply(""); return; }
 		if (status == MonitorResult::error || result.size() > packet_size / 2) { reply("E01"); return; }
 		if (result.empty()) { reply("OK"); return; }
