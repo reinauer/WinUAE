@@ -28,6 +28,7 @@ struct FakeTarget : Target {
 		if (command == "test-invalid") return MonitorResult::error;
 		return MonitorResult::unsupported;
 	}
+	std::string memory_map() override { return "<memory-map/>"; }
 	std::string screenshot_path;
 	bool screenshot(const std::string& path) override { screenshot_path = path; return true; }
 	bool disassemble(uint32_t address, unsigned count, std::string& out) override {
@@ -136,6 +137,10 @@ int main()
 	require(output.snapshot() == "{\"enabled\":false,\"dropped\":0,\"records\":[]}", "guest output teardown");
 	FakeTarget target;
 	Session s(target);
+    require(send(s, "qXfer:memory-map:read::0,8") == "+" + frame("m<memory-"), "memory map first chunk");
+    require(send(s, "qXfer:memory-map:read::8,20") == "+" + frame("lmap/>"), "memory map last chunk");
+    require(send(s, "qXfer:memory-map:read::100,8") == "+" + frame("l"), "memory map end");
+    require(send(s, "qXfer:memory-map:read::0,0") == "+" + frame("E01"), "memory map zero request");
 	// Every split, including either checksum digit, must preserve the frame.
 	const auto packet = frame("qSupported");
 	for (size_t split = 1; split < packet.size(); ++split) {

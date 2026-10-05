@@ -8135,10 +8135,82 @@ class GdbTarget : public winuae_gdb::Target, private winuae_gdb::GuestReader {
 	}
 	bool initialized_watchpoints = false;
 public:
+
+    std::string memory_map() override
+    {
+        UaeMemoryMap map;
+        uae_memory_map(&map);
+        if (map.num_regions == UAE_MEMORY_REGIONS_MAX) return {};
+        std::string xml = "<?xml version=\"1.0\"?><memory-map>";
+        for (int i = 0; i < map.num_regions; ++i) {
+            const auto& r = map.regions[i];
+            uaecptr address = r.start;
+            addrbank* bank = &get_mem_bank(address);
+            if (bank->sub_banks) bank = get_sub_bank(&address);
+            const char* type = bank->flags & ABFLAG_ROM ? "rom" : bank->flags & ABFLAG_RAM ? "ram" : NULL;
+            if (type && r.size) xml += "<memory type=\"" + std::string(type) + "\" start=\"" +
+                std::to_string(r.start) + "\" length=\"" + std::to_string(r.size) + "\"/>";
+        }
+        return xml + "</memory-map>";
+    }
 	winuae_gdb::GuestOutput guest_output;
 	winuae_gdb::MonitorResult monitor(const std::string& command, std::string& result) override
 	{
 		using winuae_gdb::MonitorResult;
+        if (command == "capabilities") {
+            result = "{\"protocol\":1,\"cpu_model\":" + std::to_string(currprefs.cpu_model) +
+                ",\"mmu_model\":" + std::to_string(currprefs.mmu_model) +
+                ",\"memory_addressing\":\"physical\",\"commands\":[\"capabilities\",\"memory-map\",\"memory-check\","
+                "\"process-break\",\"segments\",\"exception\",\"exception-mask\",\"guest-output\",\"disasm\",\"screenshot\"";
+            if (!mmu_enabled) result += ",\"dma-watch\"";
+#ifdef SAVESTATE
+            result += ",\"checkpoint\"";
+#endif
+            result += "],\"execution\":[\"continue\",\"step\",\"range-step\"],\"exception_details\":true}";
+            return MonitorResult::ok;
+        }
+        if (command == "memory-map") {
+            UaeMemoryMap map;
+            uae_memory_map(&map);
+            result = "{\"addressing\":\"physical\",\"truncated\":" +
+                std::string(map.num_regions == UAE_MEMORY_REGIONS_MAX ? "true" : "false") + ",\"regions\":[";
+            for (int i = 0; i < map.num_regions; ++i) {
+                const auto& r = map.regions[i];
+                uaecptr address = r.start;
+                addrbank* bank = &get_mem_bank(address);
+                if (bank->sub_banks) bank = get_sub_bank(&address);
+                const char* type = bank->flags & ABFLAG_ROM ? "rom" : bank->flags & ABFLAG_RAM ? "ram" : "io";
+                char* name = uutf8(r.name);
+                if (i) result += ",";
+                result += "{\"address\":" + std::to_string(r.start) + ",\"size\":" + std::to_string(r.size) +
+                    ",\"type\":\"" + type + "\",\"chip\":" + (bank->flags & ABFLAG_CHIPRAM ? "true" : "false") +
+                    ",\"name\":" + winuae_gdb::json_string(name ? name : "") + "}";
+                xfree(name);
+            }
+            result += "]}";
+            return MonitorResult::ok;
+        }
+        if (command.compare(0, 13, "memory-check ") == 0) {
+            uint32_t args[2];
+            if (!hex_words(command.substr(13), 2, args) || !args[1] || args[1] > 8 * 1024 * 1024 ||
+                uint64_t(args[0]) + args[1] > (uint64_t(1) << 32)) return MonitorResult::error;
+            int kind = -1;
+            for (uint64_t p = args[0], end = p + args[1]; p < end;) {
+                uaecptr address = static_cast<uaecptr>(p);
+                addrbank& bank = get_mem_bank(address);
+                auto n = static_cast<uint32_t>(std::min(end - p, uint64_t(0x10000 - (address & 0xffff))));
+                // Match the physical RAM write path. Mixed and indirect banks
+                // cannot be certified merely from their displayed map label.
+                if (!(bank.flags & ABFLAG_RAM) || bank.flags & (ABFLAG_ROM | ABFLAG_IO) ||
+                    bank.sub_banks || !bank.check(address, n)) return MonitorResult::error;
+                int chip = (bank.flags & ABFLAG_CHIPRAM) != 0;
+                if (kind >= 0 && chip != kind) return MonitorResult::error;
+                kind = chip; p += n;
+            }
+            result = "{\"writable_ram\":true,\"memory\":\"" + std::string(kind ? "chip" : "fast") + "\"}";
+            return MonitorResult::ok;
+        }
+
 		if (command.compare(0, 16, "checkpoint save ") == 0 ||
 			command.compare(0, 19, "checkpoint restore ") == 0) {
 #ifdef SAVESTATE

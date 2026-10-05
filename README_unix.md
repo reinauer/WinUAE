@@ -801,3 +801,15 @@ USP/ISP/MSP values. Bus/address faults include the fault address, access
 direction, access size and function code. MMU bus faults retain the raw
 68030/68040 SSW or 68060 FSLW; unknown transfer sizes are null. These are
 captured at the existing exception hook, without changing frame creation.
+
+`monitor capabilities` reports protocol version 1, current CPU/MMU models,
+physical address semantics, monitor commands and execution controls.
+Commands unavailable in the current build/configuration are omitted.
+`monitor memory-map` adapts the existing debugger map to bounded JSON,
+including RAM/ROM/I/O and chip-RAM classification and a truncation flag.
+Standard GDB `qXfer:memory-map:read` provides RAM/ROM XML when the map is
+complete. Unlisted regions are not certified as safe to access.
+`monitor memory-check ADDRESS LENGTH` certifies a physical RAM write range
+and its chip/fast kind without performing a read or write. Mixed, indirect,
+I/O, ROM and unmapped ranges are rejected. This does not allocate RAM or
+establish guest ownership of it.
