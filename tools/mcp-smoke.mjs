@@ -30,6 +30,10 @@ try {
  await call('winuae_connect');await call('winuae_continue');await delay(1500);await call('winuae_pause');
  await call('winuae_memory_write',{address:'$10000',data:'700152804e7160fe'});
  await call('winuae_registers_set',{SR:'$2700',A7:'$30000',PC:'$10000'});
+ await call('winuae_range_step',{start:'$10000',end:'$10004'});
+ await delay(100); await call('winuae_pause');
+ assert.match(await call('winuae_registers_get'),/PC=\$00010004/);
+ await call('winuae_registers_set',{PC:'$10000'});
  await call('winuae_step',{count:2});
  await call('winuae_memory_read',{address:'$10000',length:8});
  await call('winuae_memory_dump',{address:'$10000',length:8});

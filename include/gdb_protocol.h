@@ -27,6 +27,7 @@ public:
 	virtual MonitorResult monitor(const std::string&, std::string&) { return MonitorResult::unsupported; }
 	virtual void interrupt() = 0;
 	virtual void resume(bool step) = 0;
+	virtual bool resume_range(uint32_t, uint32_t) { return false; }
 	virtual void detach() = 0;
 };
 

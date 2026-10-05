@@ -753,3 +753,10 @@ The stop packet carries the vector and fault instruction PC, with SIGBUS,
 SIGILL, SIGFPE or SIGTRAP as appropriate. The snapshot's PC may already have
 advanced; use instruction_pc to locate the instruction. The MCP tool is
 `winuae_exceptions`. Unselected exceptions retain normal WinUAE behavior.
+
+Standard `vCont;rSTART,END` range stepping executes at least one instruction
+and stops when PC leaves [START,END). Empty ranges single-step. Existing
+breakpoints, selected exceptions and interrupts still stop execution. The
+MCP `winuae_range_step` tool starts this operation asynchronously; pause or
+query registers to inspect its eventual stop. Range state clears on any stop
+and disconnect, without adding a new CPU execution loop.

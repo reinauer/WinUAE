@@ -8093,6 +8093,8 @@ class GdbTarget : public winuae_gdb::Target, private winuae_gdb::GuestReader {
 	std::string process_name;
 	uaecptr process_address = 0;
 	bool process_armed = false;
+	bool range_active = false;
+	uaecptr range_start = 0, range_end = 0;
 	uae_u64 exception_mask = 0;
 	int exception_vector = -1;
 	bool exception_pending = false;
@@ -8207,6 +8209,7 @@ public:
 	}
 	void stop_reason(char* reason, size_t size)
 	{
+		range_active = false;
 		if (!exception_pending) return;
 		exception_pending = false;
 		unsigned signal = exception_vector == 2 || exception_vector == 3 ? 10 :
@@ -8214,6 +8217,19 @@ public:
 			exception_vector >= 5 && exception_vector <= 7 ? 8 : 5;
 		snprintf(reason, size, "T%02xwinuae-exception:%02x;winuae-faultpc:%08x;11:%08x;",
 			signal, exception_vector, exception_instruction, m68k_getpc());
+	}
+	bool range_stop(uaecptr pc) const
+	{
+		return range_active && (pc < range_start || pc >= range_end);
+	}
+	bool resume_range(uint32_t start, uint32_t end) override
+	{
+		resume(false);
+		range_start = start; range_end = end; range_active = true;
+		trace_mode = TRACE_CHECKONLY;
+		debugging = -1;
+		set_special(SPCFLAG_BRK);
+		return true;
 	}
 	bool process_stop(uaecptr pc, char* reason, size_t size)
 	{
@@ -8384,12 +8400,14 @@ public:
 	}
 	void interrupt() override
 	{
+		range_active = false;
 		trace_mode = TRACE_IMMEDIATE;
 		debugging = 1;
 		set_special(SPCFLAG_BRK);
 	}
 	void resume(bool step) override
 	{
+		range_active = false;
 		inside_debugger = debugger_active = 0;
 		trace_mode = 0;
 		for (const auto& bp : bpnodes) if (bp.enabled > 0) trace_mode = TRACE_CHECKONLY;
@@ -8704,7 +8722,9 @@ void debug (void)
 				}
 			}
 #ifdef DEBUGGER
-			if (gdb_server_connected() && gdb_target.process_stop(pc, remote_reason, sizeof(remote_reason))) bp = -1;
+			if (gdb_server_connected()) {
+				if (gdb_target.process_stop(pc, remote_reason, sizeof(remote_reason)) || gdb_target.range_stop(pc)) bp = -1;
+			}
 #endif
 			if (!bp && bpnum < 0) {
 				debug_continue();
