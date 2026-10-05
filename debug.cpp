@@ -55,6 +55,7 @@
 #include "readcpu.h"
 #include "keybuf.h"
 #include "gdb_server.h"
+#include "gdb_input.h"
 #include "gdb_protocol.h"
 #include "gdb_amiga.h"
 #include "gdb_output.h"
@@ -8091,7 +8092,25 @@ void debug_exception(int nr)
 
 // Keep remote ownership separate from console breakpoints and trainers.
 #ifdef DEBUGGER
-class GdbTarget : public winuae_gdb::Target, private winuae_gdb::GuestReader {
+class GdbTarget : public winuae_gdb::Target, private winuae_gdb::GuestReader, private winuae_gdb::InputSink {
+	winuae_gdb::GuestInput guest_input{*this};
+	void input(const winuae_gdb::InputEvent& e) override
+	{
+		if (e.kind == 0) { inputdevice_do_keyboard(e.code, e.value); return; }
+		static const int axes[2][2] = {
+			{INPUTEVENT_MOUSE1_HORIZ, INPUTEVENT_MOUSE1_VERT},
+			{INPUTEVENT_MOUSE2_HORIZ, INPUTEVENT_MOUSE2_VERT}
+		};
+		static const int controls[2][7] = {
+			{INPUTEVENT_JOY1_LEFT, INPUTEVENT_JOY1_RIGHT, INPUTEVENT_JOY1_UP, INPUTEVENT_JOY1_DOWN,
+			 INPUTEVENT_JOY1_FIRE_BUTTON, INPUTEVENT_JOY1_2ND_BUTTON, INPUTEVENT_JOY1_3RD_BUTTON},
+			{INPUTEVENT_JOY2_LEFT, INPUTEVENT_JOY2_RIGHT, INPUTEVENT_JOY2_UP, INPUTEVENT_JOY2_DOWN,
+			 INPUTEVENT_JOY2_FIRE_BUTTON, INPUTEVENT_JOY2_2ND_BUTTON, INPUTEVENT_JOY2_3RD_BUTTON}
+		};
+		// Relative mouse counts bypass host scaling and window coordinates.
+		int value = e.value <= 127 ? static_cast<int>(e.value) : -static_cast<int>(0u - e.value);
+		send_input_event(e.kind == 1 ? axes[e.port][e.code] : controls[e.port][e.code], value, 0, 0);
+	}
 	std::string process_name;
 	uaecptr process_address = 0;
 	bool process_armed = false;
@@ -8155,14 +8174,30 @@ public:
         }
         return xml + "</memory-map>";
     }
+	bool monitor_running(const std::string& command) override
+	{
+		return command == "capabilities" || command.compare(0, 6, "input ") == 0;
+	}
 	winuae_gdb::GuestOutput guest_output;
 	winuae_gdb::MonitorResult monitor(const std::string& command, std::string& result) override
 	{
 		using winuae_gdb::MonitorResult;
+		if (command == "input status" || command == "input release") {
+			if (command == "input release") guest_input.release();
+			result = guest_input.status();
+			return MonitorResult::ok;
+		}
+		if (command.compare(0, 12, "input event ") == 0) {
+			uint32_t args[4];
+			if (input_record || input_play || !hex_words(command.substr(12), 4, args) ||
+				!guest_input.event({args[0], args[1], args[2], args[3]})) return MonitorResult::error;
+			result = guest_input.status();
+			return MonitorResult::ok;
+		}
         if (command == "capabilities") {
             result = "{\"protocol\":1,\"cpu_model\":" + std::to_string(currprefs.cpu_model) +
                 ",\"mmu_model\":" + std::to_string(currprefs.mmu_model) +
-                ",\"memory_addressing\":\"physical\",\"commands\":[\"capabilities\",\"memory-map\",\"memory-check\",\"tasks\",\"history\",\"condition\",\"step-over\","
+                ",\"memory_addressing\":\"physical\",\"commands\":[\"input\",\"capabilities\",\"memory-map\",\"memory-check\",\"tasks\",\"history\",\"condition\",\"step-over\","
                 "\"process-break\",\"segments\",\"exception\",\"exception-mask\",\"guest-output\",\"disasm\",\"screenshot\"";
             if (!mmu_enabled) result += ",\"dma-watch\"";
 #ifdef SAVESTATE
@@ -8712,6 +8747,7 @@ public:
 	}
 	void detach() override
 	{
+		guest_input.release();
 		guest_output.clear(true);
 		remote_history = false;
 		exception_mask = 0; exception_vector = -1; exception_pending = false;

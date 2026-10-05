@@ -27,7 +27,24 @@ async function call(name,args={}){const r=await client.callTool({name,arguments:
 try {
  await client.connect(transport);
  transport.stderr?.on('data',d=>fs.appendFileSync(path.join(temp, 'mcp.log'),d));
- await call('winuae_connect');await call('winuae_continue');await delay(1500);await call('winuae_pause');
+ await call('winuae_connect');await call('winuae_continue');await delay(1500);
+ await call('winuae_input',{action:'key',code:0x45,pressed:true});
+ assert.equal(JSON.parse(await call('winuae_input',{action:'status'})).held.length,1);
+ // Input/status must not turn a running target into a debugger stop.
+ const waiting=await client.callTool({name:'winuae_wait_stop',arguments:{timeout_ms:30}});
+ assert(waiting.isError);assert.match(waiting.content[0].text,/timed out/i);
+ assert.deepEqual(JSON.parse(await call('winuae_input',{action:'release'})).held,[]);
+ await call('winuae_pause');
+ // Read the actual active-low mouse/fire line with guest instructions.
+ await call('winuae_memory_write',{address:'$10000',data:'103900bfe00160f8'});
+ await call('winuae_registers_set',{SR:'$2700',A7:'$30000',PC:'$10000'});
+ await call('winuae_input',{action:'button',port:0,button:0,pressed:true});
+ await call('winuae_step',{count:1});
+ const pressed=JSON.parse(await call('winuae_snapshot')).registers.D0;
+ await call('winuae_input',{action:'release'});
+ await call('winuae_registers_set',{PC:'$10000'});await call('winuae_step',{count:1});
+ const released=JSON.parse(await call('winuae_snapshot')).registers.D0;
+ assert.equal(pressed & 0x40,0);assert.equal(released & 0x40,0x40);
  await call('winuae_memory_write',{address:'$10000',data:'700152804e7160fe'});
  await call('winuae_registers_set',{SR:'$2700',A7:'$30000',PC:'$10000'});
  await call('winuae_range_step',{start:'$10000',end:'$10004'});

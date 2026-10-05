@@ -1,6 +1,7 @@
 #include "include/gdb_protocol.h"
 #include "include/gdb_amiga.h"
 #include "include/gdb_output.h"
+#include "include/gdb_input.h"
 #include <cstring>
 #include <cstdio>
 #include <cstdlib>
@@ -28,6 +29,7 @@ struct FakeTarget : Target {
 		if (command == "test-invalid") return MonitorResult::error;
 		return MonitorResult::unsupported;
 	}
+	bool monitor_running(const std::string& command) override { return command == "test-query"; }
 	std::string memory_map() override { return "<memory-map/>"; }
 	std::string screenshot_path;
 	bool screenshot(const std::string& path) override { screenshot_path = path; return true; }
@@ -131,6 +133,16 @@ static void process_reader_tests()
 
 int main()
 {
+	struct Sink : InputSink { std::vector<InputEvent> events; void input(const InputEvent& e) override { events.push_back(e); } } sink;
+	GuestInput input(sink);
+	require(!input.event({0, 0, 0x80, 1}) && !input.event({2, 2, 0, 1}) &&
+		!input.event({1, 0, 0, 128}) && sink.events.empty(), "invalid input delivered");
+	require(input.event({0, 0, 0x45, 1}) && input.event({0, 0, 0x45, 1}) &&
+		sink.events.size() == 1, "duplicate key press delivered");
+	require(input.event({1, 1, 0, 0xffffff81}) && input.event({2, 1, 4, 1}), "valid input rejected");
+	input.release();
+	require(sink.events.size() == 5 && input.status() == "{\"held\":[]}", "held inputs not released");
+	input.release(); require(sink.events.size() == 5, "release was not idempotent");
 	process_reader_tests();
 	task_reader_tests();
 	GuestOutput output;
@@ -205,6 +217,8 @@ int main()
 	require(send(s, "vCont;s").empty() && target.stepped, "step must wait for stop");
 	s.stop(); require(s.take_output() == frame("S05"), "step stop reply");
 	require(send(s, "vCont;c").empty() && !target.stepped, "continue");
+	require(send(s, monitor("test-query")) == frame("7b7d") && !s.stopped(), "live query stopped CPU");
+	require(send(s, monitor("test-arm")) == frame("E16"), "unsafe live monitor accepted");
 	s.receive("\003", 1); require(target.interrupts == 2, "interrupt byte");
 	s.stop("T05watch:00001000;");
 	require(s.take_output() == frame("T05watch:00001000;"), "watchpoint stop reason");

@@ -26,6 +26,7 @@ public:
 	virtual bool screenshot(const std::string&) { return false; }
 	virtual bool disassemble(uint32_t, unsigned, std::string&) { return false; }
 	virtual MonitorResult monitor(const std::string&, std::string&) { return MonitorResult::unsupported; }
+	virtual bool monitor_running(const std::string&) { return false; }
 	virtual void interrupt() = 0;
 	virtual void resume(bool step) = 0;
 	virtual bool resume_range(uint32_t, uint32_t) { return false; }
