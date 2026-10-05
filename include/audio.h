@@ -24,7 +24,7 @@ void AUDxLEN (int nr, uae_u16 value);
 
 uae_u16 audio_dmal (void);
 void audio_state_machine (void);
-uaecptr *audio_getpt(int nr);
+uaecptr *audio_getpt(int nr, bool dma_access = true);
 uaecptr audio_getloadpt(int nr);
 int init_audio (void);
 void audio_reset (void);

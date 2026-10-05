@@ -5214,10 +5214,10 @@ uae_u16 disk_dmal(void)
 	return dmal;
 }
 
-uaecptr *disk_getpt(void)
+uaecptr *disk_getpt(bool dma_access)
 {
-	uaecptr pt = dskpt;
-	dskpt &= ~1;
+	if (dma_access)
+		dskpt &= ~1;
 	return &dskpt;
 }
 

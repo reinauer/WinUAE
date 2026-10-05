@@ -2638,11 +2638,13 @@ void AUDxDAT(int nr, uae_u16 v)
 	AUDxDAT(nr, v, 0xffffffff);
 }
 
-uaecptr *audio_getpt(int nr)
+uaecptr *audio_getpt(int nr, bool dma_access)
 {
 	struct audio_channel_data *cdp = audio_channel + nr;
-	cdp->ptx_tofetch = false;
-	cdp->pt &= ~1;
+	if (dma_access) {
+		cdp->ptx_tofetch = false;
+		cdp->pt &= ~1;
+	}
 	return &cdp->pt;
 }
 uaecptr audio_getloadpt(int nr)

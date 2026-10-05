@@ -8465,6 +8465,22 @@ uae_u8 *save_custom_extra(size_t *len, uae_u8 *dstptr)
 
 static int getregfrompt(uaecptr *pt)
 {
+	if (pt == disk_getpt(false))
+		return 0x020;
+	if (pt == &refptr)
+		return 0x028;
+	if (pt == &hhspr)
+		return 0x078;
+	if (pt == &hhbpl)
+		return 0x07a;
+	if (pt == &cop_state.dummyip)
+		return 0x08a;
+	for (int i = 0; i < 4; i++) {
+		if (pt == audio_getpt(i, false))
+			return 0x0aa + i * 0x10;
+	}
+	if (pt == &dummyrgaaddr)
+		return 0x1fe;
 	if (pt == &blt_info.bltdpt)
 		return 0x000;
 	if (pt == &blt_info.bltcpt)
@@ -8513,6 +8529,23 @@ static uaecptr *getptfromreg(int reg)
 {
 	switch (reg)
 	{
+	case 0x020:
+		return disk_getpt(false);
+	case 0x028:
+		return &refptr;
+	case 0x078:
+		return &hhspr;
+	case 0x07a:
+		return &hhbpl;
+	case 0x08a:
+		return &cop_state.dummyip;
+	case 0x0aa:
+	case 0x0ba:
+	case 0x0ca:
+	case 0x0da:
+		return audio_getpt((reg - 0x0aa) / 0x10, false);
+	case 0x1fe:
+		return &dummyrgaaddr;
 	case -1:
 	case 0xffff:
 		return NULL;
