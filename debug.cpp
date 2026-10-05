@@ -8194,12 +8194,21 @@ public:
 	}
 	bool monitor_running(const std::string& command) override
 	{
-		return command == "capabilities" || command.compare(0, 6, "input ") == 0;
+		return command == "capabilities" || command == "execution-status" || command.compare(0, 6, "input ") == 0;
 	}
 	winuae_gdb::GuestOutput guest_output;
 	winuae_gdb::MonitorResult monitor(const std::string& command, std::string& result) override
 	{
 		using winuae_gdb::MonitorResult;
+		if (command == "execution-status") {
+			result = "{\"execution\":\"" + std::string(pause_emulation ? "host-paused" :
+				gdb_server_halted() ? "stopped" : "running") + "\",\"debugger_stopped\":" +
+				(gdb_server_halted() ? "true" : "false") + ",\"host_pause\":" + std::to_string(pause_emulation) +
+				",\"frame\":" + std::to_string(vsync_counter) + ",\"vpos\":" + std::to_string(vpos) +
+				",\"hpos\":" + std::to_string(current_hpos()) + ",\"cycles\":\"" +
+				std::to_string(get_cycles()) + "\"}";
+			return MonitorResult::ok;
+		}
 		if (command == "input status" || command == "input release") {
 			if (command == "input release") guest_input.cancel();
 			result = guest_input.status();
@@ -8233,7 +8242,7 @@ public:
         if (command == "capabilities") {
             result = "{\"protocol\":1,\"cpu_model\":" + std::to_string(currprefs.cpu_model) +
                 ",\"mmu_model\":" + std::to_string(currprefs.mmu_model) +
-                ",\"memory_addressing\":\"physical\",\"commands\":[\"input-sequence\",\"input\",\"capabilities\",\"memory-map\",\"memory-check\",\"tasks\",\"history\",\"condition\",\"step-over\","
+                ",\"memory_addressing\":\"physical\",\"commands\":[\"execution-status\",\"input-sequence\",\"input\",\"capabilities\",\"memory-map\",\"memory-check\",\"tasks\",\"history\",\"condition\",\"step-over\","
                 "\"process-break\",\"segments\",\"exception\",\"exception-mask\",\"guest-output\",\"disasm\",\"screenshot\"";
             if (!mmu_enabled) result += ",\"dma-watch\",\"watch\"";
 #ifdef SAVESTATE

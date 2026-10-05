@@ -18,16 +18,21 @@ const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'winuae-mcp-smoke-'));
 console.log('Test files:', temp);
 const config = path.join(temp, 'machine.uae');
 const screenshot = path.join(temp, 'screen shot.png');
-fs.writeFileSync(config,`boot_rom_uae=full\nuse_gui=no\ncpu_model=68000\ncpu_compatible=true\nchipmem_size=2\ncachesize=0\nkickstart_rom_file=${WINUAE_ROM}\n`);
+fs.writeFileSync(config,`boot_rom_uae=full\nuse_gui=no\ncpu_model=${process.env.WINUAE_CPU_MODEL || 68000}\ncpu_compatible=${process.env.WINUAE_CPU_COMPATIBLE || "true"}\nchipmem_size=2\ncachesize=${process.env.WINUAE_CACHE_SIZE || 0}\nkickstart_rom_file=${WINUAE_ROM}\n`);
 const original=fs.readFileSync(config);
 const transport=new StdioClientTransport({command:process.execPath,args:[path.resolve(WINUAE_MCP_PATH, 'dist/index.js')],env:{...process.env,WINUAE_PATH,WINUAE_CONFIG:config,WINUAE_GDB_PORT:String(port),SDL_VIDEODRIVER:'dummy',SDL_AUDIODRIVER:'dummy',QT_QPA_PLATFORM:'offscreen'},stderr:'pipe'});
 const client=new Client({name:'winuae-integration-test',version:'1'},{capabilities:{}});
+let detachedPid;
 const delay=ms=>new Promise(r=>setTimeout(r,ms));
 async function call(name,args={}){const r=await client.callTool({name,arguments:args});const text=r.content.map(c=>c.text||'').join('\n');assert(!text.startsWith('Error:') && !/VERIFY (FAILED|MISMATCH)/.test(text),name+': '+text);console.log(name+': '+text.slice(0,120));return text;}
 try {
  await client.connect(transport);
  transport.stderr?.on('data',d=>fs.appendFileSync(path.join(temp, 'mcp.log'),d));
- await call('winuae_connect');await call('winuae_continue');await delay(1500);
+ const missing=await client.callTool({name:'winuae_attach',arguments:{}});assert(missing.isError);
+ assert.equal(JSON.parse(await call('winuae_status')).owned,false);
+ await call('winuae_launch');await call('winuae_continue');await delay(1500);
+ const running=JSON.parse(await call('winuae_status'));
+ assert.equal(running.owned,true);assert.equal(running.target.execution,'running');
  await call('winuae_input',{action:'key',code:0x45,pressed:true});
  assert.equal(JSON.parse(await call('winuae_input',{action:'status'})).held.length,1);
  // Input/status must not turn a running target into a debugger stop.
@@ -148,7 +153,23 @@ try {
  await call('winuae_reset');
  await call('winuae_eject_disk',{drive:0});
  await call('winuae_disconnect');
- await call('winuae_connect');await call('winuae_disconnect');
+ await call('winuae_connect');
+ const owned=JSON.parse(await call('winuae_status'));assert(owned.owned && owned.pid);
+ detachedPid=owned.pid;
+ await call('winuae_input',{action:'key',code:0x20,pressed:true});
+ await call('winuae_detach');
+ assert.equal(JSON.parse(await call('winuae_status')).owned,false);
+ const occupied=await client.callTool({name:'winuae_launch',arguments:{}});assert(occupied.isError);
+ await call('winuae_attach');
+ assert.equal(JSON.parse(await call('winuae_status')).owned,false);
+ assert.deepEqual(JSON.parse(await call('winuae_input',{action:'status'})).held,[]);
+ const refused=await client.callTool({name:'winuae_shutdown',arguments:{}});assert(refused.isError);
+ await call('winuae_disconnect');
+ process.kill(detachedPid,'SIGINT');
+ for(let i=0;i<100;i++){try{process.kill(detachedPid,0);}catch{detachedPid=undefined;break;}await delay(20);}
+ assert.equal(detachedPid,undefined,'detached test process did not exit');
+ await call('winuae_launch');await call('winuae_shutdown');
+ assert.equal(JSON.parse(await call('winuae_status')).owned,false);
  assert.deepEqual(fs.readFileSync(config),original);
  console.log('MCP stdio end-to-end passed; user config unchanged; child shutdown awaited');
-}finally{try{await call('winuae_disconnect');}catch{}await client.close();}
+}finally{try{await call('winuae_disconnect');}catch{}if(detachedPid){try{process.kill(detachedPid,'SIGINT');}catch{}}await client.close();}
