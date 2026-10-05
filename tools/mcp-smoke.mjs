@@ -45,6 +45,27 @@ try {
  await call('winuae_registers_set',{PC:'$10000'});await call('winuae_step',{count:1});
  const released=JSON.parse(await call('winuae_snapshot')).registers.D0;
  assert.equal(pressed & 0x40,0);assert.equal(released & 0x40,0x40);
+ // A guest loop observes both edges of a frame-timed button tap.
+ await call('winuae_memory_write',{address:'$10000',data:'103900bfe0010800000666f413c000026000103900bfe0010800000667f413c00002600160fe'});
+ await call('winuae_memory_write',{address:'$26000',data:'ffff'});
+ await call('winuae_registers_set',{PC:'$10000'});
+ await call('winuae_breakpoint_set',{address:'$10024'});
+ await call('winuae_input_sequence',{steps:[{action:'button',button:0,pressed:true,after_frames:2},{action:'button',button:0,pressed:false,after_frames:5}]});
+ await delay(40);
+ assert.equal(JSON.parse(await call('winuae_input',{action:'status'})).sequence.next,0);
+ await call('winuae_continue');await call('winuae_wait_stop',{timeout_ms:3000});
+ assert.equal(JSON.parse(await call('winuae_input',{action:'status'})).sequence.state,'completed');
+ const edges=await call('winuae_memory_read',{address:'$26000',length:2});
+ const edgeBytes=edges.split('\n').pop().trim().split(/\s+/).map(b=>parseInt(b,16));
+ assert.equal(edgeBytes[0] & 0x40,0);assert.equal(edgeBytes[1] & 0x40,0x40);
+ await call('winuae_breakpoint_clear',{address:'$10024'});
+ await call('winuae_key_tap',{codes:[0x60,0x20],hold_frames:120,resume:true});
+ await delay(60);
+ assert.equal(JSON.parse(await call('winuae_input',{action:'status'})).held.length,2);
+ const cancelled=JSON.parse(await call('winuae_input',{action:'release'}));
+ assert.equal(cancelled.sequence.state,'cancelled');assert.deepEqual(cancelled.held,[]);
+ await call('winuae_pause');
+
  await call('winuae_memory_write',{address:'$10000',data:'700152804e7160fe'});
  await call('winuae_registers_set',{SR:'$2700',A7:'$30000',PC:'$10000'});
  await call('winuae_range_step',{start:'$10000',end:'$10004'});

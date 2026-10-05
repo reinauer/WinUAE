@@ -141,8 +141,17 @@ int main()
 		sink.events.size() == 1, "duplicate key press delivered");
 	require(input.event({1, 1, 0, 0xffffff81}) && input.event({2, 1, 4, 1}), "valid input rejected");
 	input.release();
-	require(sink.events.size() == 5 && input.status() == "{\"held\":[]}", "held inputs not released");
+	require(sink.events.size() == 5 && input.status().find("\"held\":[]") != std::string::npos, "held inputs not released");
 	input.release(); require(sink.events.size() == 5, "release was not idempotent");
+	require(!input.start({{3601, {0,0,0,1}}}) && !input.start({{0,{0,0,128,1}}}), "invalid sequence accepted");
+	require(input.start({{0,{0,0,0x45,1}}, {3,{0,0,0x45,0}}}), "sequence rejected");
+	require(!input.event({0,0,0x20,1}) && !input.start({{0,{3,0,0,0}}}), "active sequence overwritten");
+	input.frame(); require(sink.events.size() == 6 && input.active(), "first frame input");
+	input.frame(); input.frame(); require(sink.events.size() == 6, "release before frame deadline");
+	input.frame(); require(sink.events.size() == 7 && !input.active(), "sequence completion");
+	require(input.start({{0,{2,1,4,1}}, {20,{3,0,0,0}}}), "second sequence rejected");
+	input.frame(); input.cancel(); require(!input.active() && sink.events.size() == 9, "cancel did not release");
+	input.frame(); require(sink.events.size() == 9, "cancelled sequence advanced");
 	process_reader_tests();
 	task_reader_tests();
 	GuestOutput output;

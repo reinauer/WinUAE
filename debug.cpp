@@ -8174,6 +8174,10 @@ public:
         }
         return xml + "</memory-map>";
     }
+	void input_frame() {
+		if (input_record || input_play) guest_input.cancel();
+		else guest_input.frame();
+	}
 	bool monitor_running(const std::string& command) override
 	{
 		return command == "capabilities" || command.compare(0, 6, "input ") == 0;
@@ -8183,7 +8187,25 @@ public:
 	{
 		using winuae_gdb::MonitorResult;
 		if (command == "input status" || command == "input release") {
-			if (command == "input release") guest_input.release();
+			if (command == "input release") guest_input.cancel();
+			result = guest_input.status();
+			return MonitorResult::ok;
+		}
+		if (command.compare(0, 15, "input sequence ") == 0) {
+			if (input_record || input_play) return MonitorResult::error;
+			std::vector<winuae_gdb::InputStep> steps;
+			size_t start = 15;
+			while (start < command.size()) {
+				auto end = command.find(';', start);
+				if (end == std::string::npos) end = command.size();
+				uint32_t args[5];
+				if (steps.size() == 256 || !hex_words(command.substr(start, end - start), 5, args))
+					return MonitorResult::error;
+				steps.push_back({args[0], {args[1], args[2], args[3], args[4]}});
+				if (end + 1 == command.size()) return MonitorResult::error;
+				start = end + 1;
+			}
+			if (!guest_input.start(steps)) return MonitorResult::error;
 			result = guest_input.status();
 			return MonitorResult::ok;
 		}
@@ -8197,7 +8219,7 @@ public:
         if (command == "capabilities") {
             result = "{\"protocol\":1,\"cpu_model\":" + std::to_string(currprefs.cpu_model) +
                 ",\"mmu_model\":" + std::to_string(currprefs.mmu_model) +
-                ",\"memory_addressing\":\"physical\",\"commands\":[\"input\",\"capabilities\",\"memory-map\",\"memory-check\",\"tasks\",\"history\",\"condition\",\"step-over\","
+                ",\"memory_addressing\":\"physical\",\"commands\":[\"input-sequence\",\"input\",\"capabilities\",\"memory-map\",\"memory-check\",\"tasks\",\"history\",\"condition\",\"step-over\","
                 "\"process-break\",\"segments\",\"exception\",\"exception-mask\",\"guest-output\",\"disasm\",\"screenshot\"";
             if (!mmu_enabled) result += ",\"dma-watch\"";
 #ifdef SAVESTATE
@@ -8747,7 +8769,7 @@ public:
 	}
 	void detach() override
 	{
-		guest_input.release();
+		guest_input.cancel();
 		guest_output.clear(true);
 		remote_history = false;
 		exception_mask = 0; exception_vector = -1; exception_pending = false;
@@ -8771,6 +8793,11 @@ public:
 };
 
 static GdbTarget gdb_target;
+
+void gdb_server_input_frame()
+{
+	if (gdb_server_connected()) gdb_target.input_frame();
+}
 
 void gdb_server_guest_output(const char* text)
 {
