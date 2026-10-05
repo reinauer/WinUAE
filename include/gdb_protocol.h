@@ -11,7 +11,7 @@ namespace winuae_gdb {
 
 using Registers = std::array<uint32_t, 18>;
 
-enum class MonitorResult { unsupported, ok, error, pending };
+enum class MonitorResult { unsupported, ok, error, pending, running };
 
 class Target {
 public:

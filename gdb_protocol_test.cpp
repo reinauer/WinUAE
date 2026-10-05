@@ -85,6 +85,16 @@ struct GuestFixture : GuestReader {
 		put32(2048 + 60, 4096 / 4);
 	}
 };
+static void task_reader_tests()
+{
+    GuestFixture memory;
+    std::vector<AmigaTask> tasks;
+    require(read_tasks(memory, tasks) && tasks.size() == 1 && tasks[0].name == "Task", "current task inspection");
+    memory.put32(256 + 406, 1024);
+    memory.put32(1024, 1024);
+    require(!read_tasks(memory, tasks), "task list cycle accepted");
+}
+
 static void process_reader_tests()
 {
 	GuestFixture memory;
@@ -122,6 +132,7 @@ static void process_reader_tests()
 int main()
 {
 	process_reader_tests();
+	task_reader_tests();
 	GuestOutput output;
 	output.capture("disabled");
 	require(output.snapshot().find("disabled") == std::string::npos, "guest capture enabled by default");

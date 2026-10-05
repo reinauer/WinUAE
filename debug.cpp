@@ -8096,6 +8096,8 @@ class GdbTarget : public winuae_gdb::Target, private winuae_gdb::GuestReader {
 	uaecptr process_address = 0;
 	bool process_armed = false;
 	bool range_active = false;
+	bool remote_history = false;
+	bool conditional[BREAKPOINT_TOTAL]{};
 	uaecptr range_start = 0, range_end = 0;
 	uae_u64 exception_mask = 0;
 	int exception_vector = -1;
@@ -8160,13 +8162,13 @@ public:
         if (command == "capabilities") {
             result = "{\"protocol\":1,\"cpu_model\":" + std::to_string(currprefs.cpu_model) +
                 ",\"mmu_model\":" + std::to_string(currprefs.mmu_model) +
-                ",\"memory_addressing\":\"physical\",\"commands\":[\"capabilities\",\"memory-map\",\"memory-check\","
+                ",\"memory_addressing\":\"physical\",\"commands\":[\"capabilities\",\"memory-map\",\"memory-check\",\"tasks\",\"history\",\"condition\",\"step-over\","
                 "\"process-break\",\"segments\",\"exception\",\"exception-mask\",\"guest-output\",\"disasm\",\"screenshot\"";
             if (!mmu_enabled) result += ",\"dma-watch\"";
 #ifdef SAVESTATE
             result += ",\"checkpoint\"";
 #endif
-            result += "],\"execution\":[\"continue\",\"step\",\"range-step\"],\"exception_details\":true}";
+            result += "],\"execution\":[\"continue\",\"step\",\"range-step\",\"step-over\"],\"exception_details\":true}";
             return MonitorResult::ok;
         }
         if (command == "memory-map") {
@@ -8209,6 +8211,87 @@ public:
             }
             result = "{\"writable_ram\":true,\"memory\":\"" + std::string(kind ? "chip" : "fast") + "\"}";
             return MonitorResult::ok;
+        }
+
+        if (command == "tasks") {
+            std::vector<winuae_gdb::AmigaTask> tasks;
+            if (!winuae_gdb::read_tasks(*this, tasks)) return MonitorResult::error;
+            result = "[";
+            for (const auto& task : tasks) {
+                if (result.size() > 1) result += ",";
+                result += "{\"address\":" + std::to_string(task.address) + ",\"name\":" + winuae_gdb::json_string(task.name) +
+                    ",\"list\":" + winuae_gdb::json_string(task.list) + ",\"type\":" + std::to_string(task.type) +
+                    ",\"state\":" + std::to_string(task.state) + ",\"saved_sp\":" + std::to_string(task.saved_sp) +
+                    ",\"stack_lower\":" + std::to_string(task.stack_lower) + ",\"stack_upper\":" + std::to_string(task.stack_upper) +
+                    ",\"signals_wait\":" + std::to_string(task.signals_wait) + "}";
+            }
+            result += "]"; return MonitorResult::ok;
+        }
+        if (command == "history on" || command == "history off") {
+            remote_history = command == "history on";
+            return MonitorResult::ok;
+        }
+        if (command.compare(0, 13, "history read ") == 0) {
+            uint32_t count;
+            if (!hex_words(command.substr(13), 1, &count) || !count || count > 128) return MonitorResult::error;
+            int index = lasthist;
+            for (uint32_t i = 0; i < count && index != firsthist; ++i) index = index ? index - 1 : MAX_HIST - 1;
+            result = "{\"recording\":" + std::string(remote_history ? "true" : "false") + ",\"entries\":[";
+            bool first = true;
+            while (index != lasthist) {
+                const auto& h = history[index];
+                if (!first) result += ",";
+                first = false;
+                result += "{\"pc\":" + std::to_string(h.regs.pc) + ",\"frame\":" + std::to_string(h.fp) +
+                    ",\"vpos\":" + std::to_string(h.vpos) + ",\"hpos\":" + std::to_string(h.hpos) + ",\"registers\":[";
+                for (int r = 0; r < 16; ++r) { if (r) result += ","; result += std::to_string(h.regs.regs[r]); }
+                result += "]}";
+                index = (index + 1) % MAX_HIST;
+            }
+            result += "]}"; return MonitorResult::ok;
+        }
+        if (command == "condition list") {
+            result = "[";
+            for (int i = 0; i < BREAKPOINT_TOTAL; ++i) if (conditional[i]) {
+                const auto& bp = bpnodes[i];
+                if (result.size() > 1) result += ",";
+                result += "{\"id\":" + std::to_string(i) + ",\"register\":" + std::to_string(bp.type) +
+                    ",\"operator\":" + std::to_string(bp.oper) + ",\"value\":" + std::to_string(bp.value1) +
+                    ",\"mask\":" + std::to_string(bp.mask) + ",\"signed\":" + (bp.opersigned ? "true" : "false") + "}";
+            }
+            result += "]"; return MonitorResult::ok;
+        }
+        if (command.compare(0, 17, "condition remove ") == 0) {
+            uint32_t id;
+            if (!hex_words(command.substr(17), 1, &id) || id >= BREAKPOINT_TOTAL || !conditional[id]) return MonitorResult::error;
+            bpnodes[id] = {}; conditional[id] = false; return MonitorResult::ok;
+        }
+        if (command.compare(0, 14, "condition add ") == 0) {
+            uint32_t args[5];
+            if (!hex_words(command.substr(14), 5, args) || args[0] > BREAKPOINT_REG_SR || args[0] == BREAKPOINT_REG_PC ||
+                args[1] > BREAKPOINT_CMP_LARGER || args[4] > 1) return MonitorResult::error;
+            for (int i = 0; i < BREAKPOINT_TOTAL; ++i) if (!bpnodes[i].enabled) {
+                auto& bp = bpnodes[i]; bp = {};
+                bp.type = args[0]; bp.oper = args[1]; bp.value1 = args[2]; bp.mask = args[3];
+                bp.opersigned = args[4] != 0; bp.enabled = 1; bp.chain = -1;
+                conditional[i] = true;
+                result = "{\"id\":" + std::to_string(i) + "}"; return MonitorResult::ok;
+            }
+            return MonitorResult::error;
+        }
+        if (command == "step-over") {
+            uaecptr pc = m68k_getpc(), next;
+            std::string check;
+            if (!disassemble(pc, 1, check)) return MonitorResult::error;
+            TCHAR line[1024];
+            int flags = disasm_flags;
+            disasm_flags &= ~(DISASM_FLAG_VAL | DISASM_FLAG_VAL_FORCE);
+            m68k_disasm_2(line, 1024, pc, NULL, 0, &next, 1, NULL, NULL, 0xffffffff, 1);
+            disasm_flags = flags;
+            resume(false);
+            trace_mode = TRACE_MATCH_PC; trace_param[0] = next;
+            exception_debugging = 1; debugging = -1; set_special(SPCFLAG_BRK);
+            return MonitorResult::running;
         }
 
 		if (command.compare(0, 16, "checkpoint save ") == 0 ||
@@ -8621,7 +8704,7 @@ public:
 		inside_debugger = debugger_active = 0;
 		trace_mode = 0;
 		for (const auto& bp : bpnodes) if (bp.enabled > 0) trace_mode = TRACE_CHECKONLY;
-		if (process_armed || processptr || processname) trace_mode = TRACE_CHECKONLY;
+		if (process_armed || processptr || processname || remote_history) trace_mode = TRACE_CHECKONLY;
 		if (step) { trace_mode = TRACE_SKIP_INS; trace_param[0] = 1; }
 		exception_debugging = step ? 1 : 0;
 		debugging = trace_mode ? -1 : 0;
@@ -8630,11 +8713,12 @@ public:
 	void detach() override
 	{
 		guest_output.clear(true);
+		remote_history = false;
 		exception_mask = 0; exception_vector = -1; exception_pending = false;
 		process_armed = false; process_name.clear(); process_address = 0;
 		for (int i = 0; i < BREAKPOINT_TOTAL; ++i) {
-			if (breakpoints[i]) bpnodes[i] = {};
-			breakpoints[i] = false;
+			if (breakpoints[i] || conditional[i]) bpnodes[i] = {};
+			breakpoints[i] = conditional[i] = false;
 		}
 		bool changed = false;
 		for (int i = 0; i < MEMWATCH_TOTAL; ++i) {

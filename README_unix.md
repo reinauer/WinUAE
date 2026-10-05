@@ -813,3 +813,21 @@ complete. Unlisted regions are not certified as safe to access.
 and its chip/fast kind without performing a read or write. Mixed, indirect,
 I/O, ROM and unmapped ranges are rejected. This does not allocate RAM or
 establish guest ownership of it.
+
+`monitor tasks` reads current/ready/waiting Exec tasks with a 128-node
+bound and cycle detection. It reports saved SP and stack bounds, without
+guessing inactive register contexts. `monitor history on|off` opts remote
+execution into the existing debugger history ring; `history read COUNT`
+returns at most 128 chronological entries with D/A registers and beam
+positions. Counts are hex. Adjacent identical PCs may be coalesced.
+Recording slows execution and is disabled on detach.
+
+`monitor condition add REG OP VALUE MASK SIGNED` allocates a remotely
+owned condition in the existing breakpoint table. Numeric arguments are
+hex; registers use debugger indices (D0-D7=0-7, A0-A7=8-f,
+USP/MSP/ISP/VBR/SR=11-15), operations are eq/ne/le/ge/lt/gt=0-5.
+PC conditions use standard address breakpoints. `condition list` and
+`condition remove ID` only manage remote conditions. `monitor step-over`
+uses the console debugger's next-sequential-PC trace mode and resumes
+asynchronously, reporting a later stop. It can be interrupted if control
+flow never reaches that PC.
