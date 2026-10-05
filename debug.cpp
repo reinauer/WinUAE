@@ -56,6 +56,7 @@
 #include "keybuf.h"
 #include "gdb_server.h"
 #include "gdb_input.h"
+#include "gdb_watch.h"
 #include "gdb_protocol.h"
 #include "gdb_amiga.h"
 #include "gdb_output.h"
@@ -3842,6 +3843,8 @@ struct breakpoint_node bpnodes[BREAKPOINT_TOTAL];
 static addrbank **debug_mem_banks;
 static addrbank *debug_mem_area;
 struct memwatch_node mwnodes[MEMWATCH_TOTAL];
+static bool gdb_watch_owned[MEMWATCH_TOTAL], gdb_extended_watch[MEMWATCH_TOTAL];
+static winuae_gdb::WatchLog gdb_watch_log;
 static int mwnodes_start, mwnodes_end;
 static struct memwatch_node mwhit;
 
@@ -4398,6 +4401,9 @@ static int memwatch_func (uaecptr addr, int rwi, int size, uae_u32 *valp, uae_u3
 		if (!brk)
 			continue;
 
+		// Remote predicates describe one complete bus access. Do not match
+		// adjacent bytes or combine two 68000 word writes into a longword.
+		if (gdb_extended_watch[i] && (addr != m->addr || size != m->size)) continue;
 		if (m->bus_error) {
 			if (((m->bus_error & 1) && (rwi & 1)) || ((m->bus_error & 4) && (rwi & 4)) || ((m->bus_error & 2) && (rwi & 2))) {
 				hardware_exception2(addr, val, (rwi & 2) != 0, (rwi & 4) != 0, size == 4 ? sz_long : (size == 2 ? sz_word : sz_byte));
@@ -4453,6 +4459,7 @@ static int memwatch_func (uaecptr addr, int rwi, int size, uae_u32 *valp, uae_u3
 				continue;
 		}
 
+		if (gdb_extended_watch[i] && m->mustchange && !isoldval) continue;
 		if (m->mustchange && rwi == 2 && isoldval) {
 			if (oldval == newval)
 				continue;
@@ -4497,6 +4504,13 @@ static int memwatch_func (uaecptr addr, int rwi, int size, uae_u32 *valp, uae_u3
 				return 1;
 			}
 			return 0;
+		}
+		if (gdb_watch_owned[i]) {
+			gdb_watch_log.capture({0, static_cast<uint32_t>(i), addr, static_cast<uint32_t>(size),
+				static_cast<uint32_t>(rwi), accessmask, reg, regs.instruction_pc, val, oldval, isoldval != 0});
+			// A remote log-only entry must not hide later console watchpoints
+			// or leave a stale memwatch_triggered reason for another stop.
+			if (m->nobreak) continue;
 		}
 		mwhit.addr = addr;
 		mwhit.rwi = rwi;
@@ -8221,7 +8235,7 @@ public:
                 ",\"mmu_model\":" + std::to_string(currprefs.mmu_model) +
                 ",\"memory_addressing\":\"physical\",\"commands\":[\"input-sequence\",\"input\",\"capabilities\",\"memory-map\",\"memory-check\",\"tasks\",\"history\",\"condition\",\"step-over\","
                 "\"process-break\",\"segments\",\"exception\",\"exception-mask\",\"guest-output\",\"disasm\",\"screenshot\"";
-            if (!mmu_enabled) result += ",\"dma-watch\"";
+            if (!mmu_enabled) result += ",\"dma-watch\",\"watch\"";
 #ifdef SAVESTATE
             result += ",\"checkpoint\"";
 #endif
@@ -8403,6 +8417,60 @@ public:
 			result = guest_output.snapshot();
 			return MonitorResult::ok;
 		}
+		if (command == "watch events" || command == "watch last" || command == "watch clear-events") {
+			if (command == "watch clear-events") gdb_watch_log.clear();
+			result = gdb_watch_log.snapshot(command == "watch last");
+			return MonitorResult::ok;
+		}
+		if (command == "watch list") {
+			result = "[";
+			bool first = true;
+			for (int i = 0; i < MEMWATCH_TOTAL; ++i) if (gdb_extended_watch[i]) {
+				const auto& wp = mwnodes[i];
+				if (!first) result += ",";
+				first = false;
+				result += "{\"id\":" + std::to_string(i) + ",\"address\":" + std::to_string(wp.addr) +
+					",\"size\":" + std::to_string(wp.size) + ",\"access\":" + std::to_string(wp.rwi) +
+					",\"sources\":" + std::to_string(wp.access_mask) + ",\"value\":" +
+					(wp.val_enabled ? std::to_string(wp.val) : "null") + ",\"mask\":" + std::to_string(wp.val_mask) +
+					",\"change_only\":" + (wp.mustchange ? "true" : "false") +
+					",\"log_only\":" + (wp.nobreak ? "true" : "false") + "}";
+			}
+			result += "]"; return MonitorResult::ok;
+		}
+		if (command.compare(0, 13, "watch remove ") == 0) {
+			uint32_t id;
+			if (!hex_words(command.substr(13), 1, &id) || id >= MEMWATCH_TOTAL || !gdb_extended_watch[id])
+				return MonitorResult::error;
+			mwnodes[id] = {}; watchpoints[id] = gdb_watch_owned[id] = gdb_extended_watch[id] = false;
+			memwatch_setup(); return MonitorResult::ok;
+		}
+		if (command.compare(0, 10, "watch add ") == 0) {
+			// address, access width, access kind, source mask, value enabled,
+			// value, value mask, change-only, log-only.
+			uint32_t a[9];
+			if (mmu_enabled || !hex_words(command.substr(10), 9, a) ||
+				(a[1] != 1 && a[1] != 2 && a[1] != 4) || (a[0] & (a[1] - 1)) ||
+				uint64_t(a[0]) + a[1] > 0x7fff0000 || a[2] < 1 || a[2] > 3 ||
+				!a[3] || (a[3] & ~static_cast<uint32_t>(MW_MASK_ALL & ~MW_MASK_CPU_I)) || a[4] > 1 || a[7] > 1 || a[8] > 1 ||
+				(a[7] && a[2] != 2)) return MonitorResult::error;
+			// Old values must be readable RAM, never device register reads.
+			if (a[7]) {
+				addrbank& bank = get_mem_bank(a[0]);
+				if (!(bank.flags & ABFLAG_RAM) || !bank.check(a[0], a[1])) return MonitorResult::error;
+			}
+			int slot = -1;
+			for (int i = 0; i < MEMWATCH_TOTAL; ++i) if (!mwnodes[i].size) { slot = i; break; }
+			if (slot < 0) return MonitorResult::error;
+			if (!memwatch_enabled) { initialize_memwatch(0); initialized_watchpoints = true; }
+			if (!memwatch_enabled) return MonitorResult::error;
+			auto& wp = mwnodes[slot];
+			wp = {}; wp.addr = a[0]; wp.size = a[1]; wp.rwi = a[2]; wp.access_mask = a[3];
+			wp.val_enabled = a[4]; wp.val = a[5]; wp.val_mask = a[6]; wp.mustchange = a[7]; wp.nobreak = a[8];
+			wp.reg = wp.pc = 0xffffffff;
+			watchpoints[slot] = gdb_watch_owned[slot] = gdb_extended_watch[slot] = true;
+			memwatch_setup(); result = "{\"id\":" + std::to_string(slot) + "}"; return MonitorResult::ok;
+		}
 		if (command == "dma-watch list") {
 			result = "[";
 			bool first = true;
@@ -8421,7 +8489,7 @@ public:
 			uint32_t id;
 			if (!hex_words(command.substr(17), 1, &id) || id >= MEMWATCH_TOTAL || !dma_watchpoints[id])
 				return MonitorResult::error;
-			mwnodes[id] = {}; watchpoints[id] = dma_watchpoints[id] = false;
+			mwnodes[id] = {}; watchpoints[id] = dma_watchpoints[id] = gdb_watch_owned[id] = false;
 			memwatch_setup();
 			return MonitorResult::ok;
 		}
@@ -8446,7 +8514,7 @@ public:
 			auto& wp = mwnodes[slot];
 			wp = {}; wp.addr = args[0]; wp.size = args[1]; wp.rwi = args[2]; wp.access_mask = args[3];
 			wp.reg = wp.pc = wp.val_mask = 0xffffffff;
-			watchpoints[slot] = dma_watchpoints[slot] = true;
+			watchpoints[slot] = dma_watchpoints[slot] = gdb_watch_owned[slot] = true;
 			memwatch_setup();
 			result = std::to_string(slot);
 			return MonitorResult::ok;
@@ -8695,8 +8763,8 @@ public:
 		int free_slot = -1;
 		for (int i = 0; i < MEMWATCH_TOTAL; ++i) {
 			memwatch_node& wp = mwnodes[i];
-			if (watchpoints[i] && !dma_watchpoints[i] && wp.addr == address && wp.size == length && wp.rwi == rwi) {
-				if (!insert) { wp = {}; watchpoints[i] = false; memwatch_setup(); }
+			if (watchpoints[i] && !dma_watchpoints[i] && !gdb_extended_watch[i] && wp.addr == address && wp.size == length && wp.rwi == rwi) {
+				if (!insert) { wp = {}; watchpoints[i] = gdb_watch_owned[i] = false; memwatch_setup(); }
 				return true;
 			}
 			if (!wp.size) free_slot = i;
@@ -8711,7 +8779,7 @@ public:
 		wp = {}; wp.addr = address; wp.size = length; wp.rwi = rwi;
 		wp.access_mask = MW_MASK_CPU_D_R | MW_MASK_CPU_D_W;
 		wp.reg = wp.pc = wp.val_mask = 0xffffffff;
-		watchpoints[free_slot] = true;
+		watchpoints[free_slot] = gdb_watch_owned[free_slot] = true;
 		memwatch_setup();
 		return true;
 	}
@@ -8770,6 +8838,7 @@ public:
 	void detach() override
 	{
 		guest_input.cancel();
+		gdb_watch_log.clear();
 		guest_output.clear(true);
 		remote_history = false;
 		exception_mask = 0; exception_vector = -1; exception_pending = false;
@@ -8781,7 +8850,7 @@ public:
 		bool changed = false;
 		for (int i = 0; i < MEMWATCH_TOTAL; ++i) {
 			if (watchpoints[i]) { mwnodes[i] = {}; changed = true; }
-			watchpoints[i] = dma_watchpoints[i] = false;
+			watchpoints[i] = dma_watchpoints[i] = gdb_watch_owned[i] = gdb_extended_watch[i] = false;
 		}
 		bool have_watchpoints = false;
 		for (const auto& wp : mwnodes) if (wp.size) have_watchpoints = true;

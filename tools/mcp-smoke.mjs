@@ -112,6 +112,30 @@ try {
  await call('winuae_continue');await delay(100);await call('winuae_pause');
  assert.equal(JSON.parse(await call('winuae_guest_output',{action:'read'})).records[0].text,'MCP guest output');
  await call('winuae_breakpoint_clear',{address:'$10012'});
+ // Predicate watchpoints ignore identical writes and retain the actual hit.
+ await call('winuae_memory_write',{address:'$26010',data:'1122'});
+ await call('winuae_memory_write',{address:'$10000',data:'33fc11220002601033fc11440002601060fe'});
+ await call('winuae_registers_set',{PC:'$10000'});
+ const watch=JSON.parse(await call('winuae_watch',{action:'add',address:'$26010',size:2,access:'write',value:'$1100',mask:'$ff00',change_only:true}));
+ await call('winuae_continue');await call('winuae_wait_stop',{timeout_ms:3000});
+ const hit=JSON.parse(await call('winuae_watch',{action:'last'}));
+ assert.equal(hit.instruction_pc,0x10008);assert.equal(hit.value,0x1144);assert.equal(hit.old_value,0x1122);assert.equal(hit.size,2);
+ await call('winuae_watchpoint_set',{address:'$26010',length:2,type:'write'});
+ await call('winuae_watchpoint_clear',{address:'$26010',length:2,type:'write'});
+ assert.equal(JSON.parse(await call('winuae_watch',{action:'list'}))[0].id,watch.id);
+ await call('winuae_watch',{action:'remove',id:watch.id});
+ await call('winuae_watch',{action:'clear-events'});
+ const logged=JSON.parse(await call('winuae_watch',{action:'add',address:'$26010',size:2,access:'write',log_only:true}));
+ await call('winuae_memory_write',{address:'$10000',data:'704652790002601051c8fff860fe'});
+ await call('winuae_registers_set',{PC:'$10000'});
+ await call('winuae_breakpoint_set',{address:'$1000c'});
+ await call('winuae_continue');await call('winuae_wait_stop',{timeout_ms:3000});
+ const log=JSON.parse(await call('winuae_watch',{action:'events'}));
+ assert.equal(log.events.length,64);assert.equal(log.dropped,7);
+ assert.equal(log.events[63].value-log.events[0].value,63);
+ await call('winuae_watch',{action:'remove',id:logged.id});
+ await call('winuae_breakpoint_clear',{address:'$1000c'});
+
  await call('winuae_guest_output',{action:'off'});
  assert.deepEqual(JSON.parse(await call('winuae_guest_output',{action:'clear'})).records,[]);
  const checkpoint=path.join(temp,'MCP checkpoint.uss');

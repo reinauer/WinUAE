@@ -2,6 +2,7 @@
 #include "include/gdb_amiga.h"
 #include "include/gdb_output.h"
 #include "include/gdb_input.h"
+#include "include/gdb_watch.h"
 #include <cstring>
 #include <cstdio>
 #include <cstdlib>
@@ -133,6 +134,11 @@ static void process_reader_tests()
 
 int main()
 {
+	WatchLog log;
+	for (unsigned i = 0; i < 70; ++i) log.capture({0,1,i,2,2,1,0,0x10000,i,0,true});
+	require(log.snapshot().find("\"dropped\":6") != std::string::npos &&
+		log.snapshot(true).find("\"address\":69") != std::string::npos, "watch log bounds/order");
+	log.clear(); require(log.snapshot(true) == "null", "stale watch evidence after clear");
 	struct Sink : InputSink { std::vector<InputEvent> events; void input(const InputEvent& e) override { events.push_back(e); } } sink;
 	GuestInput input(sink);
 	require(!input.event({0, 0, 0x80, 1}) && !input.event({2, 2, 0, 1}) &&
