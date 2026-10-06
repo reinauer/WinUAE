@@ -8282,7 +8282,7 @@ public:
             for (uint64_t p = args[0], end = p + args[1]; p < end;) {
                 uaecptr address = static_cast<uaecptr>(p);
                 addrbank& bank = get_mem_bank(address);
-                auto n = static_cast<uint32_t>(std::min(end - p, uint64_t(0x10000 - (address & 0xffff))));
+                auto n = static_cast<uint32_t>((std::min)(end - p, uint64_t(0x10000 - (address & 0xffff))));
                 // Match the physical RAM write path. Mixed and indirect banks
                 // cannot be certified merely from their displayed map label.
                 if (!(bank.flags & ABFLAG_RAM) || bank.flags & (ABFLAG_ROM | ABFLAG_IO) ||
