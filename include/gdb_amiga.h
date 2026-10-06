@@ -93,13 +93,18 @@ inline bool read_tasks(GuestReader& memory, std::vector<AmigaTask>& out)
         tasks.push_back(task); return true;
     };
     if (current && !add(current, "current")) return false;
+    bool current_queued = false;
     for (unsigned list = 0; list < 2; ++list) {
         if (!memory.u32(exec + (list ? 420 : 406), head)) return false;
         while (head) {
             uint32_t next;
             if (!memory.u32(head, next)) return false;
             if (!next) break; // Exec list tail sentinel, not a task.
-            if (!add(head, list ? "waiting" : "ready")) return false;
+            // Exec retains ThisTask while idle even when that task is waiting.
+            // Include it once, but still reject a second queue occurrence so
+            // cycles and duplicate membership remain bounded errors.
+            if (head == current && !current_queued) current_queued = true;
+            else if (!add(head, list ? "waiting" : "ready")) return false;
             head = next;
         }
     }

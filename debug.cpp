@@ -8144,7 +8144,9 @@ class GdbTarget : public winuae_gdb::Target, private winuae_gdb::GuestReader, pr
 		for (size_t i = 0; i < length; ++i) {
 			uaecptr addr = address + static_cast<uaecptr>(i);
 			addrbank& bank = get_mem_bank(addr);
-			if (!(bank.flags & ABFLAG_RAM) || !bank.check(addr, 1)) return false;
+			// Exec task names may point at constant strings in Kickstart ROM.
+			// Permit ordinary ROM reads, but never follow metadata into I/O.
+			if (!(bank.flags & (ABFLAG_RAM | ABFLAG_ROM | ABFLAG_ROMIN)) || !bank.check(addr, 1)) return false;
 			bytes[i] = static_cast<uint8_t>(bank.bget(addr));
 		}
 		return true;
