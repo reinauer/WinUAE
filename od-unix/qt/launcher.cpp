@@ -5408,13 +5408,8 @@ public:
     {
         setWindowTitle(QStringLiteral("WinUAE Properties"));
         setWindowIcon(resourceIcon(QStringLiteral("winuae.ico")));
-#if !WINUAE_UNIX_WITH_QT_DEFAULT_STYLE
-        resize(880, 640);
-        setMinimumSize(820, 600);
-#else
-        resize(970, 670);
-        setMinimumSize(970, 670);
-#endif
+        resize(guiBaseSize());
+        setMinimumSize(guiMinimumSize());
 
         navigation = new QTreeWidget;
         navigation->setHeaderHidden(true);
@@ -12100,13 +12095,31 @@ private:
         return ok && percent >= 60 && percent <= 200 ? percent : 100;
     }
 
+    static QSize guiBaseSize()
+    {
+#if !WINUAE_UNIX_WITH_QT_DEFAULT_STYLE
+        return QSize(880, 640);
+#else
+        return QSize(970, 670);
+#endif
+    }
+
+    static QSize guiMinimumSize()
+    {
+#if !WINUAE_UNIX_WITH_QT_DEFAULT_STYLE
+        return QSize(820, 600);
+#else
+        return QSize(970, 670);
+#endif
+    }
+
     void applyGuiResizeMode()
     {
         if (!miscGuiResize || !miscGuiFullscreen) {
             return;
         }
         const bool resizable = miscGuiResize->isChecked() || miscGuiFullscreen->isChecked();
-        setMinimumSize(820, 600);
+        setMinimumSize(guiMinimumSize());
         setMaximumSize(resizable ? QSize(QWIDGETSIZE_MAX, QWIDGETSIZE_MAX) : size());
         if (!resizable) {
             setFixedSize(size());
@@ -12119,8 +12132,8 @@ private:
             return;
         }
         const int percent = guiScalePercent(miscGuiSize->currentText());
-        const QSize baseSize(880, 640);
-        const QSize minSize(820, 600);
+        const QSize baseSize = guiBaseSize();
+        const QSize minSize = guiMinimumSize();
         const QSize scaled(qMax(minSize.width(), baseSize.width() * percent / 100),
             qMax(minSize.height(), baseSize.height() * percent / 100));
         if (miscGuiFullscreen && miscGuiFullscreen->isChecked()) {
@@ -12130,7 +12143,7 @@ private:
             showNormal();
             miscGuiFullscreen->setChecked(false);
         }
-        setMinimumSize(820, 600);
+        setMinimumSize(minSize);
         setMaximumSize(QWIDGETSIZE_MAX, QWIDGETSIZE_MAX);
         resize(scaled);
         applyGuiResizeMode();
@@ -12139,7 +12152,7 @@ private:
     void applyGuiFullscreenMode(bool fullscreen)
     {
         if (fullscreen) {
-            setMinimumSize(820, 600);
+            setMinimumSize(guiMinimumSize());
             setMaximumSize(QWIDGETSIZE_MAX, QWIDGETSIZE_MAX);
             showFullScreen();
         } else {
@@ -16877,8 +16890,12 @@ private:
         } else if (key == QStringLiteral("unix.ui.log_window")) {
             logWindow->setChecked(configBoolValue(value));
         } else if (key == QStringLiteral("unix.ui.gui_scale")) {
+            /* "Select..." means no scale was chosen: keep the current size. */
+            const QSignalBlocker blocker(miscGuiSize);
             miscGuiSize->setCurrentText(value);
-            applyGuiScaleSelection(false);
+            if (value.trimmed() != QStringLiteral("Select...")) {
+                applyGuiScaleSelection(false);
+            }
         } else if (key == QStringLiteral("unix.ui.gui_resize")) {
             miscGuiResize->setChecked(configBoolValue(value));
             applyGuiResizeMode();
