@@ -10,6 +10,7 @@
 #include <cstdio>
 #include <functional>
 #include <memory>
+#include <vector>
 #if defined(__APPLE__) || defined(__linux__)
 #include <fcntl.h>
 #include <unistd.h>
@@ -2663,6 +2664,14 @@ static QIcon resourceIcon(const QString &name)
 {
     const QString path = resourceFile(QStringLiteral("od-win32/resources/") + name);
     return QFileInfo::exists(path) ? QIcon(path) : QIcon();
+}
+
+/* The desktop/launcher icon (installed as winuae.png). winuae.ico is not used
+ * for windows: Qt keeps its first frame per size, the 16-colour ones. */
+static QIcon winUaeWindowIcon()
+{
+    const QIcon icon = resourceIcon(QStringLiteral("amiga.png"));
+    return icon.isNull() ? resourceIcon(QStringLiteral("winuae.ico")) : icon;
 }
 
 static QLabel *label(const QString &text)
@@ -5393,6 +5402,39 @@ private:
     ConfigOpenHandler configOpenHandler;
 };
 
+/* One QApplication for the whole process: recreating it crashes popups
+ * (KF6 WindowSystem keeps state bound to the first instance).
+ * Destroyed by shutdownWinUaeQtApplication() at emulator exit. */
+static WinUaeQtApplication *sharedApplication;
+
+static QApplication &winUaeQtSharedApplication(int argc, char **argv)
+{
+    if (QApplication *app = qobject_cast<QApplication *>(QApplication::instance())) {
+        return *app;
+    }
+    /* QApplication keeps references to argc/argv, so they must outlive it. */
+    static int sharedArgc;
+    static std::vector<QByteArray> sharedArgStorage;
+    static std::vector<char *> sharedArgv;
+    if (argc <= 0 || !argv) {
+        sharedArgStorage.emplace_back("winuae");
+    } else {
+        for (int i = 0; i < argc && argv[i]; i++) {
+            sharedArgStorage.emplace_back(argv[i]);
+        }
+    }
+    for (QByteArray &arg : sharedArgStorage) {
+        sharedArgv.push_back(arg.data());
+    }
+    sharedArgv.push_back(nullptr);
+    sharedArgc = static_cast<int>(sharedArgStorage.size());
+    sharedApplication = new WinUaeQtApplication(sharedArgc, sharedArgv.data());
+    /* Wayland app_id: must match net.winuae.WinUAE.desktop for the icon. */
+    QGuiApplication::setDesktopFileName(QStringLiteral("net.winuae.WinUAE"));
+    QGuiApplication::setWindowIcon(winUaeWindowIcon());
+    return *sharedApplication;
+}
+
 /* Dropdown history of image/file path fields, keyed by field group. Each
  * dialog only knows the paths of the config it was opened with, so the
  * history is carried over to the next dialog opened in the same session. */
@@ -5412,7 +5454,7 @@ public:
               : WinUaeQtBoardCatalog())
     {
         setWindowTitle(QStringLiteral("WinUAE Properties"));
-        setWindowIcon(resourceIcon(QStringLiteral("winuae.ico")));
+        setWindowIcon(winUaeWindowIcon());
         resize(guiBaseSize());
         setMinimumSize(guiMinimumSize());
 
@@ -17973,11 +18015,22 @@ bool winUaeQtArgumentsSpecifyConfig(const QStringList &arguments)
 
 static WinUaeQtLauncherResult runWinUaeQtLauncherDialog(QApplication &app, WinUaeQtDialog &dialog)
 {
-    if (WinUaeQtApplication *qtApp = dynamic_cast<WinUaeQtApplication *>(&app)) {
+    WinUaeQtApplication *qtApp = dynamic_cast<WinUaeQtApplication *>(&app);
+    if (qtApp) {
         qtApp->setConfigOpenHandler([&dialog](const QString &path) {
             dialog.openConfigFile(path);
         });
     }
+    /* The application outlives the dialog, so drop the handler on return. */
+    struct ConfigOpenHandlerReset {
+        WinUaeQtApplication *app;
+        ~ConfigOpenHandlerReset()
+        {
+            if (app) {
+                app->setConfigOpenHandler({});
+            }
+        }
+    } configOpenHandlerReset { qtApp };
     /* Test hook: load the initial config, immediately export the merged
      * config, and exit. Lets the smoke tests verify that configuration
      * values survive the trip through the UI widgets. */
@@ -18101,14 +18154,12 @@ WinUaeQtLauncherResult runWinUaeQtLauncherForConfig(int argc, char **argv, const
 
 WinUaeQtLauncherResult runWinUaeQtLauncherForConfig(int argc, char **argv, const QString &initialConfigPath, const QString &displayConfigPath, const WinUaeQtHardwareInfoProvider &hardwareProvider)
 {
-    WinUaeQtApplication app(argc, argv);
-    return runWinUaeQtLauncherForConfig(app, initialConfigPath, displayConfigPath, hardwareProvider);
+    return runWinUaeQtLauncherForConfig(winUaeQtSharedApplication(argc, argv), initialConfigPath, displayConfigPath, hardwareProvider);
 }
 
 WinUaeQtLauncherResult runWinUaeQtLauncherForConfig(int argc, char **argv, const WinUaeQtConfig &initialConfig, const QString &displayConfigPath, const WinUaeQtHardwareInfoProvider &hardwareProvider)
 {
-    WinUaeQtApplication app(argc, argv);
-    return runWinUaeQtLauncherForConfig(app, initialConfig, displayConfigPath, hardwareProvider);
+    return runWinUaeQtLauncherForConfig(winUaeQtSharedApplication(argc, argv), initialConfig, displayConfigPath, hardwareProvider);
 }
 
 class WinUaeQtDebuggerConsole final : public QDialog {
@@ -18253,27 +18304,12 @@ private:
     bool debuggerActive = true;
 };
 
-static std::unique_ptr<WinUaeQtApplication> debuggerOwnedApp;
 static WinUaeQtDebuggerConsole *debuggerConsole;
 static QString debuggerPendingOutput;
 static QString debuggerPendingState;
-static int debuggerArgcFallback = 1;
-static char debuggerArg0Fallback[] = "winuae";
-static char *debuggerArgvFallback[] = { debuggerArg0Fallback, nullptr };
-
 static QApplication *debuggerApplication(int argc, char **argv)
 {
-    if (QApplication *app = qobject_cast<QApplication *>(QApplication::instance())) {
-        return app;
-    }
-    if (!debuggerOwnedApp) {
-        if (argc <= 0 || !argv) {
-            argv = debuggerArgvFallback;
-            argc = debuggerArgcFallback;
-        }
-        debuggerOwnedApp = std::make_unique<WinUaeQtApplication>(argc, argv);
-    }
-    return debuggerOwnedApp.get();
+    return &winUaeQtSharedApplication(argc, argv);
 }
 
 static WinUaeQtDebuggerConsole *ensureDebuggerConsole(QApplication &app)
@@ -18385,6 +18421,15 @@ void closeWinUaeQtDebuggerConsole()
     debuggerConsole = nullptr;
 }
 
+void shutdownWinUaeQtApplication()
+{
+    /* Tear Qt down before exit() runs library destructors: a still-live
+     * Wayland/EGL connection makes libEGL's own cleanup abort. */
+    closeWinUaeQtDebuggerConsole();
+    delete sharedApplication;
+    sharedApplication = nullptr;
+}
+
 static QString runtimeDialogDirectory(const QString &initialPath)
 {
     return fileDialogInitialDirectory(initialPath);
@@ -18437,8 +18482,7 @@ WinUaeQtRuntimeFileDialogResult runWinUaeQtRuntimeFileDialog(QApplication &app, 
 
 WinUaeQtRuntimeFileDialogResult runWinUaeQtRuntimeFileDialog(int argc, char **argv, int shortcut, const QString &initialPath)
 {
-    WinUaeQtApplication app(argc, argv);
-    return runWinUaeQtRuntimeFileDialog(app, shortcut, initialPath);
+    return runWinUaeQtRuntimeFileDialog(winUaeQtSharedApplication(argc, argv), shortcut, initialPath);
 }
 
 static int showMessageBox(int flags, const QString &message)
@@ -18495,10 +18539,5 @@ int runWinUaeQtMessageBox(QApplication &app, int flags, const QString &message)
 
 int runWinUaeQtMessageBox(int argc, char **argv, int flags, const QString &message)
 {
-    if (QApplication *app = qobject_cast<QApplication *>(QApplication::instance())) {
-        return runWinUaeQtMessageBox(*app, flags, message);
-    }
-
-    WinUaeQtApplication app(argc, argv);
-    return runWinUaeQtMessageBox(app, flags, message);
+    return runWinUaeQtMessageBox(winUaeQtSharedApplication(argc, argv), flags, message);
 }
