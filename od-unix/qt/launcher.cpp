@@ -5393,6 +5393,11 @@ private:
     ConfigOpenHandler configOpenHandler;
 };
 
+/* Dropdown history of image/file path fields, keyed by field group. Each
+ * dialog only knows the paths of the config it was opened with, so the
+ * history is carried over to the next dialog opened in the same session. */
+static QHash<QString, QStringList> sessionPathHistory;
+
 class WinUaeQtDialog final : public QDialog {
 public:
     explicit WinUaeQtDialog(
@@ -11611,8 +11616,63 @@ private:
         field->setCurrentText(current);
     }
 
+    QList<QPair<QString, QComboBox *>> historyPathCombos() const
+    {
+        /* All floppy fields share one history, like the Windows disk MRU. */
+        QList<QPair<QString, QComboBox *>> combos;
+        for (int i = 0; i < 4; i++) {
+            combos.append({ QStringLiteral("floppy"), dfPath[i] });
+        }
+        for (int i = 0; i < 2; i++) {
+            combos.append({ QStringLiteral("floppy"), quickDfPath[i] });
+        }
+        combos.append({ QStringLiteral("diskswapper"), diskSwapperPath });
+        combos.append({ QStringLiteral("cdslot"), cdSlotPath });
+        combos.append({ QStringLiteral("statefile"), stateFileName });
+        combos.append({ QStringLiteral("genlock"), genlockFile });
+        return combos;
+    }
+
+public:
+    void restoreSessionPathHistory()
+    {
+        for (const auto &[group, field] : historyPathCombos()) {
+            if (!field) {
+                continue;
+            }
+            const QSignalBlocker blocker(field);
+            const QString current = field->currentText();
+            for (const QString &path : sessionPathHistory.value(group)) {
+                if (field->findText(path) < 0) {
+                    field->addItem(path);
+                }
+            }
+            field->setCurrentText(current);
+        }
+    }
+
+    void saveSessionPathHistory() const
+    {
+        QHash<QString, QStringList> history;
+        for (const auto &[group, field] : historyPathCombos()) {
+            if (!field) {
+                continue;
+            }
+            QStringList &paths = history[group];
+            for (int i = 0; i < field->count(); i++) {
+                const QString path = field->itemText(i);
+                if (!path.isEmpty() && !paths.contains(path)) {
+                    paths.append(path);
+                }
+            }
+        }
+        sessionPathHistory = history;
+    }
+
+private:
     void clearDiskHistoryCombos()
     {
+        sessionPathHistory.clear();
         for (int i = 0; i < 4; i++) {
             clearPathComboHistory(dfPath[i]);
         }
@@ -17978,7 +18038,10 @@ static WinUaeQtLauncherResult runWinUaeQtLauncherDialog(QApplication &app, WinUa
         return roundtripResult;
     }
     armQtSmokeExit(dialog);
-    if (dialog.exec() == QDialog::Accepted) {
+    dialog.restoreSessionPathHistory();
+    const int dialogResult = dialog.exec();
+    dialog.saveSessionPathHistory();
+    if (dialogResult == QDialog::Accepted) {
         return dialog.launcherResult();
     }
 
