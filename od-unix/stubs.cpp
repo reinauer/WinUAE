@@ -28,6 +28,9 @@
 #include "statusline.h"
 #include "ethernet.h"
 #include "uae/string.h"
+#ifdef WINUAE_UNIX_WITH_INTEGRATED_QT_UI
+#include "qt/launcher_bridge.h"
+#endif
 #include "videograb.h"
 #include "zfile.h"
 #include "zarchive.h"
@@ -50,7 +53,12 @@ int pissoff_nojit_value = 160 * CYCLE_UNIT;
 volatile int bsd_int_requested;
 #endif
 
-void machdep_free(void) {}
+void machdep_free(void)
+{
+#ifdef WINUAE_UNIX_WITH_INTEGRATED_QT_UI
+    winUaeQtShutdown();
+#endif
+}
 #ifndef WINUAE_UNIX_WITH_VIDEOGRAB
 void pausevideograb(int) {}
 bool getpausevideograb(void) { return false; }
