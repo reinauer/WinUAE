@@ -5435,6 +5435,10 @@ static QApplication &winUaeQtSharedApplication(int argc, char **argv)
     return *sharedApplication;
 }
 
+/* Settings page selected when the dialog was last open, so reopening it
+ * during the same session (e.g. to swap floppies) returns to that page. */
+static int lastNavigationPageIndex = -1;
+
 /* Dropdown history of image/file path fields, keyed by field group. Each
  * dialog only knows the paths of the config it was opened with, so the
  * history is carried over to the next dialog opened in the same session. */
@@ -5513,6 +5517,7 @@ public:
                 return;
             }
             pageStack->setCurrentIndex(pageIndex.toInt());
+            lastNavigationPageIndex = pageIndex.toInt();
             if (item->text(0) == QStringLiteral("Hardware info")) {
                 refreshHardwareInfoPage();
             } else if (item->text(0) == QStringLiteral("Frontend")) {
@@ -5617,7 +5622,7 @@ public:
         root->addLayout(buttons);
 
         resetDefaults();
-        navigation->setCurrentItem(quickstartPage);
+        navigation->setCurrentItem(navigationItemForPage(lastNavigationPageIndex, quickstartPage));
         if (!initialConfigPath.isEmpty()) {
             if (loadConfig(initialConfigPath)) {
                 setLoadedConfigDisplayPath(displayConfigPath);
@@ -6098,6 +6103,20 @@ private:
         item->setFont(0, font);
         item->setExpanded(true);
         return item;
+    }
+
+    QTreeWidgetItem *navigationItemForPage(int pageIndex, QTreeWidgetItem *fallback) const
+    {
+        if (pageIndex < 0) {
+            return fallback;
+        }
+        for (QTreeWidgetItemIterator it(navigation); *it; ++it) {
+            const QVariant itemPage = (*it)->data(0, Qt::UserRole);
+            if (itemPage.isValid() && itemPage.toInt() == pageIndex) {
+                return *it;
+            }
+        }
+        return fallback;
     }
 
     QTreeWidgetItem *addPage(const QString &title, const QString &icon, QWidget *page, QTreeWidgetItem *parent = nullptr)
