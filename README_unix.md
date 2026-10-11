@@ -640,6 +640,59 @@ while the debugger is stopped and release held controls on completion,
 and sequence progress. Input commands run without stopping the guest and
 are rejected during input recording or playback.
 
+### MCP client and live tests
+
+The [WinUAE MCP server fork](https://github.com/reinauer/mcp-winuae-emu)
+uses these commands and carries the protocol and cross-platform launcher
+fixes directly:
+
+```sh
+git clone https://github.com/reinauer/mcp-winuae-emu.git
+cd mcp-winuae-emu
+npm ci
+npm run build
+```
+
+Configure the MCP client to run `node /path/to/mcp-winuae-emu/dist/index.js`
+with these environment variables:
+
+```text
+WINUAE_PATH=/path/to/winuae
+WINUAE_CONFIG=/path/to/machine.uae
+WINUAE_GDB_PORT=2345
+```
+
+`WINUAE_PATH` accepts an executable, executable directory, or macOS app
+bundle. The fork fixes `OK` reply handling, pauses before guest-state
+access, preserves native paths, and enables GDB through command-line
+overrides without editing the configuration. It also disables Windows
+focus/minimize pause settings through command-line overrides for its own
+process. Disconnect terminates only a process the MCP server launched;
+restart waits for that process to exit. Reset and disk changes restart an
+owned instance. They cannot restart an externally launched instance. Binary
+loading copies bytes to RAM; it does not relocate or launch Amiga Hunk
+executables. CPU/DMA profiling and the debug overlay are outside this
+interface.
+
+To exercise registers, RAM, custom registers, stepping, breakpoints,
+watchpoints, the monitor commands and reconnect against a real emulator:
+
+```sh
+WINUAE_PATH=/path/to/winuae \
+WINUAE_ROM=/path/to/A500.rom \
+WINUAE_MCP_PATH=/path/to/mcp-winuae-emu \
+node tools/gdb-smoke.mjs
+```
+
+The smoke test creates one headless instance on a temporary local port,
+retains its log in a temporary directory, and waits for shutdown. It writes
+test instructions into guest RAM. Use `WINUAE_CPU_MODEL=68020` to repeat
+with that CPU model.
+`WINUAE_CPU_COMPATIBLE=false WINUAE_CACHE_SIZE=16384` selects JIT where the
+build supports it. Run `node tools/mcp-smoke.mjs` with the same three path
+variables to test the MCP stdio tools, disassembly, PNG output, reset and
+process ownership. Both tests require a built checkout of the MCP fork.
+
 ## Smoke Test
 
 The repository includes a headless A1200 smoke test. It uses SDL dummy video/audio by default and checks that ROM loading, audio initialization, and hard reset reached the expected log points:
