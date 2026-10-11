@@ -363,7 +363,7 @@ extern int get_dma_debug_color(struct dma_rec *dr, int line, uae_u32 *cp);
 
 #ifdef GDBSERVER
 extern void debug_remote_interrupt(void);
-extern void debug_remote_resume(bool step);
+extern void debug_remote_resume(bool step, bool check);
 #endif
 
 #else
