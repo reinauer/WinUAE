@@ -160,6 +160,7 @@ struct sunpci_state
 	void *vga;
 	mem_mapping_t vga_legacy_map;
 	mem_mapping_t pci_hole;
+	mem_mapping_t isa_hole;
 	mem_mapping_t smram_map;
 	uae_u32 smram_host, smram_ram;
 	bool smm;
@@ -1497,6 +1498,12 @@ static bool sunpci_x86_init(struct romconfig *rc)
 
 	// PCI memory space: above the card's RAM, below the BIOS flash
 	mem_mapping_add(&s->pci_hole, SUNPCI_RAM_KB * 1024, 0xfffc0000 - SUNPCI_RAM_KB * 1024,
+		sunpci_hole_readb, sunpci_hole_readw, sunpci_hole_readl,
+		sunpci_hole_writeb, sunpci_hole_writew, sunpci_hole_writel,
+		NULL, MEM_MAPPING_EXTERNAL, s);
+	// C0000-DFFFF segments without shadow RAM go to PCI. RMIPC moves the
+	// 21554's upstream window to D0000 before its disk requests.
+	mem_mapping_add(&s->isa_hole, 0xc0000, 0x20000,
 		sunpci_hole_readb, sunpci_hole_readw, sunpci_hole_readl,
 		sunpci_hole_writeb, sunpci_hole_writew, sunpci_hole_writel,
 		NULL, MEM_MAPPING_EXTERNAL, s);
