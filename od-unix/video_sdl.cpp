@@ -116,6 +116,8 @@ struct unix_video_layout {
 
 static std::mutex s_pending_frame_mutex;
 static unix_pending_video_frame s_pending_frame;
+// Frames for RTG boards configured with monitor=N (N > 0)
+static unix_pending_video_frame s_pending_secondary[MAX_AMIGADISPLAYS];
 
 static constexpr int UnixStatusScale = 2;
 static TCHAR s_display_name[MAX_DPATH];
@@ -258,27 +260,36 @@ static void queue_video_frame_for_event_thread(const struct unix_video_frame *fr
     }
 
     std::lock_guard<std::mutex> lock(s_pending_frame_mutex);
-    s_pending_frame.pixels = std::move(pixels);
-    s_pending_frame.width = frame->width;
-    s_pending_frame.height = frame->height;
-    s_pending_frame.rowbytes = rowbytes;
-    s_pending_frame.pixbytes = frame->pixbytes;
-    s_pending_frame.filter_index = frame->filter_index;
-    s_pending_frame.monitor_id = frame->monitor_id;
-    s_pending_frame.backbuffers = frame->backbuffers;
-    s_pending_frame.vsync = frame->vsync;
-    s_pending_frame.valid = true;
+    unix_pending_video_frame *slot = &s_pending_frame;
+    if (frame->monitor_id > 0 && frame->monitor_id < MAX_AMIGADISPLAYS) {
+        slot = &s_pending_secondary[frame->monitor_id];
+    }
+    slot->pixels = std::move(pixels);
+    slot->width = frame->width;
+    slot->height = frame->height;
+    slot->rowbytes = rowbytes;
+    slot->pixbytes = frame->pixbytes;
+    slot->filter_index = frame->filter_index;
+    slot->monitor_id = frame->monitor_id;
+    slot->backbuffers = frame->backbuffers;
+    slot->vsync = frame->vsync;
+    slot->valid = true;
+}
+
+static bool pop_queued_video_frame_slot(unix_pending_video_frame *slot, unix_pending_video_frame *frame)
+{
+    std::lock_guard<std::mutex> lock(s_pending_frame_mutex);
+    if (!slot->valid) {
+        return false;
+    }
+    *frame = std::move(*slot);
+    *slot = unix_pending_video_frame();
+    return true;
 }
 
 static bool pop_queued_video_frame(unix_pending_video_frame *frame)
 {
-    std::lock_guard<std::mutex> lock(s_pending_frame_mutex);
-    if (!s_pending_frame.valid) {
-        return false;
-    }
-    *frame = std::move(s_pending_frame);
-    s_pending_frame = unix_pending_video_frame();
-    return true;
+    return pop_queued_video_frame_slot(&s_pending_frame, frame);
 }
 
 static void destroy_frame_textures(void)
@@ -1742,8 +1753,97 @@ bool unix_video_init(int width, int height, int pixbytes)
     return ensure_texture(width, height, pixbytes, 1);
 }
 
+// Secondary monitors: an RTG board configured with monitor=N (N > 0) gets
+// its own plain SDL window. Its frames never touch the main window.
+struct unix_secondary_window {
+    SDL_Window *window;
+    SDL_Renderer *renderer;
+    SDL_Texture *texture;
+    int width;
+    int height;
+    int pixbytes;
+};
+static unix_secondary_window s_secondary[MAX_AMIGADISPLAYS];
+
+static void destroy_secondary_window(unix_secondary_window *sw)
+{
+    if (sw->texture) {
+        SDL_DestroyTexture(sw->texture);
+    }
+    if (sw->renderer) {
+        SDL_DestroyRenderer(sw->renderer);
+    }
+    if (sw->window) {
+        SDL_DestroyWindow(sw->window);
+    }
+    *sw = unix_secondary_window();
+}
+
+static bool secondary_window_event(SDL_WindowID window_id, unix_secondary_window **swp)
+{
+    for (int i = 1; i < MAX_AMIGADISPLAYS; i++) {
+        unix_secondary_window *sw = &s_secondary[i];
+        if (sw->window && window_id != 0 && window_id == SDL_GetWindowID(sw->window)) {
+            *swp = sw;
+            return true;
+        }
+    }
+    return false;
+}
+
+static void unix_video_present_secondary(const struct unix_video_frame *frame)
+{
+    unix_secondary_window *sw = &s_secondary[frame->monitor_id];
+    if (!sw->window) {
+        char title[128];
+        snprintf(title, sizeof title, "%s - monitor %d", WINUAE_UNIX_WINDOW_TITLE, frame->monitor_id + 1);
+        sw->window = SDL_CreateWindow(title, frame->width, frame->height, SDL_WINDOW_RESIZABLE);
+        if (!sw->window) {
+            write_log(_T("SDL3: cannot create window for monitor %d: %s\n"), frame->monitor_id + 1, SDL_GetError());
+            return;
+        }
+        sw->renderer = SDL_CreateRenderer(sw->window, NULL);
+        if (!sw->renderer) {
+            write_log(_T("SDL3: cannot create renderer for monitor %d: %s\n"), frame->monitor_id + 1, SDL_GetError());
+            destroy_secondary_window(sw);
+            return;
+        }
+        // never let a secondary window's present wait for its vblank
+        SDL_SetRenderVSync(sw->renderer, 0);
+        write_log(_T("SDL3: opened window for monitor %d\n"), frame->monitor_id + 1);
+    }
+    if (SDL_GetWindowFlags(sw->window) & SDL_WINDOW_HIDDEN) {
+        return;
+    }
+    if (!sw->texture || sw->width != frame->width || sw->height != frame->height || sw->pixbytes != frame->pixbytes) {
+        if (sw->texture) {
+            SDL_DestroyTexture(sw->texture);
+        }
+        sw->texture = SDL_CreateTexture(sw->renderer, texture_format_for_pixbytes(frame->pixbytes),
+            SDL_TEXTUREACCESS_STREAMING, frame->width, frame->height);
+        if (!sw->texture) {
+            return;
+        }
+        SDL_SetTextureScaleMode(sw->texture, SDL_SCALEMODE_NEAREST);
+        // frames carry no alpha: draw them opaque, as the main window does
+        SDL_SetTextureBlendMode(sw->texture, SDL_BLENDMODE_NONE);
+        SDL_SetRenderLogicalPresentation(sw->renderer, frame->width, frame->height, SDL_LOGICAL_PRESENTATION_LETTERBOX);
+        sw->width = frame->width;
+        sw->height = frame->height;
+        sw->pixbytes = frame->pixbytes;
+    }
+    SDL_UpdateTexture(sw->texture, NULL, frame->pixels, frame->rowbytes);
+    SDL_SetRenderDrawColor(sw->renderer, 0, 0, 0, 255);
+    SDL_RenderClear(sw->renderer);
+    SDL_RenderTexture(sw->renderer, sw->texture, NULL, NULL);
+    SDL_RenderPresent(sw->renderer);
+}
+
 void unix_video_shutdown(void)
 {
+    for (int i = 1; i < MAX_AMIGADISPLAYS; i++) {
+        destroy_secondary_window(&s_secondary[i]);
+    }
     s_vsync_applied = -1;
     unix_input_release_keys();
     unix_video_set_mouse_grab(false);
@@ -1827,6 +1927,22 @@ static int unix_video_poll_internal(bool *quit_requested, bool input_events)
         unix_video_present_on_event_thread(&frame);
         got = 1;
     }
+    for (int i = 1; i < MAX_AMIGADISPLAYS; i++) {
+        if (pop_queued_video_frame_slot(&s_pending_secondary[i], &pending)) {
+            struct unix_video_frame frame;
+            frame.pixels = pending.pixels.data();
+            frame.width = pending.width;
+            frame.height = pending.height;
+            frame.rowbytes = pending.rowbytes;
+            frame.pixbytes = pending.pixbytes;
+            frame.filter_index = pending.filter_index;
+            frame.monitor_id = pending.monitor_id;
+            frame.backbuffers = pending.backbuffers;
+            frame.vsync = pending.vsync;
+            unix_video_present_on_event_thread(&frame);
+            got = 1;
+        }
+    }
 
     while (SDL_PollEvent(&event)) {
         got = 1;
@@ -1837,10 +1953,18 @@ static int unix_video_poll_internal(bool *quit_requested, bool input_events)
             }
             break;
         case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
+        {
+            unix_secondary_window *sw;
+            if (secondary_window_event(event.window.windowID, &sw)) {
+                // closing a monitor window only hides it
+                SDL_HideWindow(sw->window);
+                break;
+            }
             if (quit_requested) {
                 *quit_requested = true;
             }
             break;
+        }
         case SDL_EVENT_WINDOW_MOVED:
             if (s_mouse_grabbed && unix_event_for_window(event.window.windowID)) {
                 unix_input_release_keys();
@@ -1994,6 +2118,10 @@ static void unix_video_sync_vsync_state(const struct unix_video_frame *frame)
 static void unix_video_present_on_event_thread(const struct unix_video_frame *frame)
 {
     if (!frame || !frame->pixels || frame->width <= 0 || frame->height <= 0 || frame->rowbytes <= 0) {
+        return;
+    }
+    if (frame->monitor_id > 0 && frame->monitor_id < MAX_AMIGADISPLAYS) {
+        unix_video_present_secondary(frame);
         return;
     }
     if (!unix_video_init(frame->width, frame->height, frame->pixbytes)) {
