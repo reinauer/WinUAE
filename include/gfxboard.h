@@ -55,6 +55,7 @@ extern void vga_ram_put(int board, int offset, uae_u8 v);
 extern uae_u8 vga_ram_get(int board, int offset);
 extern void vgalfb_ram_put(int board, int offset, uae_u8 v);
 extern uae_u8 vgalfb_ram_get(int board, int offset);
+extern void *gfxboard_get_sunpci_vga(void);
 
 void gfxboard_get_a8_vram(int index);
 void gfxboard_free_vram(int index);
@@ -110,6 +111,7 @@ void gfxboard_intreq(void *p, int act, bool safe);
 #define GFXBOARD_ID_MATROX_MYSTIQUE220_PCI 40
 #define GFXBOARD_ID_GD5446_PCI 41
 #define GFXBOARD_ID_VOODOO5_PCI 42
+#define GFXBOARD_ID_SUNPCI_VGA 43
 
 #define GFXBOARD_BUSTYPE_Z 0
 #define GFXBOARD_BUSTYPE_PCI 1

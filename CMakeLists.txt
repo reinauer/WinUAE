@@ -624,6 +624,7 @@ set(WINUAE_UNIX_PCEM_VIDEO_SOURCES
     pcem/vid_bt482_ramdac.cpp
     pcem/vid_cl5429.cpp
     pcem/vid_et4000.cpp
+    pcem/vid_sis5598.cpp
     pcem/vid_et4000w32.cpp
     pcem/vid_inmos.cpp
     pcem/vid_mga.cpp
