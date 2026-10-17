@@ -3150,7 +3150,7 @@ void x86_smi_enter(void)
                 smi_load_smi_selector(&cpu_state.seg_fs);
                 smi_load_smi_selector(&cpu_state.seg_gs);
                 smi_load_smi_selector(&cpu_state.seg_ss);
-                cpu_state.seg_cs.seg = 0x3000;
+                cpu_state.seg_cs.seg = (cpu_state.smbase >> 4) & 0xffff; /*CS selector follows a relocated SMBASE*/
                 cpu_state.seg_cs.base = cpu_state.smbase;
                 cpu_state.seg_cs.limit = 0xffffffff;
                 cpu_state.seg_cs.limit_low = 0;
