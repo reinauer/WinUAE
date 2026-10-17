@@ -255,6 +255,10 @@ uint8_t x86_get_jumpers(void)
 	struct x86_bridge *xb = bridges[0];
 	uint8_t v = 0;
 
+	if (!xb) {
+		// no bridgeboard: color video, keyboard unlocked
+		return 0x80;
+	}
 	if (xb->type >= TYPE_2286) {
 		if (xb->pc_maxbaseram > 512 * 1024)
 			v |= 0x20;
@@ -527,13 +531,15 @@ static void set_interrupt(struct x86_bridge *xb, int bit)
 
 void x86_ack_keyboard(void)
 {
-	set_interrupt(bridges[0], 4);
+	if (bridges[0]) {
+		set_interrupt(bridges[0], 4);
+	}
 }
 
 void x86_clearirq(uint8_t irqnum)
 {
 	struct x86_bridge *xb = bridges[0];
-	if (xb->irq_callback) {
+	if (xb && xb->irq_callback) {
 		xb->irq_callback(irqnum, false);
 	} else {
 		picintc(1 << irqnum);
@@ -543,7 +549,7 @@ void x86_clearirq(uint8_t irqnum)
 void x86_doirq(uint8_t irqnum)
 {
 	struct x86_bridge *xb = bridges[0];
-	if (xb->irq_callback) {
+	if (xb && xb->irq_callback) {
 		xb->irq_callback(irqnum, true);
 	} else {
 		picint(1 << irqnum);
@@ -1965,6 +1971,48 @@ static uae_u8 vlsi_in(struct x86_bridge *xb, int portnum)
 // Defined in atonce.cpp: routes x86 I/O to the ATonce 286 trap mechanism when
 // no PC bridgeboard (A2088/A2286/...) owns the x86 side, i.e. bridges[0]==NULL.
 extern uint32_t atonce_x86_io(uint16_t port, int dir, uint32_t val, int size);
+
+// Access a port through the handlers that PCem devices registered with
+// io_sethandler(). Returns false when no handler covers the port.
+bool x86_io_handler_access(uint16_t port, int dir, uint32_t *val, int size)
+{
+	if (port >= MAX_IO_PORT) {
+		return false;
+	}
+	if (dir) {
+		if (size == 4 && port_inl[port]) {
+			*val = port_inl[port](port, port_priv[port]);
+		} else if (size == 2 && port_inw[port]) {
+			*val = port_inw[port](port, port_priv[port]);
+		} else if (port_inb[port]) {
+			uint32_t v = port_inb[port](port, port_priv[port]);
+			for (int i = 1; i < size; i++) {
+				uint16_t p = port + i;
+				v |= (p < MAX_IO_PORT && port_inb[p] ? port_inb[p](p, port_priv[p]) : 0xff) << (i * 8);
+			}
+			*val = v;
+		} else {
+			return false;
+		}
+	} else {
+		if (size == 4 && port_outl[port]) {
+			port_outl[port](port, *val, port_priv[port]);
+		} else if (size == 2 && port_outw[port]) {
+			port_outw[port](port, *val, port_priv[port]);
+		} else if (port_outb[port]) {
+			port_outb[port](port, *val, port_priv[port]);
+			for (int i = 1; i < size; i++) {
+				uint16_t p = port + i;
+				if (p < MAX_IO_PORT && port_outb[p]) {
+					port_outb[p](p, *val >> (i * 8), port_priv[p]);
+				}
+			}
+		} else {
+			return false;
+		}
+	}
+	return true;
+}
 
 void portout(uint16_t portnum, uint8_t v)
 {
