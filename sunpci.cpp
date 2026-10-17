@@ -1466,6 +1466,8 @@ static bool sunpci_x86_init(struct romconfig *rc)
 	nvrmask = 127;
 	keyboard_at_init();
 	keyboard_at_init_ps2();
+	// The Award BIOS sets the translate bit and expects set 1 codes on port 60
+	keyboard_at_translate_allowed = 1;
 	cpu_set_turbo(0);
 	cpu_set_turbo(1);
 	codegen_init();

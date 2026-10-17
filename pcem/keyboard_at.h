@@ -7,3 +7,8 @@ void keyboard_at_adddata_mouse(uint8_t val);
 
 extern int mouse_queue_start, mouse_queue_end;
 extern int mouse_scan;
+
+#ifdef UAE
+// set after keyboard_at_init() by machines whose BIOS relies on 8042 scancode translation
+extern int keyboard_at_translate_allowed;
+#endif

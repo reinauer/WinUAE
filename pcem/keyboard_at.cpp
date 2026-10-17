@@ -101,6 +101,10 @@ int mouse_queue_start = 0, mouse_queue_end = 0;
 
 void keyboard_at_adddata_keyboard(uint8_t val);
 
+#ifdef UAE
+int keyboard_at_translate_allowed;
+#endif
+
 void keyboard_at_poll()
 {
 	timer_advance_u64(&keyboard_at.send_delay_timer, (100 * TIMER_USEC));
@@ -292,9 +296,10 @@ void keyboard_at_write(uint16_t port, uint8_t val, void *priv)
                                         if (ps2_mouse_supported)
 #endif
                                         mouse_scan = !(val & 0x20);
-#ifndef UAE // A2386SX sets this bit but if translation is allowed, keyboard stops working. Purpose unknown.
-                                        keyboard_at.translate = val & 0x40;
+#ifdef UAE // A2386SX sets this bit but if translation is allowed, keyboard stops working. Purpose unknown.
+                                        if (keyboard_at_translate_allowed)
 #endif
+                                        keyboard_at.translate = val & 0x40;
                                 }                                           
                                 break;
 
@@ -824,6 +829,9 @@ void keyboard_at_init()
 {
         //return;
         memset(&keyboard_at, 0, sizeof(keyboard_at));
+#ifdef UAE
+        keyboard_at_translate_allowed = 0;
+#endif
         io_sethandler(0x0060, 0x0005, keyboard_at_read, NULL, NULL, keyboard_at_write, NULL, NULL,  &pit);
         keyboard_at_reset();
         keyboard_send = keyboard_at_adddata_keyboard;
