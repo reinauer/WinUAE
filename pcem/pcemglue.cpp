@@ -339,12 +339,20 @@ static CPU cpus_i486[] =
 	{ "", -1, 0, 0, 0 }
 };
 
+static CPU cpus_k6[] =
+{
+	/*AMD K6-2 (SunPCi I: 300 MHz 375-0075, 400 MHz 375-0095)*/
+	{ "K6-2/300", CPU_K6_2, fpus_builtin, 21, 300000000, 3, 33333333, 0x58c, 0x58c, 0, 0, 28, 28, 12, 12, 36 },
+	{ "K6-2/400", CPU_K6_2, fpus_builtin, 23, 400000000, 4, 33333333, 0x58c, 0x58c, 0, 0, 36, 36, 16, 16, 48 },
+	{ "", -1, 0, 0, 0 }
+};
 
 MODEL models[] =
 {
 	{ "[8088] Generic XT clone", ROM_GENXT, "genxt", { { "", cpus_8088 }, { "", NULL }, { "", NULL } }, MODEL_GFX_NONE, 32, 704, 16, model_init, NULL },
 	{ "[286] AMI 286 clone", ROM_AMI286, "ami286", { { "", cpus_286 }, { "", NULL }, { "", NULL } }, MODEL_GFX_NONE | MODEL_AT | MODEL_HAS_IDE, 512, 16384, 128, model_init, NULL },
 	{ "[386SX] AMI 386SX clone", ROM_AMI386SX, "ami386", { { "386SX", cpus_i386SX }, { "386DX", cpus_i386DX }, { "486", cpus_i486 } }, MODEL_GFX_NONE | MODEL_AT | MODEL_HAS_IDE, 512, 16384, 128, model_init, NULL },
+	{ "[Socket 7] SunPCi I (SiS 5598)", ROM_AMI386SX, "sunpci1", { { "K6-2", cpus_k6 }, { "", NULL }, { "", NULL } }, MODEL_GFX_NONE | MODEL_AT | MODEL_PCI, 8192, 131072, 8192, model_init, NULL },
 };
 
 int rom_present(const char *s)

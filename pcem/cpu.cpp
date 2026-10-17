@@ -995,11 +995,17 @@ void cpu_set()
                 codegen_timing_set(&codegen_timing_k6);
                 break;
 
+#endif
+
                 case CPU_K6_2:
                 case CPU_K6_3:
                 case CPU_K6_2P:
                 case CPU_K6_3P:
+#ifdef UAE
+                x86_setopcodes(ops_386, ops_winchip2_0f, NULL, NULL);
+#else
                 x86_setopcodes(ops_386, ops_winchip2_0f, dynarec_ops_386, dynarec_ops_winchip2_0f);
+#endif
                 timing_rr  = 1; /*register dest - register src*/
                 timing_rm  = 2; /*register dest - memory src*/
                 timing_mr  = 3; /*memory dest   - register src*/
@@ -1032,8 +1038,12 @@ void cpu_set()
                 cpu_features = CPU_FEATURE_RDTSC | CPU_FEATURE_MSR | CPU_FEATURE_CR4 | CPU_FEATURE_VME | CPU_FEATURE_MMX | CPU_FEATURE_3DNOW;
                 msr.fcr = (1 << 8) | (1 << 9) | (1 << 12) |  (1 << 16) | (1 << 19) | (1 << 21);
                 cpu_CR4_mask = CR4_VME | CR4_PVI | CR4_TSD | CR4_DE | CR4_PSE | CR4_MCE;
+#ifndef UAE
                 codegen_timing_set(&codegen_timing_k6);
+#endif
                 break;
+
+#ifndef UAE
 
                 case CPU_PENTIUMPRO:
                 x86_setopcodes(ops_386, ops_pentiumpro_0f, dynarec_ops_386, dynarec_ops_pentiumpro_0f);
