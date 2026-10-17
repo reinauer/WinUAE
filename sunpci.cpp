@@ -567,7 +567,11 @@ static void db_csr_write(struct sunpci_state *s, uae_u32 addr, uae_u32 v, int si
 	struct db21554 *b = &s->db;
 	addr &= DB_CSR_SIZE - 1;
 #if SUNPCI_DEBUG_CSR
-	write_log(_T("SUNPCI: %s CSR write %03x/%d = %08x\n"), secondary ? _T("card") : _T("host"), addr, size, v);
+	if (secondary) {
+		write_log(_T("SUNPCI: card CSR write %03x/%d = %08x PC=%04x:%08x\n"), addr, size, v, CS, cpu_state.pc);
+	} else {
+		write_log(_T("SUNPCI: host CSR write %03x/%d = %08x\n"), addr, size, v);
+	}
 #endif
 	if (addr >= DB_CSR_P_CLR_IRQ && addr < DB_CSR_SCRATCH) {
 		if (size == 1) {
