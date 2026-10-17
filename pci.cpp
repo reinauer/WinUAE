@@ -1840,6 +1840,8 @@ bool pci_validate_address(uaecptr addr, uae_u32 size, bool io)
 	return true;
 }
 
+#include "sunpci_pci.inc"
+
 static void add_pci_devices(struct pci_bridge *pcib, struct autoconfig_info *aci)
 {
 	if (is_device_rom(&currprefs, ROMTYPE_NE2KPCI, 0) >= 0) {
@@ -1857,6 +1859,15 @@ static void add_pci_devices(struct pci_bridge *pcib, struct autoconfig_info *aci
 		pci_board_add(pcib, &es1370_pci_board, -1, 0, aci, NULL);
 		pci_board_add_next(pcib);
 	}
+	const int sunpci_types[] = { ROMTYPE_SUNPCI1_TEST, ROMTYPE_SUNPCI2_TEST, ROMTYPE_SUNPCI3_TEST };
+	for (int i = 0; i < 3; i++) {
+		if (is_device_rom(&currprefs, sunpci_types[i], 0) >= 0 &&
+			pcib->log_slot_cnt < MAX_PCI_BOARDS) {
+			pci_board_add(pcib, &sunpci_fixture_boards[i], -1, 0, aci, NULL);
+			pci_board_add_next(pcib);
+		}
+	}
+
 }
 
 static void pci_init(void)

@@ -6312,6 +6312,24 @@ const struct expansionromtype expansionroms[] = {
 #endif
 #ifdef WITH_PCI
 	{
+		_T("sunpci1_test"), _T("SunPCi I diagnostic fixture"), _T("Sun"),
+		NULL, pci_expansion_init, NULL, NULL, ROMTYPE_SUNPCI1_TEST | ROMTYPE_NOT, 0, 0, BOARD_PCI, true,
+		NULL, 0,
+		false, EXPANSIONTYPE_CUSTOM
+	},
+	{
+		_T("sunpci2_test"), _T("SunPCi II diagnostic fixture"), _T("Sun"),
+		NULL, pci_expansion_init, NULL, NULL, ROMTYPE_SUNPCI2_TEST | ROMTYPE_NOT, 0, 0, BOARD_PCI, true,
+		NULL, 0,
+		false, EXPANSIONTYPE_CUSTOM
+	},
+	{
+		_T("sunpci3_test"), _T("SunPCi III diagnostic fixture"), _T("Sun"),
+		NULL, pci_expansion_init, NULL, NULL, ROMTYPE_SUNPCI3_TEST | ROMTYPE_NOT, 0, 0, BOARD_PCI, true,
+		NULL, 0,
+		false, EXPANSIONTYPE_CUSTOM
+	},
+	{
 		_T("es1370"), _T("ES1370 PCI"), _T("Ensoniq"),
 		NULL, pci_expansion_init, NULL, NULL, ROMTYPE_ES1370 | ROMTYPE_NOT, 0, 0, BOARD_PCI, true,
 		NULL, 0,
