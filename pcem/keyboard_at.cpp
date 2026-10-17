@@ -696,6 +696,10 @@ void keyboard_at_write(uint16_t port, uint8_t val, void *priv)
                         keyboard_at.want60 = 1;
                         break;
                         
+                        case 0xd2: /*Write keyboard output buffer*/
+                        keyboard_at.want60 = 1;
+                        break;
+                        
                         case 0xd3: /*Write mouse output buffer*/
 #ifdef UAE
                         if (ps2_mouse_supported)
