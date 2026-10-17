@@ -59,7 +59,7 @@
 // 1 logs CSR writes, 2 also logs reads (the card polls, so reads flood the log)
 #define SUNPCI_DEBUG_CSR 1
 
-#define SUNPCI_BIOS_SIZE 0x40000
+#define SUNPCI_BIOS_SIZE 0x40000 // the Am29F002T flash
 #define SUNPCI_RAM_KB (64 * 1024)
 #define SUNPCI_MAX_DEVS 8
 #define SUNPCI_BRIDGE_DEV 11
@@ -161,6 +161,9 @@ struct sunpci_state
 	mem_mapping_t vga_legacy_map;
 	mem_mapping_t pci_hole;
 	mem_mapping_t isa_hole;
+	mem_mapping_t flash_map, flash_high_map;
+	int flash_state;
+	bool flash_autoselect;
 	mem_mapping_t smram_map;
 	uae_u32 smram_host, smram_ram;
 	bool smm;
@@ -658,6 +661,171 @@ static void db_us_write(struct sunpci_state *s, int win, uae_u32 off, uae_u32 v,
 // BAR changes need no remapping: sunpci_hole_* decodes the BARs on access.
 static void sunpci_card_remap(struct sunpci_state *s)
 {
+}
+
+/* BIOS flash: Am29F002T (Sun's sunpciflash also knows the MXIC, PMC and
+ * EON equivalents), 256 KB with the boot block on top. The card decodes the
+ * upper 128 KB at E0000-FFFFF and the whole part below 4 GB. Award's ESCD
+ * update identifies it by its autoselect ID and programs it in place.
+ * Program and erase complete at once, so status polls see the final data.
+ */
+
+#define FLASH_MFG_AMD 0x01
+#define FLASH_DEV_29F002T 0xb0
+
+enum {
+	FLASH_READ,
+	FLASH_UNLOCK1,
+	FLASH_UNLOCK2,
+	FLASH_PROGRAM,
+	FLASH_ERASE,
+	FLASH_ERASE_UNLOCK1,
+	FLASH_ERASE_UNLOCK2
+};
+
+static uae_u32 sunpci_flash_offset(uint32_t addr)
+{
+	if (addr >= 0xfffc0000) {
+		return addr - 0xfffc0000;
+	}
+	return addr - 0xe0000 + 0x20000;
+}
+
+// Top boot sectors: 3 x 64 KB, 32 KB, 2 x 8 KB, 16 KB
+static void sunpci_flash_sector(uae_u32 off, uae_u32 *start, uae_u32 *size)
+{
+	if (off < 0x30000) {
+		*start = off & ~0xffff;
+		*size = 0x10000;
+	} else if (off < 0x38000) {
+		*start = 0x30000;
+		*size = 0x8000;
+	} else if (off < 0x3c000) {
+		*start = off & ~0x1fff;
+		*size = 0x2000;
+	} else {
+		*start = 0x3c000;
+		*size = 0x4000;
+	}
+}
+
+// Code runs straight from the array, except while the part answers with
+// IDs or status.
+static void sunpci_flash_update_exec(struct sunpci_state *s)
+{
+	bool array = !s->flash_autoselect;
+	mem_mapping_set_exec(&s->flash_map, array ? s->bios + 0x20000 : NULL);
+	mem_mapping_set_exec(&s->flash_high_map, array ? s->bios : NULL);
+	flushmmucache();
+}
+
+static void sunpci_flash_reset(struct sunpci_state *s)
+{
+	s->flash_state = FLASH_READ;
+	if (s->flash_autoselect) {
+		s->flash_autoselect = false;
+		sunpci_flash_update_exec(s);
+	}
+}
+
+static uint8_t sunpci_flash_readb(uint32_t addr, void *priv)
+{
+	struct sunpci_state *s = (struct sunpci_state *)priv;
+	uae_u32 off = sunpci_flash_offset(addr);
+	if (s->flash_autoselect) {
+		switch (off & 3)
+		{
+		case 0:
+			return FLASH_MFG_AMD;
+		case 1:
+			return FLASH_DEV_29F002T;
+		default:
+			return 0x00; // sector not protected
+		}
+	}
+	return s->bios[off];
+}
+static uint16_t sunpci_flash_readw(uint32_t addr, void *priv)
+{
+	return sunpci_flash_readb(addr, priv) | (sunpci_flash_readb(addr + 1, priv) << 8);
+}
+static uint32_t sunpci_flash_readl(uint32_t addr, void *priv)
+{
+	return sunpci_flash_readw(addr, priv) | (sunpci_flash_readw(addr + 2, priv) << 16);
+}
+
+static void sunpci_flash_writeb(uint32_t addr, uint8_t val, void *priv)
+{
+	struct sunpci_state *s = (struct sunpci_state *)priv;
+	uae_u32 off = sunpci_flash_offset(addr);
+	uae_u32 cmd = off & 0x7ff;
+	uae_u32 start, size;
+
+	if (s->flash_state == FLASH_PROGRAM) {
+		// programming only clears bits
+		s->bios[off] &= val;
+		s->flash_state = FLASH_READ;
+		return;
+	}
+	if (val == 0xf0) {
+		sunpci_flash_reset(s);
+		return;
+	}
+	switch (s->flash_state)
+	{
+	case FLASH_READ:
+		s->flash_state = (cmd == 0x555 && val == 0xaa) ? FLASH_UNLOCK1 : FLASH_READ;
+		break;
+	case FLASH_UNLOCK1:
+		s->flash_state = (cmd == 0x2aa && val == 0x55) ? FLASH_UNLOCK2 : FLASH_READ;
+		break;
+	case FLASH_UNLOCK2:
+		s->flash_state = FLASH_READ;
+		if (cmd != 0x555) {
+			break;
+		}
+		if (val == 0x90) {
+#if SUNPCI_DEBUG_CSR
+			write_log(_T("SUNPCI: flash autoselect at %05x PC=%04x:%08x\n"), off, CS, cpu_state.pc);
+#endif
+			if (!s->flash_autoselect) {
+				s->flash_autoselect = true;
+				sunpci_flash_update_exec(s);
+			}
+		} else if (val == 0xa0) {
+			s->flash_state = FLASH_PROGRAM;
+		} else if (val == 0x80) {
+			s->flash_state = FLASH_ERASE;
+		}
+		break;
+	case FLASH_ERASE:
+		s->flash_state = (cmd == 0x555 && val == 0xaa) ? FLASH_ERASE_UNLOCK1 : FLASH_READ;
+		break;
+	case FLASH_ERASE_UNLOCK1:
+		s->flash_state = (cmd == 0x2aa && val == 0x55) ? FLASH_ERASE_UNLOCK2 : FLASH_READ;
+		break;
+	case FLASH_ERASE_UNLOCK2:
+		s->flash_state = FLASH_READ;
+		if (cmd == 0x555 && val == 0x10) {
+			memset(s->bios, 0xff, SUNPCI_BIOS_SIZE);
+			write_log(_T("SUNPCI: flash chip erase\n"));
+		} else if (val == 0x30) {
+			sunpci_flash_sector(off, &start, &size);
+			memset(s->bios + start, 0xff, size);
+			write_log(_T("SUNPCI: flash sector erase %05x-%05x\n"), start, start + size - 1);
+		}
+		break;
+	}
+}
+static void sunpci_flash_writew(uint32_t addr, uint16_t val, void *priv)
+{
+	sunpci_flash_writeb(addr, (uint8_t)val, priv);
+	sunpci_flash_writeb(addr + 1, val >> 8, priv);
+}
+static void sunpci_flash_writel(uint32_t addr, uint32_t val, void *priv)
+{
+	sunpci_flash_writew(addr, (uint16_t)val, priv);
+	sunpci_flash_writew(addr + 2, val >> 16, priv);
 }
 
 /* SiS 5597/5598 */
@@ -1415,6 +1583,7 @@ static void sunpci_card_reset(struct sunpci_state *s)
 		}
 	}
 	sunpci_build_bus(s);
+	sunpci_flash_reset(s);
 	s->smm = false;
 	s->smi_latched = false;
 	s->db.pic_smi_rate = 0;
@@ -1497,7 +1666,14 @@ static bool sunpci_x86_init(struct romconfig *rc)
 
 	rom = s->bios;
 	biosmask = SUNPCI_BIOS_SIZE - 1;
-	mem_add_bios();
+	mem_mapping_add(&s->flash_map, 0xe0000, 0x20000,
+		sunpci_flash_readb, sunpci_flash_readw, sunpci_flash_readl,
+		sunpci_flash_writeb, sunpci_flash_writew, sunpci_flash_writel,
+		s->bios + 0x20000, MEM_MAPPING_EXTERNAL | MEM_MAPPING_ROM, s);
+	mem_mapping_add(&s->flash_high_map, 0xfffc0000, SUNPCI_BIOS_SIZE,
+		sunpci_flash_readb, sunpci_flash_readw, sunpci_flash_readl,
+		sunpci_flash_writeb, sunpci_flash_writew, sunpci_flash_writel,
+		s->bios, MEM_MAPPING_ROM, s);
 
 
 	// PCI memory space: above the card's RAM, below the BIOS flash
