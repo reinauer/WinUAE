@@ -167,6 +167,21 @@ int x86_int_sw_rm(int num)
 void x86illegal()
 {
 //        pclog("x86 illegal %04X %08X %04X:%08X %02X\n",msw,cr0,CS,pc,opcode);
+#ifdef UAE
+        static int illegal_logs;
+        if (illegal_logs < 32) {
+                illegal_logs++;
+                uint32_t a = cpu_state.seg_cs.base + cpu_state.oldpc;
+                pclog("x86 illegal opcode at %04X:%08X: %02X %02X %02X %02X %02X %02X (cr0 %08X)\n", CS, cpu_state.oldpc, readmembl(a), readmembl(a + 1), readmembl(a + 2), readmembl(a + 3), readmembl(a + 4), readmembl(a + 5), cr0);
+                uint32_t sp = cpu_state.seg_ss.base + (ESP & 0xffff);
+                pclog("  SS:SP %04X:%04X stack %04X %04X %04X %04X %04X %04X %04X %04X\n", SS, ESP & 0xffff,
+                        readmemwl(sp), readmemwl(sp + 2), readmemwl(sp + 4), readmemwl(sp + 6),
+                        readmemwl(sp + 8), readmemwl(sp + 10), readmemwl(sp + 12), readmemwl(sp + 14));
+                pclog("  vectors 06 %04X:%04X 10 %04X:%04X 13 %04X:%04X 15 %04X:%04X 19 %04X:%04X\n",
+                        readmemwl(0x1a), readmemwl(0x18), readmemwl(0x42), readmemwl(0x40), readmemwl(0x4e), readmemwl(0x4c),
+                        readmemwl(0x56), readmemwl(0x54), readmemwl(0x66), readmemwl(0x64));
+        }
+#endif
 
 //        if (output)
 //        {
