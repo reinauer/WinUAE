@@ -163,6 +163,7 @@ struct sunpci_state
 	mem_mapping_t smram_map;
 	uae_u32 smram_host, smram_ram;
 	bool smm;
+	bool smi_latched;
 	int smi_lines;
 	struct db21554 db;
 	uae_u8 post;
@@ -745,6 +746,21 @@ static void sunpci_smm_leave(void)
 {
 	sunpci->smm = false;
 	sunpci_smram_update(sunpci);
+	if (sunpci->smi_latched) {
+		sunpci->smi_latched = false;
+		x86_smi_trigger();
+	}
+}
+
+// PCem would enter SMM again on top of the running handler and overwrite its
+// save state; the CPU latches SMI# in SMM and takes it after RSM.
+static void sunpci_raise_smi(struct sunpci_state *s)
+{
+	if (s->smm) {
+		s->smi_latched = true;
+		return;
+	}
+	x86_smi_trigger();
 }
 
 static void sunpci_sis_host_config_written(struct sunpci_dev *d, int reg, uae_u8 old)
@@ -758,10 +774,11 @@ static void sunpci_sis_host_config_written(struct sunpci_dev *d, int reg, uae_u8
 		write_log(_T("SUNPCI: SMRAM control %02x\n"), d->cfg[0xa3]);
 		sunpci_smram_update(sunpci);
 	}
-	if (reg == 0x93 && (d->cfg[0x9b] & 0x01) && (d->cfg[0x93] & 0x02)) {
-		// software SMI (APM)
+	if (reg == 0x93 && (d->cfg[0x9b] & 0x01) && (d->cfg[0x93] & 0x02) && !(old & 0x02)) {
+		// software SMI (APM). The handler rewrites 93 with the bit still
+		// set before clearing it, so only a 0 to 1 write triggers.
 		d->cfg[0x9d] |= 0x01;
-		x86_smi_trigger();
+		sunpci_raise_smi(sunpci);
 	}
 	if (reg == 0x9d) {
 		// status: write 0 to clear
@@ -1394,6 +1411,7 @@ static void sunpci_card_reset(struct sunpci_state *s)
 	}
 	sunpci_build_bus(s);
 	s->smm = false;
+	s->smi_latched = false;
 	s->db.pic_smi_rate = 0;
 	s->smi_lines = 0;
 	sunpci_smram_update(s);
@@ -1559,7 +1577,7 @@ static void sunpci_x86_run(struct sunpci_state *s)
 		int period = (int)(s->db.pic_smi_rate * 0.01f * vblank_hz * maxvpos);
 		if (++s->smi_lines >= period) {
 			s->smi_lines = 0;
-			x86_smi_trigger();
+			sunpci_raise_smi(s);
 		}
 	}
 	int cycs = (int)s->cycle_acc;
