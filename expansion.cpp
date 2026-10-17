@@ -6311,6 +6311,14 @@ const struct expansionromtype expansionroms[] = {
 	},
 #endif
 #ifdef WITH_PCI
+#ifdef WITH_X86
+	{
+		_T("sunpci1"), _T("SunPCi I"), _T("Sun"),
+		NULL, pci_expansion_init, NULL, NULL, ROMTYPE_SUNPCI1, 0, 0, BOARD_PCI, true,
+		NULL, 0,
+		false, EXPANSIONTYPE_CUSTOM
+	},
+#endif
 	{
 		_T("sunpci1_test"), _T("SunPCi I diagnostic fixture"), _T("Sun"),
 		NULL, pci_expansion_init, NULL, NULL, ROMTYPE_SUNPCI1_TEST | ROMTYPE_NOT, 0, 0, BOARD_PCI, true,

@@ -1150,6 +1150,7 @@ set(WINUAE_UNIX_ENABLE_PCEM ON)
 target_compile_definitions(winuae_unix_core_defs INTERFACE WITH_X86=1)
 list(APPEND WINUAE_UNIX_EXTRA_SOURCES
     atonce.cpp
+    sunpci.cpp
     x86.cpp
     ${WINUAE_UNIX_PCEM_COMMON_SOURCES}
     ${WINUAE_UNIX_PCEM_X86_SOURCES}
