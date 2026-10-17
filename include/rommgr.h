@@ -223,6 +223,9 @@ extern int decode_cloanto_rom_do(uae_u8 *mem, int size, int real_size);
 #define ROMTYPE_512KWOM		0x00100096
 #define ROMTYPE_AIDE		0x00100097
 #define ROMTYPE_ATONCE		0x00100098
+#define ROMTYPE_SUNPCI1_TEST 0x00100099
+#define ROMTYPE_SUNPCI2_TEST 0x0010009a
+#define ROMTYPE_SUNPCI3_TEST 0x0010009b
 
 #define ROMTYPE_NOT			0x00800000
 #define ROMTYPE_QUAD		0x01000000
