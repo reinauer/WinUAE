@@ -186,6 +186,7 @@ typedef struct svga_t
         int force_dword_mode;
 
         int remap_required;
+        int remap_base;
         uint32_t (*remap_func)(struct svga_t *svga, uint32_t in_addr);
         
         uint32_t  overscan_color;

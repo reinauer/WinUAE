@@ -97,6 +97,12 @@ static uint32_t (*address_remap_funcs[16])(svga_t *svga, uint32_t in_addr) =
         address_remap_func_15
 };
 
+static uint32_t address_remap_by8(svga_t *svga, uint32_t addr)
+{
+        addr = address_remap_funcs[svga->remap_base](svga, addr);
+        return ((addr & ~3U) << 1) | (addr & 3);
+}
+
 void svga_recalc_remap_func(svga_t *svga)
 {
         int func_nr;
@@ -126,4 +132,9 @@ void svga_recalc_remap_func(svga_t *svga)
 //                        svga->fb_only, svga->chain4, svga->packed_chain4, svga->crtc[0x14], svga->crtc[0x17], func_nr);
         svga->remap_required = (func_nr != 0);
         svga->remap_func = address_remap_funcs[func_nr];
+        if ((svga->adv_flags & FLAG_ADDR_BY8) && !svga->fb_only) {
+                svga->remap_base = func_nr;
+                svga->remap_required = 1;
+                svga->remap_func = address_remap_by8;
+        }
 }

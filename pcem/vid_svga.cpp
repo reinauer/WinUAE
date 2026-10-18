@@ -1047,6 +1047,9 @@ void svga_write(uint32_t addr, uint8_t val, void *p)
         {
                 addr<<=2;
         }
+        if ((svga->adv_flags & FLAG_ADDR_BY8) &&
+            !((svga->chain4 && svga->packed_chain4) || svga->fb_only))
+                addr = ((addr & ~3U) << 1) | (addr & 3);
         addr &= svga->decode_mask;
 
         if (addr >= svga->vram_max)
@@ -1249,6 +1252,10 @@ uint8_t svga_read(uint32_t addr, void *p)
         else
                 addr<<=2;
 
+        if (svga->adv_flags & FLAG_ADDR_BY8) {
+                addr = ((addr & ~3U) << 1) | (addr & 3);
+                latch_addr = ((latch_addr & ~3U) << 1) | (latch_addr & 3);
+        }
         addr &= svga->decode_mask;
         
         if (latch_addr >= svga->vram_max)
@@ -1328,6 +1335,9 @@ void svga_write_linear(uint32_t addr, uint8_t val, void *p)
         {
                 addr<<=2;
         }
+        if ((svga->adv_flags & FLAG_ADDR_BY8) &&
+            !((svga->chain4 && svga->packed_chain4) || svga->fb_only))
+                addr = ((addr & ~3U) << 1) | (addr & 3);
         addr &= svga->decode_mask;
         if (addr >= svga->vram_max)
                 return;
@@ -1514,6 +1524,10 @@ uint8_t svga_read_linear(uint32_t addr, void *p)
         else
                 addr<<=2;
 
+        if (svga->adv_flags & FLAG_ADDR_BY8) {
+                addr = ((addr & ~3U) << 1) | (addr & 3);
+                latch_addr = ((latch_addr & ~3U) << 1) | (latch_addr & 3);
+        }
         addr &= svga->decode_mask;
         
         if (latch_addr >= svga->vram_max)

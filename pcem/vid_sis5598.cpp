@@ -247,6 +247,11 @@ static void *sis5598_init(const device_t *info)
 	}
 	svga_init(info, &sis->svga, sis, sis->vram_size, sis5598_recalctimings, sis5598_in, sis5598_out, NULL, NULL);
 	sis->svga.decode_mask = sis->vram_size - 1;
+	// The 64-bit UMA interface stores VGA planes 0..3 in the low
+	// dword of each qword. Packed modes address all bytes directly.
+	// Sun's BIOS captures mode 12h as dwords eight bytes apart and
+	// text as character/attribute words sixteen bytes apart.
+	sis->svga.adv_flags |= FLAG_ADDR_BY8;
 	sis->ext_seq[5] = 0x21;
 	return sis;
 }

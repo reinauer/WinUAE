@@ -64,7 +64,8 @@
 #define SUNPCI_RAM_KB (64 * 1024)
 #define SUNPCI_MAX_DEVS 8
 #define SUNPCI_BRIDGE_DEV 11
-#define SUNPCI_VGA_DEV 2
+// Sun BIOS SMI VGA initialization reads BAR0 at CF8 address 8000a010.
+#define SUNPCI_VGA_DEV 20
 #define SUNPCI_VGA_LFB_SIZE 0x400000
 
 // 21554 CSRs, shared by both interfaces
@@ -937,6 +938,19 @@ static void sunpci_raise_smi(struct sunpci_state *s)
 		return;
 	}
 	x86_smi_trigger();
+}
+
+// The PIC drives the SiS EXTSMI# input. Record the enabled source before
+// entering SMM so the firmware can distinguish it from software APM SMI.
+// SiS5597/5598 datasheet: 93[2] pin select, 9B[1] enable, 9D[1] status.
+static void sunpci_external_smi(struct sunpci_state *s)
+{
+	if (!s->sis_host || !(s->sis_host->cfg[0x93] & 4) ||
+		!(s->sis_host->cfg[0x9b] & 2)) {
+		return;
+	}
+	s->sis_host->cfg[0x9d] |= 2;
+	sunpci_raise_smi(s);
 }
 
 static void sunpci_sis_host_config_written(struct sunpci_dev *d, int reg, uae_u8 old)
@@ -1827,7 +1841,7 @@ static void sunpci_x86_run(struct sunpci_state *s)
 		int period = (int)(s->db.pic_smi_rate * 0.01f * vblank_hz * maxvpos);
 		if (++s->smi_lines >= period) {
 			s->smi_lines = 0;
-			sunpci_raise_smi(s);
+			sunpci_external_smi(s);
 		}
 	}
 	int cycs = (int)s->cycle_acc;

@@ -103,7 +103,10 @@ void svga_render_text_40(svga_t *svga)
                                 }
                         }
 
-                        dat = svga->vram[charaddr + (svga->sc << 2)];
+                        charaddr += svga->sc << 2;
+                        if (svga->adv_flags & FLAG_ADDR_BY8)
+                                charaddr = ((charaddr & ~3U) << 1) | (charaddr & 3);
+                        dat = svga->vram[charaddr & svga->vram_mask];
                         if (svga->seqregs[1] & 1) 
                         { 
                                 for (xx = 0; xx < 16; xx += 2) 
@@ -170,7 +173,10 @@ void svga_render_text_80(svga_t *svga)
                                 }
                         }
 
-                        dat = svga->vram[charaddr + (svga->sc << 2)];
+                        charaddr += svga->sc << 2;
+                        if (svga->adv_flags & FLAG_ADDR_BY8)
+                                charaddr = ((charaddr & ~3U) << 1) | (charaddr & 3);
+                        dat = svga->vram[charaddr & svga->vram_mask];
                         if (svga->seqregs[1] & 1) 
                         { 
                                 for (xx = 0; xx < 8; xx++) 
