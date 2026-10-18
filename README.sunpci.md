@@ -56,3 +56,14 @@ an x86 machine/chipset model and both sides of the Sun bridge.
 
 BAR1 is limited to 256 bytes: OpenPCI 40.16 rejects larger I/O regions.
 The memory BAR stays 4 KiB; the scratch registers fit in both apertures.
+
+## SunPCi I machine logging
+
+The full SunPCi I machine in `sunpci.cpp` defaults to quiet logging.
+Startup, POST transitions, resets and error diagnostics remain enabled.
+Routine SiS/21554 configuration writes, host/card CSR traffic, SMM entry,
+PIC input and periodic text-screen dumps require `SUNPCI_DEBUG_CSR=1`
+in the compiler definitions. Set it to 2 to include CSR reads; polling
+makes that mode especially noisy. Generic host PCI configuration tracing
+is separately controlled by `PCI_DEBUG_CONFIG=1` (also off by default).
+These are build-time switches; restart WinUAE after rebuilding.

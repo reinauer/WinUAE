@@ -10,7 +10,9 @@
 
 #define PCI_DEBUG_IO 0
 #define PCI_DEBUG_MEMORY 0
-#define PCI_DEBUG_CONFIG 1
+#ifndef PCI_DEBUG_CONFIG
+#define PCI_DEBUG_CONFIG 0
+#endif
 #define PCI_DEBUG_BRIDGE 0
 #define PCI_DEBUG_IO_MISS 0
 

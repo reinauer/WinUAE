@@ -58,8 +58,10 @@
 #include "pcem/vid_svga.h"
 #include "pcem/vid_sis5598.h"
 
-// 1 logs CSR writes, 2 also logs reads (the card polls, so reads flood the log)
-#define SUNPCI_DEBUG_CSR 1
+// 0: startup/errors only; 1: register tracing; 2: also CSR reads.
+#ifndef SUNPCI_DEBUG_CSR
+#define SUNPCI_DEBUG_CSR 0
+#endif
 
 #define SUNPCI_BIOS_SIZE 0x40000 // the Am29F002T flash
 #define SUNPCI_RAM_KB (64 * 1024)
@@ -384,9 +386,11 @@ static void db_config_write(struct sunpci_state *s, int reg, uae_u8 v, bool seco
 			*p &= ~0x02;
 		}
 	}
+#if SUNPCI_DEBUG_CSR
 	if (*p != old || reg >= 0x80) {
 		write_log(_T("SUNPCI: %s cfg 21554 [%02x] %02x -> %02x\n"), secondary ? _T("card") : _T("host"), reg, old, *p);
 	}
+#endif
 	if (header && ((reg & 0x3f) == 0x04 || ((reg & 0x3f) >= 0x10 && (reg & 0x3f) < 0x28))) {
 		sunpci_card_remap(s);
 	}
@@ -556,7 +560,9 @@ static void sunpci_pic_command(struct sunpci_state *s, uae_u8 control, bool seco
 				b->pic_led = data;
 				break;
 			case PIC_CMD_SMI_RATE:
+#if SUNPCI_DEBUG_CSR
 				write_log(_T("SUNPCI: PIC SMI rate %d\n"), data);
+#endif
 				b->pic_smi_rate = data;
 				s->smi_lines = 0;
 				break;
@@ -999,7 +1005,9 @@ static void sunpci_sis_host_config_written(struct sunpci_dev *d, int reg, uae_u8
 		sunpci_smram_update(sunpci);
 	}
 	if (reg == 0xa3) {
+#if SUNPCI_DEBUG_CSR
 		write_log(_T("SUNPCI: SMRAM control %02x\n"), d->cfg[0xa3]);
+#endif
 		sunpci_smram_update(sunpci);
 	}
 	if (reg == 0x93 && (d->cfg[0x9b] & 0x01) && (d->cfg[0x93] & 0x02) && !(old & 0x02)) {
@@ -1522,9 +1530,11 @@ static void sunpci_config_writeb(struct sunpci_state *s, int reg, uae_u8 v)
 	}
 	uae_u8 old = d->cfg[reg];
 	d->cfg[reg] = (old & ~d->wmask[reg]) | (v & d->wmask[reg]);
+#if SUNPCI_DEBUG_CSR
 	if (reg >= 0x40 || old != d->cfg[reg]) {
 		write_log(_T("SUNPCI: cfg %s [%02x] %02x -> %02x PC=%04x:%08x\n"), d->name, reg, old, d->cfg[reg], CS, cpu_state.pc);
 	}
+#endif
 	if (d->config_written) {
 		d->config_written(d, reg, old);
 	}
@@ -1889,23 +1899,11 @@ static void sunpci_x86_run(struct sunpci_state *s)
 		}
 	}
 	int cycs = (int)s->cycle_acc;
-#if SUNPCI_DEBUG_CSR
-#endif
 	if (cycs > 0) {
 		exec386(cycs);
 		s->cycle_acc -= cycs;
 	}
-#if SUNPCI_DEBUG_CSR
-	{
-		static uae_u32 int10;
-		uae_u32 v = mem_readb_phys(0x40) | (mem_readb_phys(0x41) << 8) | (mem_readb_phys(0x42) << 16) | (mem_readb_phys(0x43) << 24);
-		if (v != int10) {
-			write_log(_T("SUNPCI: INT 10h vector %04x:%04x -> %04x:%04x near %04x:%08x POST %02x\n"),
-				int10 >> 16, int10 & 0xffff, v >> 16, v & 0xffff, CS, cpu_state.pc, s->post);
-			int10 = v;
-		}
-	}
-#endif
+
 #if SUNPCI_DEBUG_CSR
 	{
 		static uae_u32 int10;
