@@ -63,6 +63,12 @@
 #define SUNPCI_DEBUG_CSR 0
 #endif
 
+// 0: first access per port/width/direction; 1: trace repeats as well.
+// Both modes retain the per-board diagnostic budget.
+#ifndef SUNPCI_DEBUG_IO
+#define SUNPCI_DEBUG_IO 0
+#endif
+
 #define SUNPCI_BIOS_SIZE 0x40000 // the Am29F002T flash
 #define SUNPCI_RAM_KB (64 * 1024)
 #define SUNPCI_MAX_DEVS 8
@@ -184,6 +190,8 @@ struct sunpci_state
 	bool init_done;
 	float cycle_acc;
 	int unknown_logs;
+	uae_u8 unknown_io_seen[65536];
+	bool acpi_probe_logged;
 	int trace_lines;
 	struct pci_board_state *host_pcibs;
 	struct zfile *cmosfile;
@@ -1549,13 +1557,37 @@ static void sunpci_unknown_io(struct sunpci_state *s, uint16_t port, int dir, ui
 	if (port == 0xeb && !dir && size == 1) {
 		return;
 	}
-	if (s->unknown_logs < 2000) {
-		s->unknown_logs++;
-		if (dir) {
-			write_log(_T("SUNPCI: unhandled IN%d %04x PC=%04x:%08x\n"), size * 8, port, CS, cpu_state.pc);
-		} else {
-			write_log(_T("SUNPCI: unhandled OUT%d %04x = %08x PC=%04x:%08x\n"), size * 8, port, val, CS, cpu_state.pc);
+	if (s->unknown_logs >= 2000) {
+		return;
+	}
+#if !SUNPCI_DEBUG_IO
+	// Widths 1, 2 and 4 occupy three bits for each direction. Repeated
+	// BIOS probes must not exhaust the budget before new ports appear.
+	unsigned bit = 1U << ((dir ? 3 : 0) + (size == 4 ? 2 : size == 2 ? 1 : 0));
+	if (s->unknown_io_seen[port] & bit) {
+		return;
+	}
+	s->unknown_io_seen[port] |= bit;
+	if (!s->unknown_logs) {
+		write_log(_T("SUNPCI: unhandled I/O reports each port/width/direction once (SUNPCI_DEBUG_IO=1 traces repeats)\n"));
+	}
+#endif
+	if (!s->acpi_probe_logged && s->sis_isa) {
+		unsigned base = s->sis_isa->cfg[0x90] | (s->sis_isa->cfg[0x91] << 8);
+		if (base && port >= base && unsigned(port) - base < 0x40) {
+			s->acpi_probe_logged = true;
+			write_log(_T("SUNPCI: ACPI probe base=%04x ISA40=%02x decode=%s; ACPI registers not implemented\n"),
+				base, s->sis_isa->cfg[0x40], (s->sis_isa->cfg[0x40] & 0x80) ? _T("enabled") : _T("disabled"));
 		}
+	}
+	s->unknown_logs++;
+	if (dir) {
+		write_log(_T("SUNPCI: unhandled IN%d %04x PC=%04x:%08x\n"), size * 8, port, CS, cpu_state.pc);
+	} else {
+		write_log(_T("SUNPCI: unhandled OUT%d %04x = %08x PC=%04x:%08x\n"), size * 8, port, val, CS, cpu_state.pc);
+	}
+	if (s->unknown_logs == 2000) {
+		write_log(_T("SUNPCI: unhandled I/O diagnostic limit reached\n"));
 	}
 }
 

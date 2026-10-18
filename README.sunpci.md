@@ -68,6 +68,32 @@ makes that mode especially noisy. Generic host PCI configuration tracing
 is separately controlled by `PCI_DEBUG_CONFIG=1` (also off by default).
 These are build-time switches; restart WinUAE after rebuilding.
 
+Unhandled card I/O reports each port, access width and direction once per
+board lifetime by default. This keeps repeated BIOS probes from consuming
+the 2,000-message diagnostic budget before later devices are probed.
+`SUNPCI_DEBUG_IO=1` restores repeated-access tracing up to that same limit.
+The filter does not change read values, writes, timing or device decoding.
+A first probe of the configured SiS ACPI window also reports its base and
+ISA configuration register 40 decode-enable bit; that register block is
+not implemented yet.
+
+In the BIOS trace, writes to 0378 mirror POST codes. The 0279/0a79 sequence
+and reads at 020b, 020f, 0213 and subsequent candidates are ISA PnP
+isolation probes. Repeated status accesses at 6100, 6114 and 6125 match
+ACPI base 6100 plus the PM, general-purpose and SMI status offsets in the
+[SiS 5597/5598 datasheet](https://ftpmirror.your.org/pub/misc/bitsavers/components/sis/SiS-5597-5598_199704.pdf),
+printed pages 184-194. Whether the block should respond also depends on
+its programmed base and decode-enable bit; these traces alone do not
+justify replacing open-bus reads with zero.
+
+Run `python3 tools/sunpci-test/io-log-test.py` for production-function
+coverage of repetition, independent widths/directions/boards, the final
+port, diagnostic limits and ACPI decode reporting under ASan/UBSan.
+Both default and verbose builds are exercised. A native build and isolated
+Windows 95 Setup boot also passed; the boot retained later probe messages
+without repeating each ISA PnP access. This does not resolve the separate
+Windows installation hang or external-display flicker.
+
 ## SiS VGA state across native BIOS captures
 
 The native BIOS saves VGA latches and attribute-controller state around
