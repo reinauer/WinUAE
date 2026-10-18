@@ -97,6 +97,8 @@
 #define PIC_CMD_STATUS 0
 #define PIC_CMD_KEYBOARD 1
 #define PIC_CMD_MOUSE 2
+#define PIC_CMD_IRQ_SET 4
+#define PIC_CMD_IRQ_CLEAR 5
 #define PIC_CMD_LED 6
 #define PIC_CMD_SMI_RATE 7
 #define DB_CSR_LUT 0x100
@@ -160,6 +162,7 @@ struct db21554
 	uae_u8 pic_led, pic_smi_rate;
 	bool host_irq, card_irq;
 	int card_pic_irq;
+	uae_u8 pic_host_irqs;
 };
 
 struct sunpci_state
@@ -485,6 +488,26 @@ static void db_doorbell_write(struct db21554 *b, int reg, uae_u16 v)
 
 /* Sun PIC */
 
+// The Solaris 504311 ioctl writes command 4 then 5 with the same mask.
+// Keep the pin state separate from the 8259's latched edge: picintc() would
+// erase the pending interrupt before the x86 core has a chance to accept it.
+static void sunpci_pic_host_irq(struct db21554 *b, bool assert_pin, uae_u8 mask)
+{
+	static const unsigned irqs[4] = { 9, 10, 11, 15 };
+	mask &= 15;
+	if (assert_pin) {
+		uae_u8 rising = mask & ~b->pic_host_irqs;
+		b->pic_host_irqs |= mask;
+		for (unsigned i = 0; i < 4; i++) {
+			if (rising & (1U << i)) {
+				picint(1U << irqs[i]);
+			}
+		}
+	} else {
+		b->pic_host_irqs &= ~mask;
+	}
+}
+
 // IBM enhanced keyboard key station numbers (what PIC command 1 carries) to
 // PCem scancode indices (set 1 numbering, bit 7 = E0 prefix).
 static const uae_u16 sunpci_station_to_scancode[128] =
@@ -563,6 +586,12 @@ static void sunpci_pic_command(struct sunpci_state *s, uae_u8 control, bool seco
 				break;
 			case PIC_CMD_KEYBOARD:
 				sunpci_pic_keyboard(data);
+				break;
+			case PIC_CMD_IRQ_SET:
+				sunpci_pic_host_irq(b, true, data);
+				break;
+			case PIC_CMD_IRQ_CLEAR:
+				sunpci_pic_host_irq(b, false, data);
 				break;
 			case PIC_CMD_LED:
 				b->pic_led = data;
@@ -1725,6 +1754,7 @@ static void sunpci_card_reset(struct sunpci_state *s)
 	s->reset_control = 0;
 	mem_a20_alt = 0;
 	mem_a20_recalc();
+	s->db.pic_host_irqs = 0;
 	pic_reset();
 	serial_reset();
 	serial2.mctrl = serial2.int_status = serial2.msr = 0;
