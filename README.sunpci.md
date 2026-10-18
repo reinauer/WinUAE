@@ -67,3 +67,29 @@ in the compiler definitions. Set it to 2 to include CSR reads; polling
 makes that mode especially noisy. Generic host PCI configuration tracing
 is separately controlled by `PCI_DEBUG_CONFIG=1` (also off by default).
 These are build-time switches; restart WinUAE after rebuilding.
+
+## SiS VGA state across native BIOS captures
+
+The native BIOS saves VGA latches and attribute-controller state around
+its SMM display capture. CR22 exposes the latch selected by GDC read plane,
+CR24 bit 7 exposes the attribute index/data toggle, and CR26 exposes the
+attribute index and video-enable bit. These readbacks follow the
+[SiS 5597/5598 datasheet](https://ftpmirror.your.org/pub/misc/bitsavers/components/sis/SiS-5597-5598_199704.pdf),
+printed page 248. Restoring SR06 also recomputes the CPU access fast path
+and restores the attribute plane mask when returning to planar VGA.
+
+Run `python3 tools/sunpci-test/sis-state-test.py` for latch/attribute
+readback and packed-to-planar word-write regression coverage under
+ASan/UBSan. This is an isolated source harness, not physical-card proof.
+
+An isolated Windows 95 Setup run still showed intermittent eight-scanline
+black bands in the external PCem framebuffer after these corrections.
+The observed host-capture mode had SR01=0x21 (Screen Off set), while the
+renderer still emitted pixels. The BIOS temporarily switches to packed
+access during capture; its relationship to those bands remains under
+investigation. No SMM frame-freezing or rendering workaround is applied.
+
+The [SunPCi user's guide](https://docs.oracle.com/cd/E19085-01/pci1.card/805-6058-11/6j5nc882f/index.html)
+describes host-window and external-VGA routing as separate modes. Correct
+routing and output blanking need validation before changing monitor 2's
+current visibility. The state corrections alone do not fix its flicker.

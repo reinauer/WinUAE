@@ -79,6 +79,7 @@ static void sis5598_recalctimings(svga_t *svga)
 	}
 
 	if (!sis5598_packed(sis)) {
+		svga->plane_mask = svga->attrregs[0x12] & 0x0f;
 		return;
 	}
 	svga->rowoffset = svga->crtc[0x13] | ((vov & 0xf0) << 4);
@@ -106,6 +107,10 @@ static void sis5598_mode_changed(sis5598_t *sis)
 	int packed = sis5598_packed(sis);
 	sis->svga.fb_only = packed;
 	sis->svga.packed_chain4 = packed;
+	// SR06 changes the same CPU access path as the VGA sequencer/GDC.
+	// Do not leave packed word/dword accesses enabled after restoring VGA.
+	sis->svga.fast = packed && sis->svga.gdcreg[8] == 0xff &&
+		!(sis->svga.gdcreg[3] & 0x18) && !sis->svga.gdcreg[1];
 	if (!packed) {
 		sis->svga.bpp = 8;
 	}
@@ -227,6 +232,18 @@ uint8_t sis5598_in(uint16_t addr, void *p)
 	case 0x3d4:
 		return svga->crtcreg;
 	case 0x3d5:
+		// SiS readback registers let SMM preserve an interrupted VGA access.
+		switch (svga->crtcreg) {
+		case 0x22:
+			switch (svga->readplane & 3) {
+			case 0: return svga->la;
+			case 1: return svga->lb;
+			case 2: return svga->lc;
+			default: return svga->ld;
+			}
+		case 0x24: return svga->attrff ? 0x80 : 0;
+		case 0x26: return svga->attraddr | svga->attr_palette_enable;
+		}
 		return svga->crtc[svga->crtcreg];
 	}
 	return svga_in(addr, svga);
