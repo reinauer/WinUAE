@@ -10,7 +10,7 @@ keyboard = (root / 'pcem/keyboard.cpp').read_text()
 adapter = (root / 'sunpci.cpp').read_text()
 tables = keyboard[keyboard.index('typedef struct'):keyboard.index('static scancode scancode_tandy')]
 sender = keyboard[keyboard.index('void keyboard_send_scancode(int code, int is_break)'):]
-stations = adapter[adapter.index('static const uae_u16 sunpci_station_to_scancode'):adapter.index('// The control write starts a command')]
+stations = adapter[adapter.index('static const uae_u16 sunpci_station_to_scancode'):adapter.index("// Sun's first-generation mouse driver")]
 code = '''
 #include <cassert>
 #include <cstdint>

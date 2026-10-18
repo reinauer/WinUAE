@@ -296,6 +296,7 @@ void serial1_remove()
 
 void serial2_init(uint16_t addr, int irq, int has_fifo)
 {
+        draco_serial = false;
         memset(&serial2, 0, sizeof(serial2));
         io_sethandler(addr, 0x0008, serial_read, NULL, NULL, serial_write, NULL, NULL, &serial2);
         serial2.irq = irq;

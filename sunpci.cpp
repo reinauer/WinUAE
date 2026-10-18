@@ -53,6 +53,7 @@
 #include "pcem/codegen.h"
 #include "pcem/x86.h"
 #include "pcem/io.h"
+#include "pcem/serial.h"
 #include "pcem/video.h"
 #include "pcem/vid_svga.h"
 #include "pcem/vid_sis5598.h"
@@ -85,7 +86,9 @@
 #define DB_CSR_PIC_CONTROL 0xcf
 #define PIC_CONTROL_BUSY 0x02
 #define PIC_CONTROL_WRITE 0x04
+#define PIC_CMD_STATUS 0
 #define PIC_CMD_KEYBOARD 1
+#define PIC_CMD_MOUSE 2
 #define PIC_CMD_LED 6
 #define PIC_CMD_SMI_RATE 7
 #define DB_CSR_LUT 0x100
@@ -501,6 +504,35 @@ static void sunpci_pic_keyboard(uae_u8 v)
 	keyboard_send_scancode(code, (v & 0x80) != 0);
 }
 
+// Sun's first-generation mouse driver defaults to COM2. The PIC supplies
+// the serial byte stream; bit 7 on its final packet byte is outside the
+// seven data bits selected by a Microsoft mouse driver.
+static void sunpci_mouse_identify(SERIAL *serial, void *p)
+{
+	(void)p;
+	serial->fifo_read = serial->fifo_write = 0;
+	serial_write_fifo(serial, 'M');
+}
+
+static uae_u8 sunpci_mouse_status(void)
+{
+	unsigned used = (serial2.fifo_write - serial2.fifo_read) & 255;
+	// Leave room for a complete three-byte PIC packet.
+	return used > 252 ? 0x10 : 0;
+}
+
+static void sunpci_pic_mouse(uae_u8 data)
+{
+	if (!(serial2.mctrl & 2) || (serial2.mctrl & 0x10)) {
+		return;
+	}
+	if (((serial2.fifo_write + 1) & 255) == serial2.fifo_read) {
+		return;
+	}
+	unsigned bits = 5 + (serial2.lcr & 3);
+	serial_write_fifo(&serial2, data & ((1U << bits) - 1));
+}
+
 // The control write starts a command (6 = write, 2 = read). It completes at
 // once, so the busy bit is clear again by the time the host polls it.
 static void sunpci_pic_command(struct sunpci_state *s, uae_u8 control, bool secondary)
@@ -514,6 +546,9 @@ static void sunpci_pic_command(struct sunpci_state *s, uae_u8 control, bool seco
 		if (write) {
 			switch (cmd)
 			{
+			case PIC_CMD_MOUSE:
+				sunpci_pic_mouse(data);
+				break;
 			case PIC_CMD_KEYBOARD:
 				sunpci_pic_keyboard(data);
 				break;
@@ -532,6 +567,9 @@ static void sunpci_pic_command(struct sunpci_state *s, uae_u8 control, bool seco
 		} else {
 			switch (cmd)
 			{
+			case PIC_CMD_STATUS:
+				b->csr[DB_CSR_PIC_DATA] = sunpci_mouse_status();
+				break;
 			case PIC_CMD_LED:
 				b->csr[DB_CSR_PIC_DATA] = b->pic_led << 4;
 				break;
@@ -1641,6 +1679,10 @@ static void sunpci_card_reset(struct sunpci_state *s)
 	mem_a20_alt = 0;
 	mem_a20_recalc();
 	pic_reset();
+	serial_reset();
+	serial2.mctrl = serial2.int_status = serial2.msr = 0;
+	serial2.lsr = 0x60;
+	timer_disable(&serial2.receive_timer);
 	dma_reset();
 	resetx86();
 	sunpci_card_irq_update(s);
@@ -1733,6 +1775,8 @@ static bool sunpci_x86_init(struct romconfig *rc)
 	}
 	nvr_dosave = 0;
 	nvrmask = 127;
+	serial2_init(0x2f8, 3, 0);
+	serial2.rcr_callback = sunpci_mouse_identify;
 	keyboard_at_init();
 	keyboard_at_init_ps2();
 	// The Award BIOS sets the translate bit and expects set 1 codes on port 60
