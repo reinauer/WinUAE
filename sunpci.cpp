@@ -26,6 +26,7 @@
 #ifdef WITH_X86
 
 #include "options.h"
+#include "uae.h"
 #include "custom.h"
 #include "memory.h"
 #include "rommgr.h"
@@ -178,6 +179,7 @@ struct sunpci_state
 	int unknown_logs;
 	int trace_lines;
 	struct pci_board_state *host_pcibs;
+	struct zfile *cmosfile;
 };
 
 static struct sunpci_state *sunpci;
@@ -1599,12 +1601,25 @@ static void sunpci_card_reset(struct sunpci_state *s)
 	sunpci_card_irq_update(s);
 }
 
+static void sunpci_cmos_save(struct sunpci_state *s)
+{
+	if (!s->cmosfile) {
+		return;
+	}
+	zfile_fseek(s->cmosfile, 0, SEEK_SET);
+	if (zfile_fwrite(nvrram, 1, 128, s->cmosfile) == 128) {
+		nvr_dosave = 0;
+	}
+}
+
 static void sunpci_x86_free(void)
 {
 	struct sunpci_state *s = sunpci;
 	if (!s) {
 		return;
 	}
+	sunpci_cmos_save(s);
+	zfile_fclose(s->cmosfile);
 	smram_enable = NULL;
 	smram_disable = NULL;
 	pcem_close();
@@ -1655,6 +1670,23 @@ static bool sunpci_x86_init(struct romconfig *rc)
 	pit_set_out_func(&pit, 1, pit_refresh_timer_at);
 	nvr_device.init(&nvr_device);
 	memset(nvrram, 0, sizeof nvrram);
+	TCHAR cmospath[MAX_DPATH];
+	fetch_nvrampath(cmospath, MAX_DPATH);
+	if (_tcslen(cmospath) + _tcslen(_T("sunpci1-cmos.nvr")) < MAX_DPATH) {
+		_tcscat(cmospath, _T("sunpci1-cmos.nvr"));
+		s->cmosfile = zfile_fopen(cmospath, _T("rb+"), ZFD_NORMAL);
+		if (s->cmosfile) {
+			if (zfile_fread(nvrram, 1, 128, s->cmosfile) != 128) {
+				memset(nvrram, 0, sizeof nvrram);
+			}
+		} else {
+			s->cmosfile = zfile_fopen(cmospath, _T("wb+"), 0);
+		}
+		if (!s->cmosfile) {
+			write_log(_T("SUNPCI: could not open CMOS file %s\n"), cmospath);
+		}
+	}
+	nvr_dosave = 0;
 	nvrmask = 127;
 	keyboard_at_init();
 	keyboard_at_init_ps2();
@@ -1839,6 +1871,9 @@ static void sunpci1_pci_hsync(struct pci_board_state *pcibs)
 {
 	if (sunpci) {
 		sunpci_x86_run(sunpci);
+		if (nvr_dosave) {
+			sunpci_cmos_save(sunpci);
+		}
 	}
 }
 
