@@ -1544,6 +1544,11 @@ static void sunpci_config_writeb(struct sunpci_state *s, int reg, uae_u8 v)
 
 static void sunpci_unknown_io(struct sunpci_state *s, uint16_t port, int dir, uint32_t val, int size)
 {
+	// The BIOS writes unused port EB for I/O delays, including the speaker
+	// loop at F000:EE84. AL is incidental; these are not device commands.
+	if (port == 0xeb && !dir && size == 1) {
+		return;
+	}
 	if (s->unknown_logs < 2000) {
 		s->unknown_logs++;
 		if (dir) {
