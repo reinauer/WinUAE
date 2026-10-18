@@ -173,6 +173,7 @@ struct sunpci_state
 	struct db21554 db;
 	uae_u8 post;
 	uae_u8 port92;
+	uae_u8 reset_control;
 	bool in_reset;
 	bool init_done;
 	float cycle_acc;
@@ -1509,10 +1510,39 @@ static bool sunpci_bridge_io(struct sunpci_state *s, uint16_t port, int dir, uin
 	return true;
 }
 
+// CF9 is the chipset reset control, distinct from the CF8 PCI address.
+// Bit 2 triggers on its rising edge; bit 1 requests a system reset.
+static void sunpci_reset_control_write(struct sunpci_state *s, uae_u8 val)
+{
+	if (!(s->reset_control & 4) && (val & 4)) {
+		write_log(_T("SUNPCI: CF9 reset %02x PC=%04x:%08x\n"), val, CS, cpu_state.pc);
+		cpu_state.smi_pending = 0;
+		if (val & 2) {
+			sunpci_card_reset(s);
+		} else {
+			s->smm = false;
+			s->smi_latched = false;
+			sunpci_smram_update(s);
+			resetx86();
+		}
+	}
+	s->reset_control = val & 0xfd;
+	if (val & 2) {
+		s->reset_control &= ~4;
+	}
+}
+
 uint32_t sunpci_x86_io(uint16_t port, int dir, uint32_t val, int size)
 {
 	struct sunpci_state *s = sunpci;
 
+	if (port == 0xcf9 && size == 1) {
+		if (dir) {
+			return s->reset_control & ~4;
+		}
+		sunpci_reset_control_write(s, (uae_u8)val);
+		return 0;
+	}
 	if (port == 0xcf8 && size == 4) {
 		if (dir) {
 			return s->cf8;
@@ -1593,6 +1623,7 @@ static void sunpci_card_reset(struct sunpci_state *s)
 	sunpci_smram_update(s);
 	sunpci_sis_shadow(s->sis_host);
 	s->port92 = 0;
+	s->reset_control = 0;
 	mem_a20_alt = 0;
 	mem_a20_recalc();
 	pic_reset();
