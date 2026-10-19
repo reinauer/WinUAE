@@ -1704,7 +1704,7 @@ void pmodeint(int num, int soft)
 //                exit(-1);
         }
         addr=(num<<3);
-        if (addr>=idt.limit)
+        if (addr + 7 > idt.limit)
         {
                 if (num==8)
                 {
@@ -1721,8 +1721,14 @@ void pmodeint(int num, int soft)
                 }
                 else
                 {
-                        pclog("INT out of range\n");
-                        x86gpf(NULL,(num*8)+2+(soft)?0:1);
+                        static unsigned range_logs;
+                        if (range_logs < 32)
+                        {
+                                range_logs++;
+                                pclog("INT out of range vector=%02X soft=%d IDT=%08X:%04X PC=%04X:%08X\n",
+                                      num, soft, idt.base, idt.limit, CS, cpu_state.pc);
+                        }
+                        x86gpf(NULL,(num*8)+2+(soft ? 0 : 1));
                 }
                 if (output) pclog("addr >= IDT.limit\n");
                 return;
