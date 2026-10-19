@@ -74,14 +74,16 @@ extern int nvrmask;
 void keyboard_at_write(uint16_t port, uint8_t val, void *priv);
 
 #define MAX_IO_PORT 0x400
+// PC device handlers include extended ISA ports such as ELCR at 4D0/4D1.
+#define MAX_IO_HANDLERS 0x10000
 
-static uint8_t(*port_inb[MAX_IO_PORT])(uint16_t addr, void *priv);
-static uint16_t(*port_inw[MAX_IO_PORT])(uint16_t addr, void *priv);
-static uint32_t(*port_inl[MAX_IO_PORT])(uint16_t addr, void *priv);
-static void(*port_outb[MAX_IO_PORT])(uint16_t addr, uint8_t  val, void *priv);
-static void(*port_outw[MAX_IO_PORT])(uint16_t addr, uint16_t val, void *priv);
-static void(*port_outl[MAX_IO_PORT])(uint16_t addr, uint32_t val, void *priv);
-static void *port_priv[MAX_IO_PORT];
+static uint8_t(*port_inb[MAX_IO_HANDLERS])(uint16_t addr, void *priv);
+static uint16_t(*port_inw[MAX_IO_HANDLERS])(uint16_t addr, void *priv);
+static uint32_t(*port_inl[MAX_IO_HANDLERS])(uint16_t addr, void *priv);
+static void(*port_outb[MAX_IO_HANDLERS])(uint16_t addr, uint8_t  val, void *priv);
+static void(*port_outw[MAX_IO_HANDLERS])(uint16_t addr, uint16_t val, void *priv);
+static void(*port_outl[MAX_IO_HANDLERS])(uint16_t addr, uint32_t val, void *priv);
+static void *port_priv[MAX_IO_HANDLERS];
 
 static float x86_base_event_clock;
 static int x86_sndbuffer_playpos;
@@ -1979,9 +1981,6 @@ extern uint32_t sunpci_x86_io(uint16_t port, int dir, uint32_t val, int size);
 // io_sethandler(). Returns false when no handler covers the port.
 bool x86_io_handler_access(uint16_t port, int dir, uint32_t *val, int size)
 {
-	if (port >= MAX_IO_PORT) {
-		return false;
-	}
 	if (dir) {
 		if (size == 4 && port_inl[port]) {
 			*val = port_inl[port](port, port_priv[port]);
@@ -1991,7 +1990,7 @@ bool x86_io_handler_access(uint16_t port, int dir, uint32_t *val, int size)
 			uint32_t v = port_inb[port](port, port_priv[port]);
 			for (int i = 1; i < size; i++) {
 				uint16_t p = port + i;
-				v |= (p < MAX_IO_PORT && port_inb[p] ? port_inb[p](p, port_priv[p]) : 0xff) << (i * 8);
+				v |= (port_inb[p] ? port_inb[p](p, port_priv[p]) : 0xff) << (i * 8);
 			}
 			*val = v;
 		} else {
@@ -2006,7 +2005,7 @@ bool x86_io_handler_access(uint16_t port, int dir, uint32_t *val, int size)
 			port_outb[port](port, *val, port_priv[port]);
 			for (int i = 1; i < size; i++) {
 				uint16_t p = port + i;
-				if (p < MAX_IO_PORT && port_outb[p]) {
+				if (port_outb[p]) {
 					port_outb[p](p, *val >> (i * 8), port_priv[p]);
 				}
 			}
@@ -4276,7 +4275,7 @@ void io_sethandler(uint16_t base, int size,
 	void(*outl)(uint16_t addr, uint32_t val, void *priv),
 	void *priv)
 {
-	if (base + size > MAX_IO_PORT)
+	if (base + size > MAX_IO_HANDLERS)
 		return;
 
 	for (int i = 0; i < size; i++) {
@@ -4300,7 +4299,7 @@ void io_removehandler(uint16_t base, int size,
 	void(*outl)(uint16_t addr, uint32_t val, void *priv),
 	void *priv)
 {
-	if (base + size > MAX_IO_PORT)
+	if (base + size > MAX_IO_HANDLERS)
 		return;
 
 	for (int i = 0; i < size; i++) {
