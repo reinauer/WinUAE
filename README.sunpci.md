@@ -108,14 +108,28 @@ Run `python3 tools/sunpci-test/sis-state-test.py` for latch/attribute
 readback and packed-to-planar word-write regression coverage under
 ASan/UBSan. This is an isolated source harness, not physical-card proof.
 
-An isolated Windows 95 Setup run still showed intermittent eight-scanline
-black bands in the external PCem framebuffer after these corrections.
-The observed host-capture mode had SR01=0x21 (Screen Off set), while the
-renderer still emitted pixels. The BIOS temporarily switches to packed
-access during capture; its relationship to those bands remains under
-investigation. No SMM frame-freezing or rendering workaround is applied.
+Live Windows 95 capture on 19 October 2026 found 640x480 CRTC timing
+with SR01=0x21 (Screen Off set). The PCem framebuffer and board geometry
+were both 640x480, but monitor 2 retained its previous surface size:
+`monswitch_current=0` prevented the pending resolution change from running.
+The blit path still copied pixels to that surface while the output was off.
+
+The SVGA scanout now honors Screen Off as well as DPMS, including cursor
+and overlay suppression. Timing and frame presentation continue while
+blanked. The blank renderer clears the pixel width once, with a scanline
+bound; it must not multiply that width by the sequencer character width.
+Dedicated monitors apply pending size changes even with their output
+switch off, so they cannot retain the earlier 640x350 surface.
+
+Run `python3 tools/sunpci-test/scanout-test.py` for ASan/UBSan coverage of
+blanking at each sequencer character width, scanline bounds, a complete
+640x480 blank frame, re-enable, overlays/cursors and secondary resizing.
+The tests compile the production scanout and mode-change code. Live
+register/framebuffer captures establish the failure mechanism; a rebuilt
+emulator still needs a fresh guest run for end-to-end visual validation.
 
 The [SunPCi user's guide](https://docs.oracle.com/cd/E19085-01/pci1.card/805-6058-11/6j5nc882f/index.html)
-describes host-window and external-VGA routing as separate modes. Correct
-routing and output blanking need validation before changing monitor 2's
-current visibility. The state corrections alone do not fix its flicker.
+describes host-window and external-VGA routing as separate modes. When the
+BIOS disables VGA output for host-window capture, monitor 2 is now black;
+the Amiga host protocol display remains available. This does not force
+external routing, freeze frames in SMM, or mirror the host framebuffer.

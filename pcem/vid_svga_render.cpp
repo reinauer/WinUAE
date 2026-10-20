@@ -32,30 +32,17 @@ void svga_render_null(svga_t *svga)
 
 void svga_render_blank(svga_t *svga)
 {
-        int x, xx;
-        
-        if (svga->firstline_draw == 4000) 
+        if (svga->firstline_draw == 4000)
                 svga->firstline_draw = svga->displine;
         svga->lastline_draw = svga->displine;
-        
-        for (x = 0; x < svga->hdisp; x++)
-        {
-                switch (svga->seqregs[1] & 9)
-                {
-                        case 0:
-                        for (xx = 0; xx < 9; xx++) ((uint32_t *)buffer32->line[svga->displine])[(x * 9) + xx + 32] = 0;
-                        break;
-                        case 1:
-                        for (xx = 0; xx < 8; xx++) ((uint32_t *)buffer32->line[svga->displine])[(x * 8) + xx + 32] = 0;
-                        break;
-                        case 8:
-                        for (xx = 0; xx < 18; xx++) ((uint32_t *)buffer32->line[svga->displine])[(x * 18) + xx + 32] = 0;
-                        break;
-                        case 9:
-                        for (xx = 0; xx < 16; xx++) ((uint32_t *)buffer32->line[svga->displine])[(x * 16) + xx + 32] = 0;
-                        break;
-                }
-        }
+
+        // hdisp is already in pixels, including the sequencer clock scale.
+        // Multiplying it by the character width here overruns the scanline.
+        int width = svga->hdisp;
+        if (width > buffer32->w - 32)
+                width = buffer32->w - 32;
+        if (width > 0)
+                memset(buffer32->line[svga->displine] + 32 * 4, 0, width * 4);
 }
 
 void svga_render_text_40(svga_t *svga)

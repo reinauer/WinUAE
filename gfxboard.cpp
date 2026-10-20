@@ -1864,7 +1864,9 @@ void gfxboard_vsync_handler(bool full_redraw_required, bool redraw_required)
 		if (gb->configured_mem <= 0 || gb->configured_regs <= 0)
 			continue;
 
-		if (gb->monswitch_current && gb->resolutionchange) {
+		// A dedicated monitor remains allocated when VGA output is blanked.
+		// Keep its surface size current even while the switch is off.
+		if ((gb->monswitch_current || gb->monitor_id > 0) && gb->resolutionchange) {
 			if (gb->resolutionchange == 1) {
 				gb->resolutionchange = 0;
 				if (gfxboard_checkchanged(gb)) {
