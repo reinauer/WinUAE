@@ -148,3 +148,41 @@ Run the `sunpci.cpp` harnesses with
 ```
 for t in io-log mouse pic-irq reset smi; do python3 tools/sunpci-test/$t-test.py; done
 ```
+
+## Secondary-window presentation cost (21 October 2026)
+
+Secondary SDL windows now retain the last successfully presented pixels.
+Unchanged frames skip texture upload and presentation, including static
+blank VGA output while Sun's host-window driver is active. Changed pixels
+still present immediately; there is no frame-rate limit or dropped update.
+Exposure, resize, restore and renderer reset invalidate the retained frame.
+Hidden/minimized windows defer presentation and repaint when shown again.
+The primary Amiga window and its shaders/status overlays are unaffected.
+
+Disabling secondary vsync alone does not prevent Metal from waiting for a
+drawable. During the live version checker, 25.9% of sampled main-thread
+stacks included display presentation, with substantial drawable waits.
+However, a later idle-desktop comparison advanced 297 emulator frames in
+10.026 seconds both with monitor 2 shown and hidden. That comparison found
+no idle throughput gain; presentation waits can occupy spare frame time.
+Do not describe this change as a measured Windows or disk speedup.
+
+A standalone SDL fixture compiled the production secondary-window path
+before and after the change. After one initial 640x480 frame, 300 submissions
+with two pixel changes took 4912.855 ms and 300 presents before, versus
+16.306 ms and two presents after. Pixel readback checked the rendered colour
+and exercised exposure, resize, hide/show and simulated renderer reset.
+This is an isolated presentation replay, not a complete emulator workload.
+Temporary fixture and live comparison records are under
+`/private/tmp/sunpci-presentation/` on the development machine.
+
+The persistent cache regression is reproducible with:
+
+```
+cmake --build build --target winuae_unix_frame_cache_test
+ctest --test-dir build -R winuae_unix_frame_cache_test --output-on-failure
+```
+
+It covers pixel changes, pitch padding, 16/32-bit formats, invalidation,
+failed-present retry semantics and repeated static frames. ASan/UBSan and
+the Release CMake test passed.

@@ -2344,6 +2344,11 @@ target_include_directories(winuae_unix_threading_test PRIVATE
 target_link_libraries(winuae_unix_threading_test PRIVATE pthread)
 winuae_unix_register_test(winuae_unix_threading_test)
 
+add_executable(winuae_unix_frame_cache_test EXCLUDE_FROM_ALL
+    od-unix/frame_cache_test.cpp
+)
+winuae_unix_register_test(winuae_unix_frame_cache_test)
+
 add_executable(winuae_unix_serial_tx_test EXCLUDE_FROM_ALL
     od-unix/serial_tx_test.cpp
 )
