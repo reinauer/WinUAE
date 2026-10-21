@@ -290,8 +290,15 @@ void codegen_backend_init()
         codeblock_t *block;
         int c;
 
-        codeblock = malloc(BLOCK_SIZE * sizeof(codeblock_t));
-        codeblock_hash = malloc(HASH_SIZE * sizeof(codeblock_t *));
+#ifdef UAE
+        /*UAE initialises a machine on every reset: keep the block tables*/
+        if (!codeblock)
+#endif
+        codeblock = (codeblock_t *)malloc(BLOCK_SIZE * sizeof(codeblock_t));
+#ifdef UAE
+        if (!codeblock_hash)
+#endif
+        codeblock_hash = (uint16_t *)malloc(HASH_SIZE * sizeof(codeblock_t *));
 
         memset(codeblock, 0, BLOCK_SIZE * sizeof(codeblock_t));
         memset(codeblock_hash, 0, HASH_SIZE * sizeof(codeblock_t *));

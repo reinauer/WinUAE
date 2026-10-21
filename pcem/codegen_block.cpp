@@ -1,4 +1,7 @@
 #include <stdlib.h>
+#if defined(UAE) && defined(__APPLE__) && defined(__aarch64__)
+#include <pthread.h>
+#endif
 #include "ibm.h"
 #include "cpu.h"
 #include "x86.h"
@@ -229,7 +232,14 @@ void codegen_init()
         
         codegen_allocator_init();
         
+#if defined(UAE) && defined(__APPLE__) && defined(__aarch64__)
+        /*UAE has several callers; PCem makes the code buffer writable in pc.c*/
+        pthread_jit_write_protect_np(0);
+#endif
         codegen_backend_init();
+#if defined(UAE) && defined(__APPLE__) && defined(__aarch64__)
+        pthread_jit_write_protect_np(1);
+#endif
         block_free_list = 0;
         for (c = 0; c < BLOCK_SIZE; c++)
                 block_free_list_add(&codeblock[c]);

@@ -10,7 +10,7 @@
 #include "x87.h"
 #include "mem.h"
 #include "codegen.h"
-#ifndef UAE
+#if !defined(UAE) || defined(PCEM_X86_DYNAREC)
 #include "codegen_backend.h"
 #endif
 #include "cpu.h"
@@ -241,7 +241,7 @@ static void prefetch_flush()
 
 int cpu_end_block_after_ins = 0;
 
-#ifndef UAE
+#if !defined(UAE) || defined(PCEM_X86_DYNAREC)
 
 #define CACHE_ON() (!(cr0 & (1 << 30)) && !(cpu_state.flags & T_FLAG))
 //#define CACHE_ON() 0
@@ -296,7 +296,7 @@ static inline void exec_interpreter(void)
                 insc++;
         }
 
-        if (trap)
+        if (trap && !cpu_state.abrt)
         {
                 trap = 0;
                 cpu_state.oldpc = cpu_state.pc;
@@ -306,7 +306,8 @@ static inline void exec_interpreter(void)
         cpu_end_block_after_ins = 0;
 }
 
-static inline void exec_recompiler(void)
+/*Inlined into its caller, this crashes at -O2 and above (PCem #159)*/
+static void __attribute__((noinline)) exec_recompiler(void)
 {
         uint32_t phys_addr = get_phys(cs+cpu_state.pc);
         int hash = HASH(phys_addr);
@@ -584,7 +585,14 @@ void exec386_dynarec(int cycs)
         int tempi;
         int cycdiff;
         int oldcyc;
+#ifdef UAE
+        /*UAE runs the CPU in scanline-sized slices, not PCem's 10 ms*/
+        int cyc_period = cpu_get_speed() / 200000; /*5us*/
+        if (cyc_period < 1)
+                cyc_period = 1;
+#else
         int cyc_period = cycs / 2000; /*5us*/
+#endif
 
         cycles_main += cycs;
         while (cycles_main > 0)

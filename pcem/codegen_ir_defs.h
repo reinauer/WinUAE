@@ -631,9 +631,9 @@ static inline void uop_gen_reg_src2_pointer(uint32_t uop_type, ir_data_t *ir, in
 #define uop_ROR(ir, dst_reg, src_reg, shift_reg)   uop_gen_reg_dst_src2(UOP_ROR, ir, dst_reg, src_reg, shift_reg)
 #define uop_ROR_IMM(ir, dst_reg, src_reg, imm)     uop_gen_reg_dst_src_imm(UOP_ROR_IMM, ir, dst_reg, src_reg, imm)
 
-#define uop_CALL_FUNC(ir, p)                 uop_gen_pointer(UOP_CALL_FUNC, ir, p)
-#define uop_CALL_FUNC_RESULT(ir, dst_reg, p) uop_gen_reg_dst_pointer(UOP_CALL_FUNC_RESULT, ir, dst_reg, p)
-#define uop_CALL_INSTRUCTION_FUNC(ir, p)     uop_gen_pointer(UOP_CALL_INSTRUCTION_FUNC, ir, p)
+#define uop_CALL_FUNC(ir, p)                 uop_gen_pointer(UOP_CALL_FUNC, ir, (void *)(p))
+#define uop_CALL_FUNC_RESULT(ir, dst_reg, p) uop_gen_reg_dst_pointer(UOP_CALL_FUNC_RESULT, ir, dst_reg, (void *)(p))
+#define uop_CALL_INSTRUCTION_FUNC(ir, p)     uop_gen_pointer(UOP_CALL_INSTRUCTION_FUNC, ir, (void *)(p))
 
 #define uop_CMP_IMM_JZ(ir, src_reg, imm, p)  uop_gen_reg_src_pointer_imm(UOP_CMP_IMM_JZ, ir, src_reg, p, imm)
 

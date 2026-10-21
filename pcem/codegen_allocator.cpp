@@ -28,14 +28,22 @@ void codegen_allocator_init()
 {
         int c;
 
+#ifdef UAE
+        /*UAE initialises a machine on every reset: keep the code buffer*/
+        if (!mem_block_alloc)
+        {
+#endif
 #if defined WIN32 || defined _WIN32 || defined _WIN32
-        mem_block_alloc = VirtualAlloc(NULL, MEM_BLOCK_NR * MEM_BLOCK_SIZE, MEM_COMMIT, PAGE_EXECUTE_READWRITE);
+        mem_block_alloc = (uint8_t *)VirtualAlloc(NULL, MEM_BLOCK_NR * MEM_BLOCK_SIZE, MEM_COMMIT, PAGE_EXECUTE_READWRITE);
         /* TODO: check deployment target: older Intel-based versions of macOS don't play
            nice with MAP_JIT. */
 #elif defined(__APPLE__) && defined(MAP_JIT)
-        mem_block_alloc = mmap(0, MEM_BLOCK_NR * MEM_BLOCK_SIZE, PROT_READ|PROT_WRITE|PROT_EXEC, MAP_ANON|MAP_PRIVATE|MAP_JIT, 0, 0);
+        mem_block_alloc = (uint8_t *)mmap(0, MEM_BLOCK_NR * MEM_BLOCK_SIZE, PROT_READ|PROT_WRITE|PROT_EXEC, MAP_ANON|MAP_PRIVATE|MAP_JIT, 0, 0);
 #else
-        mem_block_alloc = mmap(0, MEM_BLOCK_NR * MEM_BLOCK_SIZE, PROT_READ|PROT_WRITE|PROT_EXEC, MAP_ANON|MAP_PRIVATE, 0, 0);
+        mem_block_alloc = (uint8_t *)mmap(0, MEM_BLOCK_NR * MEM_BLOCK_SIZE, PROT_READ|PROT_WRITE|PROT_EXEC, MAP_ANON|MAP_PRIVATE, 0, 0);
+#endif
+#ifdef UAE
+        }
 #endif
 
         for (c = 0; c < MEM_BLOCK_NR; c++)

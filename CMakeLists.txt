@@ -408,6 +408,7 @@ endforeach()
 
 set(WINUAE_UNIX_WITH_JIT_DEFAULT ${WINUAE_UNIX_JIT_TARGET_SUPPORTED})
 option(WINUAE_UNIX_WITH_JIT "Build JIT support for Unix targets where a backend is available" ${WINUAE_UNIX_WITH_JIT_DEFAULT})
+option(WINUAE_UNIX_WITH_X86_DYNAREC "Build the PCem x86 dynamic recompiler for Unix targets where a backend is available" ${WINUAE_UNIX_JIT_TARGET_SUPPORTED})
 
 set(WINUAE_UNIX_VERSION_MAJOR 0)
 set(WINUAE_UNIX_VERSION_MINOR 0)
@@ -685,6 +686,53 @@ set(WINUAE_UNIX_PCEM_X86_SOURCES
     pcem/x86seg.cpp
     pcem/x87.cpp
     pcem/x87_timings.cpp
+)
+
+set(WINUAE_UNIX_PCEM_DYNAREC_SOURCES
+    pcem/386_dynarec_ops.cpp
+    pcem/codegen_accumulate.cpp
+    pcem/codegen_allocator.cpp
+    pcem/codegen_backend_arm64_imm.cpp
+    pcem/codegen_backend_arm64_ops.cpp
+    pcem/codegen_backend_arm64_uops.cpp
+    pcem/codegen_backend_arm64.cpp
+    pcem/codegen_backend_x86_ops_fpu.cpp
+    pcem/codegen_backend_x86_ops_sse.cpp
+    pcem/codegen_backend_x86_ops.cpp
+    pcem/codegen_backend_x86_uops.cpp
+    pcem/codegen_backend_x86-64_ops_sse.cpp
+    pcem/codegen_backend_x86-64_ops.cpp
+    pcem/codegen_backend_x86-64_uops.cpp
+    pcem/codegen_backend_x86-64.cpp
+    pcem/codegen_backend_x86.cpp
+    pcem/codegen_block.cpp
+    pcem/codegen_ir.cpp
+    pcem/codegen_ops_3dnow.cpp
+    pcem/codegen_ops_arith.cpp
+    pcem/codegen_ops_branch.cpp
+    pcem/codegen_ops_fpu_arith.cpp
+    pcem/codegen_ops_fpu_constant.cpp
+    pcem/codegen_ops_fpu_loadstore.cpp
+    pcem/codegen_ops_fpu_misc.cpp
+    pcem/codegen_ops_helpers.cpp
+    pcem/codegen_ops_jump.cpp
+    pcem/codegen_ops_logic.cpp
+    pcem/codegen_ops_misc.cpp
+    pcem/codegen_ops_mmx_arith.cpp
+    pcem/codegen_ops_mmx_cmp.cpp
+    pcem/codegen_ops_mmx_loadstore.cpp
+    pcem/codegen_ops_mmx_logic.cpp
+    pcem/codegen_ops_mmx_pack.cpp
+    pcem/codegen_ops_mmx_shift.cpp
+    pcem/codegen_ops_mov.cpp
+    pcem/codegen_ops_shift.cpp
+    pcem/codegen_ops_stack.cpp
+    pcem/codegen_ops.cpp
+    pcem/codegen_reg.cpp
+    pcem/codegen_timing_486.cpp
+    pcem/codegen_timing_common.cpp
+    pcem/codegen_timing_k6.cpp
+    pcem/codegen.cpp
 )
 
 set(WINUAE_UNIX_PCEM_DRACO_SOURCES
@@ -1155,6 +1203,15 @@ list(APPEND WINUAE_UNIX_EXTRA_SOURCES
     ${WINUAE_UNIX_PCEM_COMMON_SOURCES}
     ${WINUAE_UNIX_PCEM_X86_SOURCES}
 )
+
+if(WINUAE_UNIX_WITH_X86_DYNAREC)
+    if(WINUAE_UNIX_JIT_TARGET_SUPPORTED)
+        target_compile_definitions(winuae_unix_core_defs INTERFACE PCEM_X86_DYNAREC=1)
+        list(APPEND WINUAE_UNIX_EXTRA_SOURCES ${WINUAE_UNIX_PCEM_DYNAREC_SOURCES})
+    else()
+        message(STATUS "The PCem x86 recompiler has backends only for ARM64 and x86_64; disabling it for ${CMAKE_SYSTEM_PROCESSOR}")
+    endif()
+endif()
 
 set(WINUAE_UNIX_ENABLE_DRACO ON)
 set(WINUAE_UNIX_ENABLE_PCEM ON)

@@ -46,6 +46,7 @@ int gated, speakval, speakon;
 
 PPI ppi;
 
+#ifndef PCEM_X86_DYNAREC
 int codegen_flags_changed;
 uint32_t codegen_endpc;
 int codegen_in_recompile;
@@ -84,6 +85,7 @@ void codegen_flush(void)
 void codegen_init(void)
 {
 }
+#endif
 
 void pclog(char const *format, ...)
 {
@@ -381,6 +383,7 @@ void pcem_close(void)
 	midi_open = 0;
 }
 
+#ifndef PCEM_X86_DYNAREC
 #ifdef CPU_i386
 void codegen_set_rounding_mode(int mode)
 {
@@ -395,6 +398,7 @@ void codegen_set_rounding_mode(int mode)
 	/*SSE*/
 	cpu_state.new_fp_control = (cpu_state.old_fp_control & ~0x6000) | (mode << 13);
 }
+#endif
 #endif
 
 // VIDEO STUFF

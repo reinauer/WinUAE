@@ -257,7 +257,7 @@ void cpu_set()
         pclog("hasfpu - %i\n",hasfpu);
         pclog("is486 - %i  %i\n",is486,cpu_s->cpu_type);
 
-#ifdef UAE
+#if defined(UAE) && !defined(PCEM_X86_DYNAREC)
         x86_setopcodes(ops_386, ops_386_0f, NULL, NULL);
 #else
         x86_setopcodes(ops_386, ops_386_0f, dynarec_ops_386, dynarec_ops_386_0f);
@@ -266,7 +266,7 @@ void cpu_set()
         x86_opcodes_REPNE = ops_REPNE;
         x86_opcodes_3DNOW = ops_3DNOW;
 
-#ifndef UAE
+#if !defined(UAE) || defined(PCEM_X86_DYNAREC)
         x86_dynarec_opcodes_REPE = dynarec_ops_REPE;
         x86_dynarec_opcodes_REPNE = dynarec_ops_REPNE;
         x86_dynarec_opcodes_3DNOW = dynarec_ops_3DNOW;
@@ -364,7 +364,7 @@ void cpu_set()
                 break;
                 
                 case CPU_286:
-#ifdef UAE
+#if defined(UAE) && !defined(PCEM_X86_DYNAREC)
                 x86_setopcodes(ops_286, ops_286_0f, NULL, NULL);
 #else
                 x86_setopcodes(ops_286, ops_286_0f, dynarec_ops_286, dynarec_ops_286_0f);
@@ -1001,7 +1001,7 @@ void cpu_set()
                 case CPU_K6_3:
                 case CPU_K6_2P:
                 case CPU_K6_3P:
-#ifdef UAE
+#if defined(UAE) && !defined(PCEM_X86_DYNAREC)
                 x86_setopcodes(ops_386, ops_winchip2_0f, NULL, NULL);
 #else
                 x86_setopcodes(ops_386, ops_winchip2_0f, dynarec_ops_386, dynarec_ops_winchip2_0f);
@@ -1038,7 +1038,7 @@ void cpu_set()
                 cpu_features = CPU_FEATURE_RDTSC | CPU_FEATURE_MSR | CPU_FEATURE_CR4 | CPU_FEATURE_VME | CPU_FEATURE_MMX | CPU_FEATURE_3DNOW;
                 msr.fcr = (1 << 8) | (1 << 9) | (1 << 12) |  (1 << 16) | (1 << 19) | (1 << 21);
                 cpu_CR4_mask = CR4_VME | CR4_PVI | CR4_TSD | CR4_DE | CR4_PSE | CR4_MCE;
-#ifndef UAE
+#if !defined(UAE) || defined(PCEM_X86_DYNAREC)
                 codegen_timing_set(&codegen_timing_k6);
 #endif
                 break;

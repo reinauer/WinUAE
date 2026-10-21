@@ -182,6 +182,7 @@ struct sunpci_state
 	bool flash_autoselect;
 	mem_mapping_t smram_map;
 	uae_u32 smram_host, smram_ram;
+	uae_u8 smram_layout;
 	bool smm;
 	bool smi_latched;
 	int smi_lines;
@@ -945,6 +946,12 @@ static void sunpci_smram_update(struct sunpci_state *s)
 	static const uae_u32 size[4] = { 0x8000, 0x8000, 0x8000, 0x10000 };
 	uae_u8 a3 = s->sis_host ? s->sis_host->cfg[0xa3] : 0;
 	int mode = a3 >> 6;
+	// Translated code is tagged with SMM state, but not with which
+	// memory the window and open bit select. Drop it when they change.
+	if ((a3 & 0xd0) != s->smram_layout) {
+		s->smram_layout = a3 & 0xd0;
+		mem_invalidate_range(0xa0000, 0xfffff);
+	}
 	if (s->smm || (a3 & 0x10)) {
 		s->smram_host = host[mode];
 		s->smram_ram = rambase[mode];
@@ -971,6 +978,10 @@ static uint32_t sunpci_smram_readl(uint32_t addr, void *priv)
 static void sunpci_smram_writeb(uint32_t addr, uint8_t val, void *priv)
 {
 	ram[sunpci->smram_ram + addr - sunpci->smram_host] = val;
+	// bypasses the RAM write path, which tracks writes to translated code
+	if (cpu_use_dynarec) {
+		mem_invalidate_range(addr, addr);
+	}
 }
 static void sunpci_smram_writew(uint32_t addr, uint16_t val, void *priv)
 {
@@ -1786,6 +1797,7 @@ static void sunpci_x86_free(void)
 	zfile_fclose(s->cmosfile);
 	smram_enable = NULL;
 	smram_disable = NULL;
+	cpu_use_dynarec = 0;
 	pcem_close();
 	mem_free();
 	rom = NULL;
@@ -1816,6 +1828,9 @@ static bool sunpci_x86_init(struct romconfig *rc)
 	AT = 1;
 	enable_sync = 1;
 	cpu_multiplier = 0;
+#ifdef PCEM_X86_DYNAREC
+	cpu_use_dynarec = 1;
+#endif
 	cpu_set();
 
 	initpcemvideo(NULL, false);
@@ -1899,7 +1914,7 @@ static bool sunpci_x86_init(struct romconfig *rc)
 	smram_disable = sunpci_smm_leave;
 
 	sunpci_card_reset(s);
-	write_log(_T("SUNPCI: card PC started, %d KB RAM\n"), SUNPCI_RAM_KB);
+	write_log(_T("SUNPCI: card PC started, %d KB RAM, %s\n"), SUNPCI_RAM_KB, cpu_use_dynarec ? _T("recompiler") : _T("interpreter"));
 	return true;
 }
 
@@ -1967,7 +1982,15 @@ static void sunpci_x86_run(struct sunpci_state *s)
 	}
 	int cycs = (int)s->cycle_acc;
 	if (cycs > 0) {
+#ifdef PCEM_X86_DYNAREC
+		if (cpu_use_dynarec) {
+			exec386_dynarec(cycs);
+		} else {
+			exec386(cycs);
+		}
+#else
 		exec386(cycs);
+#endif
 		s->cycle_acc -= cycs;
 	}
 

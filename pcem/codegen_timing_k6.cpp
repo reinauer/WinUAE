@@ -2,6 +2,7 @@
   Some of the timings are based on http://users.atw.hu/instlatx64/AuthenticAMD0000562_K6_InstLatX86.txt*/
 #include "ibm.h"
 #include "cpu.h"
+#include "device.h"
 #include "model.h"
 #include "x86.h"
 #include "x86_ops.h"
