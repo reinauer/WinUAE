@@ -1,4 +1,4 @@
-#if defined(__linux__) || defined(__APPLE__)
+#if defined(__unix__) || defined(__APPLE__)
 #include <sys/mman.h>
 #include <unistd.h>
 #include <stdlib.h>
@@ -38,9 +38,9 @@ void codegen_allocator_init()
         /* TODO: check deployment target: older Intel-based versions of macOS don't play
            nice with MAP_JIT. */
 #elif defined(__APPLE__) && defined(MAP_JIT)
-        mem_block_alloc = (uint8_t *)mmap(0, MEM_BLOCK_NR * MEM_BLOCK_SIZE, PROT_READ|PROT_WRITE|PROT_EXEC, MAP_ANON|MAP_PRIVATE|MAP_JIT, 0, 0);
+        mem_block_alloc = (uint8_t *)mmap(0, MEM_BLOCK_NR * MEM_BLOCK_SIZE, PROT_READ|PROT_WRITE|PROT_EXEC, MAP_ANON|MAP_PRIVATE|MAP_JIT, -1, 0);
 #else
-        mem_block_alloc = (uint8_t *)mmap(0, MEM_BLOCK_NR * MEM_BLOCK_SIZE, PROT_READ|PROT_WRITE|PROT_EXEC, MAP_ANON|MAP_PRIVATE, 0, 0);
+        mem_block_alloc = (uint8_t *)mmap(0, MEM_BLOCK_NR * MEM_BLOCK_SIZE, PROT_READ|PROT_WRITE|PROT_EXEC, MAP_ANON|MAP_PRIVATE, -1, 0);
 #endif
 #ifdef UAE
         }

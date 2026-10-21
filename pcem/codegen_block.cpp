@@ -624,10 +624,18 @@ void codegen_block_start_recompile(codeblock_t *block)
         if (block->pc != cs + cpu_state.pc || (block->flags & CODEBLOCK_WAS_RECOMPILED))
                 fatal("Recompile to used block!\n");
 #endif
+        if (block->head_mem_block)
+        {
+                codegen_allocator_free(block->head_mem_block);
+                block->head_mem_block = NULL;
+        }
         block->head_mem_block = codegen_allocator_allocate(NULL, block_current);
         block->data = codeblock_allocator_get_ptr(block->head_mem_block);
 
-        block->status = cpu_cur_status;
+        /*Keep the NOTFLAT bits the block was marked with: a visit with flat
+          segments may recompile it, and narrowing them would make every
+          later non-flat visit a new block (86Box 616783297)*/
+        block->status = (cpu_cur_status & ~CPU_STATUS_MASK) | (block->status & CPU_STATUS_MASK);
         
         block->page_mask = block->page_mask2 = 0;
         block->ins = 0;
@@ -660,8 +668,8 @@ void codegen_block_start_recompile(codeblock_t *block)
         block->TOP = cpu_state.TOP & 7;
         block->flags |= CODEBLOCK_WAS_RECOMPILED;
 
-        codegen_flat_ds = !(cpu_cur_status & CPU_STATUS_NOTFLATDS);
-        codegen_flat_ss = !(cpu_cur_status & CPU_STATUS_NOTFLATSS);       
+        codegen_flat_ds = !(block->status & CPU_STATUS_NOTFLATDS);
+        codegen_flat_ss = !(block->status & CPU_STATUS_NOTFLATSS);
         
         if (block->flags & CODEBLOCK_BYTE_MASK)
         {

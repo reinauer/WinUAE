@@ -1787,9 +1787,9 @@ static int uop_run(const risc86_uop_t *uop, int decode_time)
         {
                 if (uop->type == UOP_MEU_MUL && decode_time < mul_first_available_cycle)
                         decode_time = mul_first_available_cycle;
-                else if (uop->type == UOP_MEU_SHIFT && decode_time < mul_first_available_cycle)
+                else if (uop->type == UOP_MEU_SHIFT && decode_time < shift_first_available_cycle)
                         decode_time = shift_first_available_cycle;
-                else if (uop->type == UOP_MEU_3DN && decode_time < mul_first_available_cycle)
+                else if (uop->type == UOP_MEU_3DN && decode_time < m3dnow_first_available_cycle)
                         decode_time = m3dnow_first_available_cycle;
         }
 

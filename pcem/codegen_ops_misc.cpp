@@ -78,7 +78,6 @@ uint32_t ropF6(codeblock_t *block, ir_data_t *ir, uint8_t opcode, uint32_t fetch
                 if ((fetchdat & 0xc0) != 0xc0)
                         uop_MEM_STORE_REG(ir, ireg_seg_base(target_seg), IREG_eaaddr, reg);
 
-                codegen_flags_changed = 1;
                 return op_pc+1;
 
                 case 0x18: /*NEG*/
@@ -148,7 +147,6 @@ uint32_t ropF7_16(codeblock_t *block, ir_data_t *ir, uint8_t opcode, uint32_t fe
                 if ((fetchdat & 0xc0) != 0xc0)
                         uop_MEM_STORE_REG(ir, ireg_seg_base(target_seg), IREG_eaaddr, reg);
 
-                codegen_flags_changed = 1;
                 return op_pc+1;
 
                 case 0x18: /*NEG*/
@@ -217,7 +215,6 @@ uint32_t ropF7_32(codeblock_t *block, ir_data_t *ir, uint8_t opcode, uint32_t fe
                 if ((fetchdat & 0xc0) != 0xc0)
                         uop_MEM_STORE_REG(ir, ireg_seg_base(target_seg), IREG_eaaddr, reg);
 
-                codegen_flags_changed = 1;
                 return op_pc+1;
 
                 case 0x18: /*NEG*/
@@ -595,7 +592,9 @@ uint32_t ropSTD(codeblock_t *block, ir_data_t *ir, uint8_t opcode, uint32_t fetc
 
 uint32_t ropCLI(codeblock_t *block, ir_data_t *ir, uint8_t opcode, uint32_t fetchdat, uint32_t op_32, uint32_t op_pc)
 {
-        if (!IOPLp && (cr4 & (CR4_VME | CR4_PVI)))
+        /*Blocks are not keyed on CPL or IOPL, which decide whether CLI
+          faults or is virtualised; let the interpreter run it*/
+        if (cpu_cur_status & CPU_STATUS_PMODE)
                 return 0;
 
         uop_AND_IMM(ir, IREG_flags, IREG_flags, ~I_FLAG);
@@ -603,7 +602,8 @@ uint32_t ropCLI(codeblock_t *block, ir_data_t *ir, uint8_t opcode, uint32_t fetc
 }
 uint32_t ropSTI(codeblock_t *block, ir_data_t *ir, uint8_t opcode, uint32_t fetchdat, uint32_t op_32, uint32_t op_pc)
 {
-        if (!IOPLp && (cr4 & (CR4_VME | CR4_PVI)))
+        /*As for CLI*/
+        if (cpu_cur_status & CPU_STATUS_PMODE)
                 return 0;
 
         uop_OR_IMM(ir, IREG_flags, IREG_flags, I_FLAG);

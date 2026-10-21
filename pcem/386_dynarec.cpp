@@ -328,7 +328,7 @@ static void __attribute__((noinline)) exec_recompiler(void)
                 {
                         uint64_t mask = (uint64_t)1 << ((phys_addr >> PAGE_MASK_SHIFT) & PAGE_MASK_MASK);
                         int byte_offset = (phys_addr >> PAGE_BYTE_MASK_SHIFT) & PAGE_BYTE_MASK_OFFSET_MASK;
-                        uint64_t byte_mask = 1ull << (PAGE_BYTE_MASK_MASK & 0x3f);
+                        uint64_t byte_mask = 1ull << (phys_addr & PAGE_BYTE_MASK_MASK);
 
                         if ((page->code_present_mask & mask) || (page->byte_code_present_mask[byte_offset] & byte_mask))
                         {

@@ -1,6 +1,10 @@
 #include "386_common.h"
 #include "codegen_backend.h"
 
+#ifndef TAG_EMPTY
+#define TAG_EMPTY 0 /*as in x87.h, which has no include guard*/
+#endif
+
 static inline int LOAD_SP_WITH_OFFSET(ir_data_t *ir, int offset)
 {
         if (stack32)
@@ -51,6 +55,7 @@ static inline void SUB_SP(ir_data_t *ir, int offset)
 
 static inline void fpu_POP(codeblock_t *block, ir_data_t *ir)
 {
+        uop_MOV_IMM(ir, IREG_tag(0), TAG_EMPTY);
         if (block->flags & CODEBLOCK_STATIC_TOP)
                 uop_MOV_IMM(ir, IREG_FPU_TOP, cpu_state.TOP + 1);
         else
@@ -58,6 +63,8 @@ static inline void fpu_POP(codeblock_t *block, ir_data_t *ir)
 }
 static inline void fpu_POP2(codeblock_t *block, ir_data_t *ir)
 {
+        uop_MOV_IMM(ir, IREG_tag(0), TAG_EMPTY);
+        uop_MOV_IMM(ir, IREG_tag(1), TAG_EMPTY);
         if (block->flags & CODEBLOCK_STATIC_TOP)
                 uop_MOV_IMM(ir, IREG_FPU_TOP, cpu_state.TOP + 2);
         else
@@ -114,6 +121,8 @@ int codegen_can_unroll_full(codeblock_t *block, ir_data_t *ir, uint32_t next_pc,
 static inline int codegen_can_unroll(codeblock_t *block, ir_data_t *ir, uint32_t next_pc, uint32_t dest_addr)
 {
         if (block->flags & CODEBLOCK_BYTE_MASK)
+                return 0;
+        if (!dest_addr)
                 return 0;
 
         /*Is dest within block?*/

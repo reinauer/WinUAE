@@ -373,7 +373,8 @@ uint32_t ropPUSHF(codeblock_t *block, ir_data_t *ir, uint8_t opcode, uint32_t fe
 {
         int sp_reg;
 
-        if ((cpu_state.eflags & VM_FLAG) && (IOPL < 3))
+        /*Blocks are not keyed on IOPL; let the interpreter check it*/
+        if (cpu_state.eflags & VM_FLAG)
                 return 0;
 
         uop_MOV_IMM(ir, IREG_oldpc, cpu_state.oldpc);
@@ -388,7 +389,8 @@ uint32_t ropPUSHFD(codeblock_t *block, ir_data_t *ir, uint8_t opcode, uint32_t f
 {
         int sp_reg;
 
-        if ((cpu_state.eflags & VM_FLAG) && (IOPL < 3))
+        /*Blocks are not keyed on IOPL; let the interpreter check it*/
+        if (cpu_state.eflags & VM_FLAG)
                 return 0;
 
         uop_MOV_IMM(ir, IREG_oldpc, cpu_state.oldpc);

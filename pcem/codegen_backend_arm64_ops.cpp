@@ -176,6 +176,7 @@
 #define OPCODE_SQSUB_V4H     (0x0e602c00)
 #define OPCODE_SQXTN_V8B_8H  (0x0e214800)
 #define OPCODE_SQXTN_V4H_4S  (0x0e614800)
+#define OPCODE_SQXTUN_V8B_8H (0x2e212800)
 #define OPCODE_SHL_VD        (0x0f005400)
 #define OPCODE_SHL_VQ        (0x4f005400)
 #define OPCODE_SHRN          (0x0f008400)
@@ -646,7 +647,7 @@ void host_arm64_CMNX_IMM(codeblock_t *block, int src_n_reg, uint64_t imm_data)
 
 void host_arm64_CMP_IMM(codeblock_t *block, int src_n_reg, uint32_t imm_data)
 {
-	if ((int32_t)imm_data < 0 && imm_data != (1ull << 31))
+	if ((int32_t)imm_data < 0 && imm_data != (1ull << 31) && !(-(int32_t)imm_data & 0xfffff000))
 	{
 		host_arm64_CMN_IMM(block, src_n_reg, -(int32_t)imm_data);
 	}
@@ -655,7 +656,10 @@ void host_arm64_CMP_IMM(codeblock_t *block, int src_n_reg, uint32_t imm_data)
 		codegen_addlong(block, OPCODE_CMP_IMM | Rd(REG_WZR) | Rn(src_n_reg) | IMM12(imm_data & 0xfff) | DATPROC_IMM_SHIFT(0));
 	}
 	else
-		fatal("CMP_IMM %08x\n", imm_data);
+	{
+		host_arm64_mov_imm(block, REG_W16, imm_data);
+		host_arm64_CMP_REG_LSL(block, src_n_reg, REG_W16, 0);
+	}
 }
 void host_arm64_CMPX_IMM(codeblock_t *block, int src_n_reg, uint64_t imm_data)
 {
@@ -1129,6 +1133,10 @@ void host_arm64_SQXTN_V8B_8H(codeblock_t *block, int dst_reg, int src_reg)
 void host_arm64_SQXTN_V4H_4S(codeblock_t *block, int dst_reg, int src_reg)
 {
 	codegen_addlong(block, OPCODE_SQXTN_V4H_4S | Rd(dst_reg) | Rn(src_reg));
+}
+void host_arm64_SQXTUN_V8B_8H(codeblock_t *block, int dst_reg, int src_reg)
+{
+	codegen_addlong(block, OPCODE_SQXTUN_V8B_8H | Rd(dst_reg) | Rn(src_reg));
 }
 
 void host_arm64_SHL_V4H(codeblock_t *block, int dst_reg, int src_n_reg, int shift)

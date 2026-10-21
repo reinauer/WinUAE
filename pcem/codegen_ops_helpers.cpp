@@ -10,8 +10,8 @@
 void LOAD_IMMEDIATE_FROM_RAM_16_unaligned(codeblock_t *block, ir_data_t *ir, int dest_reg, uint32_t addr)
 {
         /*Word access that crosses two pages. Perform reads from both pages, shift and combine*/
-        uop_MOVZX_REG_PTR_8(ir, IREG_temp3_W, get_ram_ptr(addr));
-        uop_MOVZX_REG_PTR_8(ir, dest_reg, get_ram_ptr(addr+1));
+        uop_MOVZX_REG_PTR_8(ir, IREG_temp3_W, get_ram_ptr(addr+1));
+        uop_MOVZX_REG_PTR_8(ir, dest_reg, get_ram_ptr(addr));
         uop_SHL_IMM(ir, IREG_temp3_W, IREG_temp3_W, 8);
         uop_OR(ir, dest_reg, dest_reg, IREG_temp3_W);
 }
@@ -58,8 +58,14 @@ int codegen_can_unroll_full(codeblock_t *block, ir_data_t *ir, uint32_t next_pc,
         if (TOP != cpu_state.TOP)
                 return 0;
 
+        for (int c = start; c < ir->wr_pos; c++)
+        {
+                if ((ir->uops[c].type & UOP_MASK) == (UOP_CALL_INSTRUCTION_FUNC & UOP_MASK))
+                        return 0;
+        }
+
         max_unroll = UNROLL_MAX_UOPS / ((ir->wr_pos-start)+6);
-        if (max_unroll > (UNROLL_MAX_REG_REFERENCES / max_version_refcount))
+        if (max_version_refcount && max_unroll > (UNROLL_MAX_REG_REFERENCES / max_version_refcount))
                 max_unroll = (UNROLL_MAX_REG_REFERENCES / max_version_refcount);
         if (max_unroll > UNROLL_MAX_COUNT)
                 max_unroll = UNROLL_MAX_COUNT;

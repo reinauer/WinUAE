@@ -28,6 +28,9 @@
                 x86_int(7);                                             \
                 return 1;                                               \
         }                                                               \
+        /*Entering MMX mode resets TOP: see FRSTOR*/                    \
+        if ((cpu_state.TOP & 7) || !cpu_state.ismmx)                    \
+                CPU_BLOCK_END();                                        \
         x87_set_mmx()
 
 static int opEMMS(uint32_t fetchdat)

@@ -402,6 +402,7 @@ void codegen_generate_call(uint8_t opcode, OpFn op, uint32_t fetchdat, uint32_t 
         int over = 0;
         int test_modrm = 1;
         int pc_off = 0;
+        int in_lock = 0;
         uint32_t next_pc = 0;
 #ifdef DEBUG_EXTRA
         uint8_t last_prefix = 0;
@@ -556,6 +557,7 @@ void codegen_generate_call(uint8_t opcode, OpFn op, uint32_t fetchdat, uint32_t 
                         break;
 
                         case 0xf0: /*LOCK*/
+                        in_lock = 1;
                         break;
 
                         case 0xf2: /*REPNE*/
@@ -680,6 +682,9 @@ generate_call:
         }
         codegen_mark_code_present(block, cs+old_pc, (op_pc - old_pc) - pc_off);
 //        pclog("%04x:%08x : %02x\n", CS, new_pc, opcode);
+        /*LOCK NOP is #UD in the interpreter's opLOCK (86Box b3147ee47)*/
+        if (in_lock && opcode == 0x90 && op_table == x86_dynarec_opcodes)
+                recomp_op_table = NULL;
         if (recomp_op_table && recomp_op_table[(opcode | op_32) & recomp_opcode_mask])
         {
                 uint32_t new_pc = recomp_op_table[(opcode | op_32) & recomp_opcode_mask](block, ir, opcode, fetchdat, op_32, op_pc);
@@ -705,7 +710,10 @@ generate_call:
                 recomp_op_table = recomp_opcodes;
         }
 
-        op = op_table[((opcode >> opcode_shift) | op_32) & opcode_mask];
+        if (in_lock && opcode == 0x90 && op_table == x86_dynarec_opcodes)
+                op = x86_dynarec_opcodes_3DNOW[0xff]; /*ILLEGAL*/
+        else
+                op = op_table[((opcode >> opcode_shift) | op_32) & opcode_mask];
 
         if (!test_modrm ||
                 (op_table == x86_dynarec_opcodes && opcode_modrm[opcode]) ||

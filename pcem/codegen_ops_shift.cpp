@@ -454,7 +454,7 @@ uint32_t ropC0(codeblock_t *block, ir_data_t *ir, uint8_t opcode, uint32_t fetch
         
         if (imm)
                 return shift_common_8(ir, fetchdat, op_pc, target_seg, imm) + 1;
-        return op_pc+1;
+        return op_pc+2;
 }
 uint32_t ropC1_w(codeblock_t *block, ir_data_t *ir, uint8_t opcode, uint32_t fetchdat, uint32_t op_32, uint32_t op_pc)
 {
@@ -477,7 +477,7 @@ uint32_t ropC1_w(codeblock_t *block, ir_data_t *ir, uint8_t opcode, uint32_t fet
         
         if (imm)
                 return shift_common_16(ir, fetchdat, op_pc, target_seg, imm) + 1;
-        return op_pc+1;
+        return op_pc+2;
 }
 uint32_t ropC1_l(codeblock_t *block, ir_data_t *ir, uint8_t opcode, uint32_t fetchdat, uint32_t op_32, uint32_t op_pc)
 {
@@ -506,6 +506,7 @@ uint32_t ropC1_l(codeblock_t *block, ir_data_t *ir, uint8_t opcode, uint32_t fet
                 new_pc = shift_common_variable_32(ir, fetchdat, op_pc, target_seg, IREG_temp2) + 1;
                 uop_NOP_BARRIER(ir);
                 uop_set_jump_dest(ir, jump_uop);
+                codegen_flags_changed = 0;
                 return new_pc;
         }
         else
@@ -516,7 +517,7 @@ uint32_t ropC1_l(codeblock_t *block, ir_data_t *ir, uint8_t opcode, uint32_t fet
                 if (imm)
                         return shift_common_32(ir, fetchdat, op_pc, target_seg, imm) + 1;
         }
-        return op_pc+1;
+        return op_pc+2;
 }
 
 uint32_t ropD0(codeblock_t *block, ir_data_t *ir, uint8_t opcode, uint32_t fetchdat, uint32_t op_32, uint32_t op_pc)
@@ -964,9 +965,16 @@ uint32_t ropSHLD_16_imm(codeblock_t *block, ir_data_t *ir, uint8_t opcode, uint3
                 int dest_reg = fetchdat & 7;
 
                 uop_MOVZX(ir, IREG_flags_op1, IREG_16(dest_reg));
-                uop_SHL_IMM(ir, IREG_temp0_W, IREG_16(dest_reg), imm);
-                uop_SHR_IMM(ir, IREG_temp1_W, IREG_16(src_reg), 16 - imm);
-                uop_OR(ir, IREG_16(dest_reg), IREG_temp0_W, IREG_temp1_W);
+                if (imm == 16)
+                        uop_MOV(ir, IREG_16(dest_reg), IREG_16(src_reg));
+                else if (imm > 16)
+                        uop_SHL_IMM(ir, IREG_16(dest_reg), IREG_16(src_reg), imm - 16);
+                else
+                {
+                        uop_SHL_IMM(ir, IREG_temp0_W, IREG_16(dest_reg), imm);
+                        uop_SHR_IMM(ir, IREG_temp1_W, IREG_16(src_reg), 16 - imm);
+                        uop_OR(ir, IREG_16(dest_reg), IREG_temp0_W, IREG_temp1_W);
+                }
                 uop_MOV_IMM(ir, IREG_flags_op2, imm);
                 uop_MOV_IMM(ir, IREG_flags_op, FLAGS_SHL16);
                 uop_MOVZX(ir, IREG_flags_res, IREG_16(dest_reg));
@@ -976,9 +984,16 @@ uint32_t ropSHLD_16_imm(codeblock_t *block, ir_data_t *ir, uint8_t opcode, uint3
                 codegen_check_seg_write(block, ir, target_seg);
                 uop_MEM_LOAD_REG(ir, IREG_temp2_W, ireg_seg_base(target_seg), IREG_eaaddr);
 
-                uop_SHL_IMM(ir, IREG_temp0_W, IREG_temp2, imm);
-                uop_SHR_IMM(ir, IREG_temp1_W, IREG_16(src_reg), 16 - imm);
-                uop_OR(ir, IREG_temp0_W, IREG_temp0_W, IREG_temp1_W);
+                if (imm == 16)
+                        uop_MOV(ir, IREG_temp0_W, IREG_16(src_reg));
+                else if (imm > 16)
+                        uop_SHL_IMM(ir, IREG_temp0_W, IREG_16(src_reg), imm - 16);
+                else
+                {
+                        uop_SHL_IMM(ir, IREG_temp0_W, IREG_temp2_W, imm);
+                        uop_SHR_IMM(ir, IREG_temp1_W, IREG_16(src_reg), 16 - imm);
+                        uop_OR(ir, IREG_temp0_W, IREG_temp0_W, IREG_temp1_W);
+                }
                 uop_MEM_STORE_REG(ir, ireg_seg_base(target_seg), IREG_eaaddr, IREG_temp0_W);
 
                 uop_MOVZX(ir, IREG_flags_op1, IREG_temp2_W);
@@ -1060,9 +1075,16 @@ uint32_t ropSHRD_16_imm(codeblock_t *block, ir_data_t *ir, uint8_t opcode, uint3
                 int dest_reg = fetchdat & 7;
 
                 uop_MOVZX(ir, IREG_flags_op1, IREG_16(dest_reg));
-                uop_SHR_IMM(ir, IREG_temp0_W, IREG_16(dest_reg), imm);
-                uop_SHL_IMM(ir, IREG_temp1_W, IREG_16(src_reg), 16 - imm);
-                uop_OR(ir, IREG_16(dest_reg), IREG_temp0_W, IREG_temp1_W);
+                if (imm == 16)
+                        uop_MOV(ir, IREG_16(dest_reg), IREG_16(src_reg));
+                else if (imm > 16)
+                        uop_SHR_IMM(ir, IREG_16(dest_reg), IREG_16(src_reg), imm - 16);
+                else
+                {
+                        uop_SHR_IMM(ir, IREG_temp0_W, IREG_16(dest_reg), imm);
+                        uop_SHL_IMM(ir, IREG_temp1_W, IREG_16(src_reg), 16 - imm);
+                        uop_OR(ir, IREG_16(dest_reg), IREG_temp0_W, IREG_temp1_W);
+                }
                 uop_MOV_IMM(ir, IREG_flags_op2, imm);
                 uop_MOV_IMM(ir, IREG_flags_op, FLAGS_SHR16);
                 uop_MOVZX(ir, IREG_flags_res, IREG_16(dest_reg));
@@ -1072,9 +1094,16 @@ uint32_t ropSHRD_16_imm(codeblock_t *block, ir_data_t *ir, uint8_t opcode, uint3
                 codegen_check_seg_write(block, ir, target_seg);
                 uop_MEM_LOAD_REG(ir, IREG_temp2_W, ireg_seg_base(target_seg), IREG_eaaddr);
 
-                uop_SHR_IMM(ir, IREG_temp0_W, IREG_temp2, imm);
-                uop_SHL_IMM(ir, IREG_temp1_W, IREG_16(src_reg), 16 - imm);
-                uop_OR(ir, IREG_temp0_W, IREG_temp0_W, IREG_temp1_W);
+                if (imm == 16)
+                        uop_MOV(ir, IREG_temp0_W, IREG_16(src_reg));
+                else if (imm > 16)
+                        uop_SHR_IMM(ir, IREG_temp0_W, IREG_16(src_reg), imm - 16);
+                else
+                {
+                        uop_SHR_IMM(ir, IREG_temp0_W, IREG_temp2_W, imm);
+                        uop_SHL_IMM(ir, IREG_temp1_W, IREG_16(src_reg), 16 - imm);
+                        uop_OR(ir, IREG_temp0_W, IREG_temp0_W, IREG_temp1_W);
+                }
                 uop_MEM_STORE_REG(ir, ireg_seg_base(target_seg), IREG_eaaddr, IREG_temp0_W);
 
                 uop_MOVZX(ir, IREG_flags_op1, IREG_temp2_W);

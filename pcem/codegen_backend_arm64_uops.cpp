@@ -705,7 +705,7 @@ static int codegen_FTST(codeblock_t *block, uop_t *uop)
 
         if (REG_IS_W(dest_size) && REG_IS_D(src_size_a))
         {
-		host_arm64_FSUB_D(block, REG_V_TEMP, REG_V_TEMP, REG_V_TEMP);
+		host_arm64_EOR_REG_V(block, REG_V_TEMP, REG_V_TEMP, REG_V_TEMP);
 		host_arm64_MOVZ_IMM(block, dest_reg, 0);
                 host_arm64_FCMP_D(block, src_reg_a, REG_V_TEMP);
 		host_arm64_ORR_IMM(block, REG_TEMP, dest_reg, C3);
@@ -843,7 +843,8 @@ static int codegen_MMX_ENTER(codeblock_t *block, uop_t *uop)
 	host_arm64_STR_IMM_W(block, REG_TEMP, REG_CPUSTATE, (uintptr_t)&cpu_state.tag[0] - (uintptr_t)&cpu_state);
 	host_arm64_STR_IMM_W(block, REG_TEMP, REG_CPUSTATE, (uintptr_t)&cpu_state.tag[4] - (uintptr_t)&cpu_state);
 	host_arm64_STR_IMM_W(block, REG_WZR, REG_CPUSTATE, (uintptr_t)&cpu_state.TOP - (uintptr_t)&cpu_state);
-	host_arm64_STRB_IMM(block, REG_WZR, REG_CPUSTATE, (uintptr_t)&cpu_state.ismmx - (uintptr_t)&cpu_state);
+	host_arm64_mov_imm(block, REG_TEMP, 1);
+	host_arm64_STRB_IMM(block, REG_TEMP, REG_CPUSTATE, (uintptr_t)&cpu_state.ismmx - (uintptr_t)&cpu_state);
 
         return 0;
 }
@@ -1231,6 +1232,14 @@ static int codegen_MOV(codeblock_t *block, uop_t *uop)
 	{
 		host_arm64_FMOV_D_D(block, dest_reg, src_reg);
 	}
+	else if (REG_IS_W(dest_size) && REG_IS_L(src_size))
+	{
+		host_arm64_BFI(block, dest_reg, src_reg, 0, 16);
+	}
+	else if (REG_IS_B(dest_size) && (REG_IS_L(src_size) || REG_IS_W(src_size)))
+	{
+		host_arm64_BFI(block, dest_reg, src_reg, 0, 8);
+	}
 	else
 		fatal("MOV %x %x\n", uop->dest_reg_a_real, uop->src_reg_a_real);
 
@@ -1589,8 +1598,8 @@ static int codegen_PACKUSWB(codeblock_t *block, uop_t *uop)
 
         if (REG_IS_Q(dest_size) && REG_IS_Q(src_size_b) && uop->dest_reg_a_real == uop->src_reg_a_real)
         {
-                host_arm64_UQXTN_V8B_8H(block, REG_V_TEMP, src_reg_b);
-                host_arm64_UQXTN_V8B_8H(block, dest_reg, dest_reg);
+                host_arm64_SQXTUN_V8B_8H(block, REG_V_TEMP, src_reg_b);
+                host_arm64_SQXTUN_V8B_8H(block, dest_reg, dest_reg);
                 host_arm64_ZIP1_V2S(block, dest_reg, dest_reg, REG_V_TEMP);
         }
         else
@@ -1921,7 +1930,7 @@ static int codegen_PFRSQRT(codeblock_t *block, uop_t *uop)
         {
                 /*TODO: This could be improved (use VRSQRTE/VRSQRTS)*/
                 host_arm64_FSQRT_S(block, REG_V_TEMP, src_reg_a);
-                host_arm64_FMOV_S_ONE(block, REG_V_TEMP);
+                host_arm64_FMOV_S_ONE(block, dest_reg);
                 host_arm64_FDIV_S(block, dest_reg, dest_reg, REG_V_TEMP);
                 host_arm64_DUP_V2S(block, dest_reg, dest_reg, 0);
         }

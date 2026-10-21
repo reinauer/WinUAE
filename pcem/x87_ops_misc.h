@@ -30,7 +30,7 @@ static int opFSTSW_AX(uint32_t fetchdat)
         FP_ENTER();
         cpu_state.pc++;
         if (fplog) pclog("FSTSW\n");
-        AX = cpu_state.npxs;
+        AX = (cpu_state.npxs & 0xC7FF) | ((cpu_state.TOP & 7) << 11);
         CLOCK_CYCLES(x87_timings.fstcw_sw);
         return 0;
 }
@@ -150,6 +150,9 @@ static int FSTOR()
             !cpu_state.TOP && (*(uint64_t *)cpu_state.tag == 0x0101010101010101ull))
                 cpu_state.ismmx = 1;
 
+        /*A recompiled block indexes the FPU stack by the TOP it was
+          entered with; end it after TOP is reloaded or reset*/
+        CPU_BLOCK_END();
         CLOCK_CYCLES(x87_timings.frstor);
         if (fplog) pclog("FRSTOR %08X:%08X %i %i %04X\n", easeg, cpu_state.eaaddr, cpu_state.ismmx, cpu_state.TOP, x87_gettag());
         return cpu_state.abrt;
@@ -312,6 +315,9 @@ static int FSAVE()
         *(uint64_t *)cpu_state.tag = 0;
         cpu_state.TOP = 0;
         cpu_state.ismmx = 0;
+        /*A recompiled block indexes the FPU stack by the TOP it was
+          entered with; end it after TOP is reloaded or reset*/
+        CPU_BLOCK_END();
 
         CLOCK_CYCLES(x87_timings.fsave);
         return cpu_state.abrt;
@@ -728,6 +734,9 @@ static int FLDENV()
                 cpu_state.TOP = (cpu_state.npxs >> 11) & 7;
                 break;
         }
+        /*A recompiled block indexes the FPU stack by the TOP it was
+          entered with; end it after TOP is reloaded or reset*/
+        CPU_BLOCK_END();
         CLOCK_CYCLES(x87_timings.fldenv);
         return cpu_state.abrt;
 }

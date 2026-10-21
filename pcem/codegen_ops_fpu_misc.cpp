@@ -11,12 +11,20 @@
 #include "codegen_ops_fpu_misc.h"
 #include "codegen_ops_helpers.h"
 
+static void fpu_status_word(ir_data_t *ir, int dest_reg)
+{
+        uop_AND_IMM(ir, IREG_temp1, IREG_FPU_TOP, 7);
+        uop_SHL_IMM(ir, IREG_temp1, IREG_temp1, 11);
+        uop_AND_IMM(ir, dest_reg, IREG_NPXS, 0xc7ff);
+        uop_OR(ir, dest_reg, dest_reg, IREG_temp1_W);
+}
+
 uint32_t ropFFREE(codeblock_t *block, ir_data_t *ir, uint8_t opcode, uint32_t fetchdat, uint32_t op_32, uint32_t op_pc)
 {
         int dest_reg = fetchdat & 7;
 
         uop_FP_ENTER(ir);
-        uop_MOV(ir, IREG_tag(dest_reg), TAG_EMPTY);
+        uop_MOV_IMM(ir, IREG_tag(dest_reg), TAG_EMPTY);
 
         return op_pc;
 }
@@ -80,14 +88,15 @@ uint32_t ropFSTSW(codeblock_t *block, ir_data_t *ir, uint8_t opcode, uint32_t fe
         op_pc--;
         target_seg = codegen_generate_ea(ir, op_ea_seg, fetchdat, op_ssegs, &op_pc, op_32, 0);
         codegen_check_seg_write(block, ir, target_seg);
-        uop_MEM_STORE_REG(ir, ireg_seg_base(target_seg), IREG_eaaddr, IREG_NPXS);
+        fpu_status_word(ir, IREG_temp0_W);
+        uop_MEM_STORE_REG(ir, ireg_seg_base(target_seg), IREG_eaaddr, IREG_temp0_W);
 
         return op_pc+1;
 }
 uint32_t ropFSTSW_AX(codeblock_t *block, ir_data_t *ir, uint8_t opcode, uint32_t fetchdat, uint32_t op_32, uint32_t op_pc)
 {
         uop_FP_ENTER(ir);
-        uop_MOV(ir, IREG_AX, IREG_NPXS);
+        fpu_status_word(ir, IREG_AX);
         
         return op_pc;
 }
