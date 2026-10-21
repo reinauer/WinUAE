@@ -31,6 +31,7 @@
 #include "threaddep/thread.h"
 #include "uae.h"
 #include "video.h"
+#include "frame_cache.h"
 
 extern int pause_emulation;
 extern void pausemode(int mode);
@@ -1762,6 +1763,7 @@ struct unix_secondary_window {
     int width;
     int height;
     int pixbytes;
+    unix_frame_cache presented;
 };
 static unix_secondary_window s_secondary[MAX_AMIGADISPLAYS];
 
@@ -1812,7 +1814,14 @@ static void unix_video_present_secondary(const struct unix_video_frame *frame)
         SDL_SetRenderVSync(sw->renderer, 0);
         write_log(_T("SDL3: opened window for monitor %d\n"), frame->monitor_id + 1);
     }
-    if (SDL_GetWindowFlags(sw->window) & SDL_WINDOW_HIDDEN) {
+    if (SDL_GetWindowFlags(sw->window) & (SDL_WINDOW_HIDDEN | SDL_WINDOW_MINIMIZED)) {
+        sw->presented.invalidate();
+        return;
+    }
+    // Even with vsync off, Metal can wait for a drawable on every present.
+    // Keep the retained image until pixels or the window surface change.
+    if (sw->presented.matches(frame->pixels, frame->width, frame->height,
+        frame->rowbytes, frame->pixbytes)) {
         return;
     }
     if (!sw->texture || sw->width != frame->width || sw->height != frame->height || sw->pixbytes != frame->pixbytes) {
@@ -1832,11 +1841,16 @@ static void unix_video_present_secondary(const struct unix_video_frame *frame)
         sw->height = frame->height;
         sw->pixbytes = frame->pixbytes;
     }
-    SDL_UpdateTexture(sw->texture, NULL, frame->pixels, frame->rowbytes);
-    SDL_SetRenderDrawColor(sw->renderer, 0, 0, 0, 255);
-    SDL_RenderClear(sw->renderer);
-    SDL_RenderTexture(sw->renderer, sw->texture, NULL, NULL);
-    SDL_RenderPresent(sw->renderer);
+    if (!SDL_UpdateTexture(sw->texture, NULL, frame->pixels, frame->rowbytes) ||
+        !SDL_SetRenderDrawColor(sw->renderer, 0, 0, 0, 255) ||
+        !SDL_RenderClear(sw->renderer) ||
+        !SDL_RenderTexture(sw->renderer, sw->texture, NULL, NULL) ||
+        !SDL_RenderPresent(sw->renderer)) {
+        sw->presented.invalidate();
+        return;
+    }
+    sw->presented.presented(frame->pixels, frame->width, frame->height,
+        frame->rowbytes, frame->pixbytes);
 }
 
 void unix_video_shutdown(void)
@@ -1965,6 +1979,29 @@ static int unix_video_poll_internal(bool *quit_requested, bool input_events)
             }
             break;
         }
+        case SDL_EVENT_WINDOW_EXPOSED:
+        case SDL_EVENT_WINDOW_RESIZED:
+        case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
+        case SDL_EVENT_WINDOW_SHOWN:
+        case SDL_EVENT_WINDOW_RESTORED:
+        {
+            unix_secondary_window *sw;
+            if (secondary_window_event(event.window.windowID, &sw)) {
+                sw->presented.invalidate();
+            }
+            break;
+        }
+        case SDL_EVENT_RENDER_TARGETS_RESET:
+        case SDL_EVENT_RENDER_DEVICE_RESET:
+            for (int i = 1; i < MAX_AMIGADISPLAYS; i++) {
+                unix_secondary_window *sw = &s_secondary[i];
+                sw->presented.invalidate();
+                if (event.type == SDL_EVENT_RENDER_DEVICE_RESET && sw->texture) {
+                    SDL_DestroyTexture(sw->texture);
+                    sw->texture = NULL;
+                }
+            }
+            break;
         case SDL_EVENT_WINDOW_MOVED:
             if (s_mouse_grabbed && unix_event_for_window(event.window.windowID)) {
                 unix_input_release_keys();
