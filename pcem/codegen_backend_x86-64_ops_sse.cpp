@@ -101,14 +101,14 @@ void host_x86_DIVSS_XREG_XREG(codeblock_t *block, int dst_reg, int src_reg)
 
 void host_x86_LDMXCSR(codeblock_t *block, void *p)
 {
-        int offset = (uintptr_t)p - (((uintptr_t)&cpu_state) + 128);
+        int64_t offset = (uintptr_t)p - (((uintptr_t)&cpu_state) + 128);
 
         if (offset >= -128 && offset < 127)
         {
                 codegen_alloc_bytes(block, 4);
                 codegen_addbyte4(block, 0x0f, 0xae, 0x50 | REG_EBP, offset); /*LDMXCSR offset[EBP]*/
         }
-        else if (offset < (1ull << 32))
+        else if (offset >= INT32_MIN && offset <= INT32_MAX)
         {
                 codegen_alloc_bytes(block, 7);
                 codegen_addbyte3(block, 0x0f, 0xae, 0x90 | REG_EBP); /*LDMXCSR offset[EBP]*/

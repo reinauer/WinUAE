@@ -408,7 +408,14 @@ endforeach()
 
 set(WINUAE_UNIX_WITH_JIT_DEFAULT ${WINUAE_UNIX_JIT_TARGET_SUPPORTED})
 option(WINUAE_UNIX_WITH_JIT "Build JIT support for Unix targets where a backend is available" ${WINUAE_UNIX_WITH_JIT_DEFAULT})
-option(WINUAE_UNIX_WITH_X86_DYNAREC "Build the PCem x86 dynamic recompiler for Unix targets where a backend is available" ${WINUAE_UNIX_JIT_TARGET_SUPPORTED})
+# Only the ARM64 backend has run under WinUAE so far; x86_64 builds can opt in.
+set(WINUAE_UNIX_WITH_X86_DYNAREC_DEFAULT OFF)
+foreach(WINUAE_UNIX_TARGET_ARCH IN LISTS WINUAE_UNIX_TARGET_ARCHES)
+    if(WINUAE_UNIX_TARGET_ARCH MATCHES "^(aarch64|arm64)$")
+        set(WINUAE_UNIX_WITH_X86_DYNAREC_DEFAULT ON)
+    endif()
+endforeach()
+option(WINUAE_UNIX_WITH_X86_DYNAREC "Build the PCem x86 dynamic recompiler for Unix targets where a backend is available" ${WINUAE_UNIX_WITH_X86_DYNAREC_DEFAULT})
 
 set(WINUAE_UNIX_VERSION_MAJOR 0)
 set(WINUAE_UNIX_VERSION_MINOR 0)

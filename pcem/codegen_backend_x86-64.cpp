@@ -121,9 +121,10 @@ static void build_load_routine(codeblock_t *block, int size, int is_float)
         host_x86_PUSH(block, REG_RAX);
         host_x86_PUSH(block, REG_RDX);
 #if WIN64
-        host_x86_SUB64_REG_IMM(block, REG_RSP, 0x20);
+        host_x86_SUB64_REG_IMM(block, REG_RSP, 0x28);
         //host_x86_MOV32_REG_REG(block, REG_ECX, uop->imm_data);
 #else
+        host_x86_SUB64_REG_IMM(block, REG_RSP, 0x8);
         host_x86_MOV32_REG_REG(block, REG_EDI, REG_ECX);
 #endif
         if (size == 1 && !is_float)
@@ -153,7 +154,9 @@ static void build_load_routine(codeblock_t *block, int size, int is_float)
                 host_x86_MOVQ_XREG_REG(block, REG_XMM_TEMP, REG_RAX);
         }
 #if WIN64
-        host_x86_ADD64_REG_IMM(block, REG_RSP, 0x20);
+        host_x86_ADD64_REG_IMM(block, REG_RSP, 0x28);
+#else
+        host_x86_ADD64_REG_IMM(block, REG_RSP, 0x8);
 #endif
         host_x86_POP(block, REG_RDX);
         host_x86_POP(block, REG_RAX);
