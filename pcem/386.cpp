@@ -146,6 +146,9 @@ static inline void fetch_ea_16_long(uint32_t rmdat)
 #include "x86_ops.h"
 
 int cpu_end_timeslice;
+uint32_t cpu_spin_pc = 0xffffffff;
+void (*cpu_spin_hook)(uint32_t phys);
+void (*cpu_block_hook)(uint32_t pc, uint32_t phys);
 
 void exec386(int cycs)
 {

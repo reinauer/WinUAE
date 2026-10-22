@@ -1392,6 +1392,57 @@ static uae_u32 sunpci_spin_read(uae_u32 key, uae_u32 value)
 	return value;
 }
 
+// SUNPCI.VXD waits for a PM reply by calling a helper that returns the
+// bytes queued in the down ring, from its head and tail in card RAM.
+// Those are plain memory reads the bridge never sees, so find the helper
+// by its code when the recompiler first meets it, and pass the ring
+// values it is about to read through the same spin check.
+static const uae_u8 sunpci_vxd_ring_used[] = {
+	0x55, 0x8b, 0x4c, 0x24, 0x08, 0x8b, 0xec, 0x8b, 0x01, 0x8b, 0x49, 0x04,
+	0x8b, 0x55, 0x0c, 0x3b, 0xc8, 0x89, 0x02, 0x89, 0x4a, 0x04, 0x75, 0x04,
+	0x33, 0xc0, 0xeb, 0x0d, 0x73, 0x04, 0x2b, 0xc1, 0xeb, 0x07, 0x2b, 0xc1,
+	0x05, 0xf8, 0xff, 0x01, 0x00, 0x5d, 0xc3
+};
+static uae_u32 sunpci_vxd_ring_used_phys;
+
+static void sunpci_block_hook(uint32_t pc, uint32_t phys)
+{
+	bool match = (phys & 0xfff) <= 0x1000 - sizeof sunpci_vxd_ring_used;
+	for (int i = 0; match && i < (int)sizeof sunpci_vxd_ring_used; i++) {
+		match = mem_readb_phys(phys + i) == sunpci_vxd_ring_used[i];
+	}
+	if (match) {
+		if (pc != cpu_spin_pc) {
+			write_log(_T("SUNPCI: VxD ring wait helper at %08x\n"), pc);
+		}
+		cpu_spin_pc = pc;
+		sunpci_vxd_ring_used_phys = phys;
+	} else if (pc == cpu_spin_pc) {
+		cpu_spin_pc = 0xffffffff;
+	}
+}
+
+static bool sunpci_card_readl(uae_u32 addr, uae_u32 *v)
+{
+	uae_u32 phys = (cr0 & 0x80000000) ? mmutranslate_noabrt(addr, 0) : addr;
+	if (phys == 0xffffffff || (addr & 0xfff) > 0xffc) {
+		return false;
+	}
+	*v = mem_readl_phys(phys);
+	return true;
+}
+
+static void sunpci_spin_hook(uint32_t phys)
+{
+	uae_u32 ring, head, tail;
+	if (phys != sunpci_vxd_ring_used_phys || !sunpci_card_readl(ss + ESP + 4, &ring)
+		|| !sunpci_card_readl(ring, &head) || !sunpci_card_readl(ring + 4, &tail)) {
+		return;
+	}
+	sunpci_spin_read(0x50000000 | (ring & 0x0fffffff), head);
+	sunpci_spin_read(0x50000000 | ((ring + 4) & 0x0fffffff), tail);
+}
+
 static uae_u32 sunpci_hole_read(uint32_t addr, int size)
 {
 	struct sunpci_state *s = sunpci;
@@ -1835,6 +1886,8 @@ static void sunpci_x86_free(void)
 	smram_enable = NULL;
 	smram_disable = NULL;
 	cpu_use_dynarec = 0;
+	cpu_spin_pc = 0xffffffff;
+	cpu_block_hook = NULL;
 	pcem_close();
 	mem_free();
 	rom = NULL;
@@ -1913,6 +1966,9 @@ static bool sunpci_x86_init(struct romconfig *rc)
 	cpu_set_turbo(0);
 	cpu_set_turbo(1);
 	codegen_init();
+	cpu_spin_pc = 0xffffffff;
+	cpu_spin_hook = sunpci_spin_hook;
+	cpu_block_hook = sunpci_block_hook;
 
 	rom = s->bios;
 	biosmask = SUNPCI_BIOS_SIZE - 1;

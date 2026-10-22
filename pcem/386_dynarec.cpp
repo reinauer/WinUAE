@@ -318,6 +318,9 @@ static void __attribute__((noinline)) exec_recompiler(void)
         {
                 page_t *page = &pages[phys_addr >> 12];
 
+                if (cs + cpu_state.pc == cpu_spin_pc)
+                        cpu_spin_hook(phys_addr);
+
                 /*Block must match current CS, PC, code segment size,
                   and physical address. The physical address check will
                   also catch any page faults at this stage*/
@@ -504,6 +507,8 @@ static void __attribute__((noinline)) exec_recompiler(void)
                 x86_was_reset = 0;
 
                 codegen_block_init(phys_addr);
+                if (cpu_block_hook)
+                        cpu_block_hook(start_pc, phys_addr);
 
 //                if (output) pclog("Recompile block at %04x:%04x  %04x %04x %04x %04x  %04x %04x  ESP=%04x %04x  %02x%02x:%02x%02x %02x%02x:%02x%02x %02x%02x:%02x%02x\n", CS, pc, AX, BX, CX, DX, SI, DI, ESP, BP, ram[0x116330+0x6df4+0xa+3], ram[0x116330+0x6df4+0xa+2], ram[0x116330+0x6df4+0xa+1], ram[0x116330+0x6df4+0xa+0], ram[0x11d136+3],ram[0x11d136+2],ram[0x11d136+1],ram[0x11d136+0], ram[(0x119abe)+0x3],ram[(0x119abe)+0x2],ram[(0x119abe)+0x1],ram[(0x119abe)+0x0]);
                 while (!cpu_block_end)
