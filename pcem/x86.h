@@ -129,6 +129,9 @@ extern CPU_STATE cpu_state;
 
 #define cycles cpu_state._cycles
 extern int cycles_main;
+/*A device saw the CPU spin on a value only the host can change; the rest
+  of the current time slice passes as elapsed time*/
+extern int cpu_end_timeslice;
 
 #define cr0 cpu_state.CR0.l
 #define msw cpu_state.CR0.w

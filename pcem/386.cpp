@@ -145,6 +145,8 @@ static inline void fetch_ea_16_long(uint32_t rmdat)
 
 #include "x86_ops.h"
 
+int cpu_end_timeslice;
+
 void exec386(int cycs)
 {
         uint8_t temp;

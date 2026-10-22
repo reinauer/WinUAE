@@ -668,6 +668,17 @@ void exec386_dynarec(int cycs)
 		if (TIMER_VAL_LESS_THAN_VAL(timer_target, (uint32_t)tsc))
 			timer_process();
                 cycles_main -= (cycles_start - cycles);
+                if (cpu_end_timeslice)
+                {
+                        cpu_end_timeslice = 0;
+                        if (cycles_main > 0)
+                        {
+                                tsc += cycles_main;
+                                cycles_main = 0;
+                        }
+                        if (TIMER_VAL_LESS_THAN_VAL(timer_target, (uint32_t)tsc))
+                                timer_process();
+                }
         }
 }
 

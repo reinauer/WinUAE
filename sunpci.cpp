@@ -1357,6 +1357,41 @@ static int sunpci_hole_decode(struct sunpci_state *s, uae_u32 addr, uae_u32 *off
 	return HOLE_NONE;
 }
 
+// Sun's drivers wait for the host by polling bridge registers and ring
+// pointers in host memory. Only the host changes those, and it runs only
+// between time slices, so once the card repeats the same reads it cannot
+// see a change before the slice ends: let the rest of it pass as time.
+#define SUNPCI_SPIN_READS 8
+static struct {
+	uae_u32 key, value;
+} sunpci_spin_recent[16];
+static int sunpci_spin_next, sunpci_spin_count;
+
+static void sunpci_spin_reset(void)
+{
+	sunpci_spin_count = 0;
+}
+
+static uae_u32 sunpci_spin_read(uae_u32 key, uae_u32 value)
+{
+	// The VxD reads the head and tail of every PM ring per round.
+	for (int i = 0; i < 16; i++) {
+		if (sunpci_spin_recent[i].key == key && sunpci_spin_recent[i].value == value) {
+			if (++sunpci_spin_count >= SUNPCI_SPIN_READS) {
+				sunpci_spin_count = 0;
+				cycles = 0;
+				cpu_end_timeslice = 1;
+			}
+			return value;
+		}
+	}
+	sunpci_spin_recent[sunpci_spin_next].key = key;
+	sunpci_spin_recent[sunpci_spin_next].value = value;
+	sunpci_spin_next = (sunpci_spin_next + 1) & 15;
+	sunpci_spin_count = 0;
+	return value;
+}
+
 static uae_u32 sunpci_hole_read(uint32_t addr, int size)
 {
 	struct sunpci_state *s = sunpci;
@@ -1364,13 +1399,13 @@ static uae_u32 sunpci_hole_read(uint32_t addr, int size)
 	switch (sunpci_hole_decode(s, addr, &off))
 	{
 	case HOLE_CSR:
-		return db_csr_read(s, off, size, true);
+		return sunpci_spin_read(0x10000000 | off, db_csr_read(s, off, size, true));
 	case HOLE_US0:
-		return db_us_read(s, DB_WIN_US0, off, size);
+		return sunpci_spin_read(0x20000000 | off, db_us_read(s, DB_WIN_US0, off, size));
 	case HOLE_US1:
-		return db_us_read(s, DB_WIN_US1, off, size);
+		return sunpci_spin_read(0x30000000 | off, db_us_read(s, DB_WIN_US1, off, size));
 	case HOLE_US2:
-		return db_us_read(s, DB_WIN_US2, off, size);
+		return sunpci_spin_read(0x40000000 | off, db_us_read(s, DB_WIN_US2, off, size));
 	case HOLE_USB:
 		return size == 4 ? sunpci_ohci_readl(addr, s) : size == 2 ? sunpci_ohci_readw(addr, s) : sunpci_ohci_readb(addr, s);
 	case HOLE_LFB:
@@ -1383,6 +1418,7 @@ static void sunpci_hole_write(uint32_t addr, uae_u32 v, int size)
 {
 	struct sunpci_state *s = sunpci;
 	uae_u32 off;
+	sunpci_spin_reset();
 	switch (sunpci_hole_decode(s, addr, &off))
 	{
 	case HOLE_CSR:
@@ -1642,8 +1678,9 @@ static bool sunpci_bridge_io(struct sunpci_state *s, uint16_t port, int dir, uin
 		return false;
 	}
 	if (dir) {
-		*val = db_csr_read(s, port - base, size, true);
+		*val = sunpci_spin_read(0x10000000 | (port - base), db_csr_read(s, port - base, size, true));
 	} else {
+		sunpci_spin_reset();
 		db_csr_write(s, port - base, *val, size, true);
 	}
 	return true;
@@ -1963,6 +2000,8 @@ static void sunpci_x86_run(struct sunpci_state *s)
 	if (s->in_reset) {
 		return;
 	}
+	sunpci_spin_reset();
+	cpu_end_timeslice = 0;
 #if SUNPCI_DEBUG_CSR
 	// where the card's PC is, about once a second
 	if (++s->trace_lines >= maxvpos * 50) {
