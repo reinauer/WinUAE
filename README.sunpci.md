@@ -129,10 +129,13 @@ register/framebuffer captures establish the failure mechanism; a rebuilt
 emulator still needs a fresh guest run for end-to-end visual validation.
 
 The [SunPCi user's guide](https://docs.oracle.com/cd/E19085-01/pci1.card/805-6058-11/6j5nc882f/index.html)
-describes host-window and external-VGA routing as separate modes. When the
-BIOS disables VGA output for host-window capture, monitor 2 is now black;
-the Amiga host protocol display remains available. This does not force
-external routing, freeze frames in SMM, or mirror the host framebuffer.
+describes host-window and external-VGA routing as separate modes. In
+host-window mode the BIOS's SMM display capture (e000:248f in BIOS 0.59)
+sets Screen Off in SR01 and its restore path never clears it, so an
+external monitor stays blank from the first POST screen until Windows
+loads Sun's display driver. Monitor 2 ignores a Screen Off written in SMM
+and keeps showing POST, DOS and the Windows shutdown screen; SR01 still
+reads back as written, and Screen Off from normal code still blanks it.
 
 ## Secondary-window presentation cost (21 October 2026)
 

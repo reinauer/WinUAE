@@ -1219,6 +1219,14 @@ static bool sunpci_vga_io(struct sunpci_state *s, uint16_t port, int dir, uint32
 		for (int i = 0; i < size; i++) {
 			sis5598_out(vport + i, (uint8_t)(*val >> (i * 8)), s->vga);
 		}
+		// In host-window mode the BIOS's SMM display capture sets Screen
+		// Off and never clears it, which blanks an external monitor from
+		// POST until Windows loads Sun's display driver. Monitor 2 keeps
+		// showing the picture; SR01 still reads back as written.
+		svga_t *svga = sunpci_vga_svga(s);
+		if ((cpu_cur_status & CPU_STATUS_SMM) && vport <= 0x3c5 && vport + size > 0x3c5 && (svga->seqaddr & 0xf) == 1) {
+			svga->scrblank &= ~0x20;
+		}
 		if (vport <= 0x3cf && vport + size > 0x3ce) {
 			sunpci_vga_update_legacy(s);
 		}
