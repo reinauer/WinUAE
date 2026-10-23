@@ -2834,6 +2834,19 @@ static uaecptr get_x86_address(struct x86_bridge *xb, uaecptr addr, int *mode, u
 	}
 	// IO
 	addr -= 0x1e000;
+	if (*mode != ACCESS_MODE_IO) {
+		// The register area is only decoded in the IO view. In the byte, word and
+		// gfx views there is no buffer behind it: treat it as unmapped (reads 0,
+		// writes ignored) instead of leaving *base unset.
+		static bool logged;
+		if (!logged) {
+			logged = true;
+			write_log(_T("X86 BRIDGE: access to register area %04x in view %d treated as unmapped (logged once) PC=%08x\n"), addr + 0x1e000, *mode, M68K_GETPC);
+		}
+		*mode = -1;
+		*base = NULL;
+		return 0;
+	}
 	return addr;
 }
 
@@ -2864,7 +2877,7 @@ static void cga_gfx_read(struct x86_bridge *xb, uaecptr a_addr, uae_u8 *addr, ua
 static uae_u32 REGPARAM2 x86_bridge_wget(uaecptr addr)
 {
 	uae_u16 v = 0;
-	uae_u8 *base;
+	uae_u8 *base = NULL;
 	struct x86_bridge *xb = get_x86_bridge(addr);
 	if (!xb)
 		return v;
@@ -2912,7 +2925,7 @@ static uae_u32 REGPARAM2 x86_bridge_lget(uaecptr addr)
 static uae_u32 REGPARAM2 x86_bridge_bget(uaecptr addr)
 {
 	uae_u8 v = 0;
-	uae_u8 *base;
+	uae_u8 *base = NULL;
 	struct x86_bridge *xb = get_x86_bridge(addr);
 	if (!xb)
 		return v;
@@ -2960,7 +2973,7 @@ static void REGPARAM2 x86_bridge_wput(uaecptr addr, uae_u32 b)
 	if (!xb)
 		return;
 	int mode;
-	uae_u8 *base;
+	uae_u8 *base = NULL;
 	uaecptr a = get_x86_address(xb, addr, &mode, &base);
 
 #if X86_DEBUG_BRIDGE > 1
@@ -3020,7 +3033,7 @@ static void REGPARAM2 x86_bridge_bput(uaecptr addr, uae_u32 b)
 	}
 
 	int mode;
-	uae_u8 *base;
+	uae_u8 *base = NULL;
 	uaecptr a = get_x86_address(xb, addr, &mode, &base);
 
 	if (a >= 0x100000 || mode < 0)
