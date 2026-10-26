@@ -100,6 +100,8 @@
 #define PIC_CMD_IRQ_CLEAR 5
 #define PIC_CMD_LED 6
 #define PIC_CMD_SMI_RATE 7
+#define DB_CSR_LUT_OFFSET 0x28
+#define DB_CSR_LUT_DATA 0x2c
 #define DB_CSR_LUT 0x100
 #define DB_LUT_ENTRIES 64
 
@@ -252,20 +254,31 @@ static uae_u32 db_setup_size(uae_u32 setup)
 	return (~(setup & 0xfffff000)) + 1;
 }
 
+// A setup register's low bits are returned in its BAR.
+static uae_u32 db_setup_flags(uae_u32 setup)
+{
+	if (!(setup & 0x80000000)) {
+		return 0;
+	}
+	return setup & ((setup & 1) ? 3 : 15);
+}
+
 static uae_u32 db_us2_page_size(struct db21554 *b)
 {
 	int code = (db_reg16(b, DB_CONF_CHIP_CTRL1) >> 8) & 15;
 	return code ? 0x80 << code : 0;
 }
 
-static void db_set_bar_size(uae_u8 *hdr, uae_u32 *sizes, int bar, uae_u32 size, bool io)
+// flags are the BAR's read-only low bits: I/O, or memory type and prefetch
+static void db_set_bar_size(uae_u8 *hdr, uae_u32 *sizes, int bar, uae_u32 size, uae_u32 flags)
 {
 	int off = 0x10 + bar * 4;
-	sizes[bar] = size | (io ? 1 : 0);
+	uae_u32 low = (flags & 1) ? 3 : 15;
+	sizes[bar] = size | (flags & 1);
 	uae_u32 v = get_le32(&hdr[off]);
 	if (size) {
-		v &= ~(size - 1);
-		v |= io ? 1 : 0;
+		v &= ~(size - 1) & ~low;
+		v |= flags & low;
 	} else {
 		v = 0;
 	}
@@ -277,23 +290,27 @@ static void db_update_bar_sizes(struct db21554 *b)
 	uae_u32 s;
 
 	// primary: CSR memory and downstream memory 0 share BAR0
-	s = db_setup_size(db_reg32(b, DB_CONF_DS_MEM0_SETUP));
-	db_set_bar_size(b->pri, b->pri_bar_size, 0, s > DB_CSR_SIZE ? s : DB_CSR_SIZE, false);
-	db_set_bar_size(b->pri, b->pri_bar_size, 1, 256, true);
+	s = db_reg32(b, DB_CONF_DS_MEM0_SETUP);
+	db_set_bar_size(b->pri, b->pri_bar_size, 0, db_setup_size(s) > DB_CSR_SIZE ? db_setup_size(s) : DB_CSR_SIZE, db_setup_flags(s) & ~1);
+	db_set_bar_size(b->pri, b->pri_bar_size, 1, 256, 1);
 	s = db_reg32(b, DB_CONF_DS_IO_MEM1_SETUP);
-	db_set_bar_size(b->pri, b->pri_bar_size, 2, db_setup_size(s), (s & 1) != 0);
-	db_set_bar_size(b->pri, b->pri_bar_size, 3, db_setup_size(db_reg32(b, DB_CONF_DS_MEM2_SETUP)), false);
-	db_set_bar_size(b->pri, b->pri_bar_size, 4, db_setup_size(db_reg32(b, DB_CONF_DS_MEM3_SETUP)), false);
-	db_set_bar_size(b->pri, b->pri_bar_size, 5, 0, false);
+	db_set_bar_size(b->pri, b->pri_bar_size, 2, db_setup_size(s), db_setup_flags(s));
+	s = db_reg32(b, DB_CONF_DS_MEM2_SETUP);
+	db_set_bar_size(b->pri, b->pri_bar_size, 3, db_setup_size(s), db_setup_flags(s));
+	s = db_reg32(b, DB_CONF_DS_MEM3_SETUP);
+	db_set_bar_size(b->pri, b->pri_bar_size, 4, db_setup_size(s), db_setup_flags(s));
+	db_set_bar_size(b->pri, b->pri_bar_size, 5, 0, 0);
 
 	// secondary
-	db_set_bar_size(b->sec, b->sec_bar_size, 0, DB_CSR_SIZE, false);
-	db_set_bar_size(b->sec, b->sec_bar_size, 1, 256, true);
+	db_set_bar_size(b->sec, b->sec_bar_size, 0, DB_CSR_SIZE, 0);
+	db_set_bar_size(b->sec, b->sec_bar_size, 1, 256, 1);
 	s = db_reg32(b, DB_CONF_US_IO_MEM0_SETUP);
-	db_set_bar_size(b->sec, b->sec_bar_size, 2, db_setup_size(s), (s & 1) != 0);
-	db_set_bar_size(b->sec, b->sec_bar_size, 3, db_setup_size(db_reg32(b, DB_CONF_US_MEM1_SETUP)), false);
-	db_set_bar_size(b->sec, b->sec_bar_size, 4, db_us2_page_size(b) * DB_LUT_ENTRIES, false);
-	db_set_bar_size(b->sec, b->sec_bar_size, 5, 0, false);
+	db_set_bar_size(b->sec, b->sec_bar_size, 2, db_setup_size(s), db_setup_flags(s));
+	s = db_reg32(b, DB_CONF_US_MEM1_SETUP);
+	db_set_bar_size(b->sec, b->sec_bar_size, 3, db_setup_size(s), db_setup_flags(s));
+	// upstream memory 2 is prefetchable (a SunPCi I card reads 00000008)
+	db_set_bar_size(b->sec, b->sec_bar_size, 4, db_us2_page_size(b) * DB_LUT_ENTRIES, 8);
+	db_set_bar_size(b->sec, b->sec_bar_size, 5, 0, 0);
 }
 
 static uae_u32 db_bar(const uae_u8 *hdr, int bar)
@@ -653,6 +670,16 @@ static void sunpci_pic_command(struct sunpci_state *s, uae_u8 control, bool seco
 	b->csr[DB_CSR_PIC_CONTROL] = control & ~PIC_CONTROL_BUSY;
 }
 
+// The I/O window ends before the lookup table; LUT data reaches the entry
+// selected by the LUT offset register.
+static int db_csr_index(struct db21554 *b, uae_u32 a)
+{
+	if (a >= DB_CSR_LUT_DATA && a < DB_CSR_LUT_DATA + 4) {
+		return DB_CSR_LUT + (b->csr[DB_CSR_LUT_OFFSET] & 0xfc) + (a & 3);
+	}
+	return a;
+}
+
 static uae_u32 db_csr_read(struct sunpci_state *s, uae_u32 addr, int size, bool secondary)
 {
 	struct db21554 *b = &s->db;
@@ -664,7 +691,7 @@ static uae_u32 db_csr_read(struct sunpci_state *s, uae_u32 addr, int size, bool 
 		if (a >= DB_CSR_P_CLR_IRQ && a < DB_CSR_SCRATCH) {
 			c = (uae_u8)(db_doorbell_read(b, a) >> ((a & 1) * 8));
 		} else {
-			c = b->csr[a];
+			c = b->csr[db_csr_index(b, a)];
 		}
 		v |= c << (i * 8);
 	}
@@ -698,7 +725,7 @@ static void db_csr_write(struct sunpci_state *s, uae_u32 addr, uae_u32 v, int si
 		return;
 	}
 	for (int i = 0; i < size; i++) {
-		b->csr[(addr + i) & (DB_CSR_SIZE - 1)] = (uae_u8)(v >> (i * 8));
+		b->csr[db_csr_index(b, (addr + i) & (DB_CSR_SIZE - 1))] = (uae_u8)(v >> (i * 8));
 	}
 	if (addr <= DB_CSR_PIC_CONTROL && addr + size > DB_CSR_PIC_CONTROL) {
 		sunpci_pic_command(s, b->csr[DB_CSR_PIC_CONTROL], secondary);
