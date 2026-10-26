@@ -1435,7 +1435,14 @@ enter_smm(int in_hlt)
         memcpy(&cpu_state.seg_fs, &cpu_state.seg_ds, sizeof(x86seg));
         memcpy(&cpu_state.seg_gs, &cpu_state.seg_ds, sizeof(x86seg));
 
+#ifdef UAE
+        /* The K6 also loads the selector from a relocated SMBASE: the
+           SunPCi I BIOS relocates it, and its handler's first far return
+           or "push cs" goes wrong with 3000. */
+        if (is_p6 || is_k6)
+#else
         if (is_p6)
+#endif
             cpu_state.seg_cs.seg = (smbase >> 4);
         else
             cpu_state.seg_cs.seg = 0x3000;
