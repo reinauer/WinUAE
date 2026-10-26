@@ -264,6 +264,13 @@ dr_blocks_cache(void)
 #define CACHE_ON_DBG(dbg) (!(cr0 & (1 << 30)) && !(cpu_state.flags & T_FLAG) && !((dbg) && cpu_dr_armed && dr_blocks_cache()))
 #define CACHE_ON()        CACHE_ON_DBG(cpu_debug_regs_486)
 
+#ifdef UAE
+int      cpu_end_timeslice;
+uint32_t cpu_spin_pc = 0xffffffff;
+void (*cpu_spin_hook)(uint32_t phys);
+void (*cpu_block_hook)(uint32_t pc, uint32_t phys);
+#endif
+
 #ifdef USE_DYNAREC
 int32_t         cycles_main = 0;
 #    ifdef CODEGEN_BACKEND_HAS_BLOCK_LINK
@@ -629,6 +636,11 @@ exec386_dynarec_dyn(void)
     {
         page_t *page = &pages[phys_addr >> 12];
 
+#    ifdef UAE
+        if (cs + cpu_state.pc == cpu_spin_pc)
+            cpu_spin_hook(phys_addr);
+#    endif
+
         /* Block must match current CS, PC, code segment size,
            and physical address. The physical address check will
            also catch any page faults at this stage */
@@ -723,7 +735,12 @@ exec386_dynarec_dyn(void)
         codegen_link_slot_t *(*code)(void) = (codegen_link_slot_t *(*)(void)) (void *) &block->data[BLOCK_START];
 
         /* from may predate the reset that turned linking off. */
+#        ifdef UAE
+        /* A watched block is entered from here, never through a link */
+        if ((from != NULL) && codegen_block_link && (block->pc != cpu_spin_pc))
+#        else
         if ((from != NULL) && codegen_block_link)
+#        endif
             codegen_link_patch(from, block, phys_addr);
 #    else
         void (*code)(void) = (void *) &block->data[BLOCK_START];
@@ -885,6 +902,10 @@ exec386_dynarec_dyn(void)
 
         codegen_record_faulted = 0;
         codegen_block_init(phys_addr);
+#    ifdef UAE
+        if (cpu_block_hook)
+            cpu_block_hook(start_pc, phys_addr);
+#    endif
 
         while (!cpu_block_end) {
             oldcs  = CS;
@@ -1146,6 +1167,17 @@ exec386_dynarec_common(int32_t cycs, const int dbg)
         }
 
         cycles_main -= (cycles_start - cycles);
+#    ifdef UAE
+        if (cpu_end_timeslice) {
+            cpu_end_timeslice = 0;
+            if (cycles_main > 0) {
+                tsc += cycles_main;
+                cycles_main = 0;
+            }
+            if (TIMER_VAL_LESS_THAN_VAL(timer_target, (uint64_t) tsc))
+                timer_process();
+        }
+#    endif
     }
 }
 

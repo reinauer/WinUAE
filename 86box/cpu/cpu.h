@@ -730,6 +730,17 @@ extern int timing_misaligned;
 extern int      in_sys;
 extern int      unmask_a20_in_smm;
 extern int      cycles_main;
+#ifdef UAE
+/* A device saw the CPU spin on a value only the host can change; the rest
+   of the current time slice passes as elapsed time. */
+extern int cpu_end_timeslice;
+/* A device can watch one linear code address: the recompiler calls
+   cpu_spin_hook before each block that starts there, and cpu_block_hook
+   with the start of each block it sees for the first time. */
+extern uint32_t cpu_spin_pc;
+extern void (*cpu_spin_hook)(uint32_t phys);
+extern void (*cpu_block_hook)(uint32_t pc, uint32_t phys);
+#endif
 extern uint32_t old_rammask;
 
 extern int pic_pending;
