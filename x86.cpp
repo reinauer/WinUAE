@@ -2044,6 +2044,9 @@ static uae_u8 vlsi_in(struct x86_bridge *xb, int portnum)
 // Defined in atonce.cpp: routes x86 I/O to the ATonce 286 trap mechanism when
 // no PC bridgeboard (A2088/A2286/...) owns the x86 side, i.e. bridges[0]==NULL.
 extern uint32_t atonce_x86_io(uint16_t port, int dir, uint32_t val, int size);
+// Defined in sunpci.cpp: the SunPCi card's x86 machine owns all ports while active.
+extern bool sunpci_x86_active(void);
+extern uint32_t sunpci_x86_io(uint16_t port, int dir, uint32_t val, int size);
 
 static bool port_out_handler(uint16_t portnum, uint8_t v)
 {
@@ -2162,6 +2165,10 @@ void portout(uint16_t portnum, uint8_t v)
 {
 	struct x86_bridge *xb = bridges[0];
 	if (!xb) {
+		if (sunpci_x86_active()) {
+			sunpci_x86_io(portnum, 0, v, 1);
+			return;
+		}
 		atonce_x86_io(portnum, 0, v, 1);
 		return;
 	}
@@ -2517,6 +2524,10 @@ void portout16(uint16_t portnum, uint16_t value)
 {
 	struct x86_bridge *xb = bridges[0];
 	if (!xb) {
+		if (sunpci_x86_active()) {
+			sunpci_x86_io(portnum, 0, value, 2);
+			return;
+		}
 		atonce_x86_io(portnum, 0, value, 2);
 		return;
 	}
@@ -2548,6 +2559,10 @@ void portout16(uint16_t portnum, uint16_t value)
 void portout32(uint16_t portnum, uint32_t value)
 {
 	if (!bridges[0]) {
+		if (sunpci_x86_active()) {
+			sunpci_x86_io(portnum, 0, value, 4);
+			return;
+		}
 		atonce_x86_io(portnum, 0, value, 4);
 		return;
 	}
@@ -2572,6 +2587,9 @@ uint8_t portin(uint16_t portnum)
 {
 	struct x86_bridge *xb = bridges[0];
 	if (!xb) {
+		if (sunpci_x86_active()) {
+			return (uint8_t)sunpci_x86_io(portnum, 1, 0, 1);
+		}
 		return (uint8_t)atonce_x86_io(portnum, 1, 0, 1);
 	}
 	int aio = -1;
@@ -2921,6 +2939,9 @@ uint16_t portin16(uint16_t portnum)
 {
 	struct x86_bridge *xb = bridges[0];
 	if (!xb) {
+		if (sunpci_x86_active()) {
+			return (uint16_t)sunpci_x86_io(portnum, 1, 0, 2);
+		}
 		return (uint16_t)atonce_x86_io(portnum, 1, 0, 2);
 	}
 	uae_u16 v = 0;
@@ -2953,6 +2974,9 @@ uint32_t portin32(uint16_t portnum)
 	uint32_t v = 0;
 
 	if (!bridges[0]) {
+		if (sunpci_x86_active()) {
+			return sunpci_x86_io(portnum, 1, 0, 4);
+		}
 		return atonce_x86_io(portnum, 1, 0, 4);
 	}
 	if (portnum >= MAX_IO_PORT)

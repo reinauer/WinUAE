@@ -1477,6 +1477,7 @@ set(WINUAE_UNIX_ENABLE_X86 ON)
 target_compile_definitions(winuae_unix_core_defs INTERFACE WITH_X86=1)
 list(APPEND WINUAE_UNIX_EXTRA_SOURCES
     atonce.cpp
+    sunpci.cpp
     x86.cpp
     ${WINUAE_UNIX_86BOX_GLUE_SOURCES}
 )
@@ -1525,7 +1526,7 @@ if(WINUAE_UNIX_86BOX_SOURCES)
     target_compile_options(winuae_86box PRIVATE -w)
     # The glue and the WinUAE files that drive the PC include 86Box headers
     # by their 86box/... path.
-    set_source_files_properties(${WINUAE_UNIX_86BOX_GLUE_SOURCES} ${WINUAE_UNIX_86BOX_DRACO_SOURCES} atonce.cpp x86.cpp draco.cpp
+    set_source_files_properties(${WINUAE_UNIX_86BOX_GLUE_SOURCES} ${WINUAE_UNIX_86BOX_DRACO_SOURCES} atonce.cpp sunpci.cpp x86.cpp draco.cpp
         ${WINUAE_UNIX_86BOX_VIDEO_GLUE_SOURCES}
         PROPERTIES INCLUDE_DIRECTORIES
             "${CMAKE_CURRENT_SOURCE_DIR}/86box/winuae;${CMAKE_CURRENT_SOURCE_DIR}/86box/winuae/include;${CMAKE_CURRENT_SOURCE_DIR}/86box/include"

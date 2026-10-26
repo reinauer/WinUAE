@@ -1,8 +1,9 @@
 /*
 * UAE - The Un*x Amiga Emulator
 *
-* The PCs inside the bridgeboards and ATonce, described the way 86Box
-* describes its machines and CPUs. The CPU timings are 86Box's own.
+* The PCs inside the bridgeboards, ATonce and SunPCi card, described the
+* way 86Box describes its machines and CPUs. The CPU timings are 86Box's
+* own.
 */
 
 #include "sysconfig.h"
@@ -117,6 +118,18 @@ static CPU cpus_i486dx2[] = {
 	CPU_END
 };
 
+/* SunPCi I: 300 MHz (375-0075) and 400 MHz (375-0095) cards, CXT core */
+#define CPU_K6_2_ENTRY(n, speed, mul, mr, cr, atdiv) \
+	{ .name = n, .cpu_type = CPU_K6_2, .fpus = fpus_internal, .rspeed = speed, .multi = mul, .voltage = 2200, \
+	  .edx_reset = 0x58c, .cpuid_model = 0x58c, .cyrix_id = 0, .cpu_flags = CPU_SUPPORTS_DYNAREC, \
+	  .mem_read_cycles = mr, .mem_write_cycles = mr, .cache_read_cycles = cr, .cache_write_cycles = cr, \
+	  .atclk_div = atdiv }
+static CPU cpus_k6_2[] = {
+	CPU_K6_2_ENTRY("300", 300000000, 3.0, 27, 9, 36),
+	CPU_K6_2_ENTRY("400", 400000000, 4.0, 36, 12, 48),
+	CPU_END
+};
+
 #define FAMILY(p, n, c) { .package = p, .manufacturer = "Intel", .name = n, .internal_name = n, .cpus = c }
 
 const cpu_family_t cpu_families[] = {
@@ -127,6 +140,7 @@ const cpu_family_t cpu_families[] = {
 	FAMILY(CPU_PKG_SOCKET1, "i486SX", cpus_i486sx),
 	FAMILY(CPU_PKG_SOCKET1, "i486DX", cpus_i486dx),
 	FAMILY(CPU_PKG_SOCKET1, "i486DX2", cpus_i486dx2),
+	{ .package = CPU_PKG_SOCKET5_7, .manufacturer = "AMD", .name = "K6-2", .internal_name = "k6_2", .cpus = cpus_k6_2 },
 	{ .package = 0, .manufacturer = "", .name = "", .internal_name = "", .cpus = NULL }
 };
 
@@ -134,7 +148,8 @@ const cpu_family_t cpu_families[] = {
 static const int model_families[][8] = {
 	{ 0, -1 },
 	{ 1, -1 },
-	{ 2, 3, 4, 5, 6, -1 }
+	{ 2, 3, 4, 5, 6, -1 },
+	{ 7, -1 }
 };
 
 static uint8_t bridge_p1_handler(void)
@@ -142,9 +157,15 @@ static uint8_t bridge_p1_handler(void)
 	return x86_get_jumpers();
 }
 
-#define MACHINE(n, iname, t, pkg, bus, ramax, nvrm, kbc, nvr, nvrparams) { \
+/* Colour display, keyboard not locked */
+static uint8_t sunpci_p1_handler(void)
+{
+	return 0x80;
+}
+
+#define MACHINE(n, iname, t, pkg, bus, ramax, nvrm, kbc, nvr, nvrparams, p1) { \
 	.name = n, .internal_name = iname, .type = t, .chipset = MACHINE_CHIPSET_DISCRETE, \
-	.init = NULL, .p1_handler = bridge_p1_handler, .gpio_handler = NULL, \
+	.init = NULL, .p1_handler = p1, .gpio_handler = NULL, \
 	.available_flag = (uintptr_t) MACHINE_AVAILABLE, .gpio_acpi_handler = NULL, \
 	.cpu = { .package = pkg, .block = CPU_BLOCK_NONE, .min_bus = 0, .max_bus = 0, \
 		.min_voltage = 0, .max_voltage = 0, .min_multi = 0, .max_multi = 0 }, \
@@ -157,9 +178,11 @@ static uint8_t bridge_p1_handler(void)
 	.sio_device = NULL, .sio_params = 0, .kbc_p1 = 0xff, .gpio = 0xffffffff, .gpio_acpi = 0xffffffff }
 
 const machine_t machines[] = {
-	MACHINE("Bridgeboard XT", "bridgeboard_xt", MACHINE_TYPE_8088, CPU_PKG_8088, MACHINE_PC, 640, 0, NULL, NULL, 0),
-	MACHINE("Bridgeboard 286", "bridgeboard_286", MACHINE_TYPE_286, CPU_PKG_286, MACHINE_AT, 16384, 127, &kbc_at_device, &nvr_at_device, NVR_AT),
-	MACHINE("Bridgeboard 386SX", "bridgeboard_386sx", MACHINE_TYPE_386SX, CPU_PKG_386SX | CPU_PKG_386DX | CPU_PKG_SOCKET1, MACHINE_AT, 16384, 255, &kbc_at_device, &nvr_at_device, NVR_AT),
+	MACHINE("Bridgeboard XT", "bridgeboard_xt", MACHINE_TYPE_8088, CPU_PKG_8088, MACHINE_PC, 640, 0, NULL, NULL, 0, bridge_p1_handler),
+	MACHINE("Bridgeboard 286", "bridgeboard_286", MACHINE_TYPE_286, CPU_PKG_286, MACHINE_AT, 16384, 127, &kbc_at_device, &nvr_at_device, NVR_AT, bridge_p1_handler),
+	MACHINE("Bridgeboard 386SX", "bridgeboard_386sx", MACHINE_TYPE_386SX, CPU_PKG_386SX | CPU_PKG_386DX | CPU_PKG_SOCKET1, MACHINE_AT, 16384, 255, &kbc_at_device, &nvr_at_device, NVR_AT, bridge_p1_handler),
+	/* The SunPCi card decodes its PCI bus itself (sunpci.cpp) */
+	MACHINE("SunPCi I", "sunpci1", MACHINE_TYPE_SOCKET7, CPU_PKG_SOCKET5_7, MACHINE_AT, 131072, 127, &kbc_at_device, &nvr_at_device, NVR_AT, sunpci_p1_handler),
 	{ .name = NULL }
 };
 

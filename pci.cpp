@@ -10,7 +10,9 @@
 
 #define PCI_DEBUG_IO 0
 #define PCI_DEBUG_MEMORY 0
-#define PCI_DEBUG_CONFIG 1
+#ifndef PCI_DEBUG_CONFIG
+#define PCI_DEBUG_CONFIG 0
+#endif
 #define PCI_DEBUG_BRIDGE 0
 #define PCI_DEBUG_IO_MISS 0
 
@@ -1851,6 +1853,7 @@ bool pci_validate_address(uaecptr addr, uae_u32 size, bool io)
 }
 
 #include "sunpci_pci.inc"
+#include "sunpci.h"
 
 static void add_pci_devices(struct pci_bridge *pcib, struct autoconfig_info *aci)
 {
@@ -1869,6 +1872,12 @@ static void add_pci_devices(struct pci_bridge *pcib, struct autoconfig_info *aci
 		pci_board_add(pcib, &es1370_pci_board, -1, 0, aci, NULL);
 		pci_board_add_next(pcib);
 	}
+#ifdef WITH_X86
+	if (is_device_rom(&currprefs, ROMTYPE_SUNPCI1, 0) >= 0 && pcib->log_slot_cnt < MAX_PCI_BOARDS && sunpci1_start()) {
+		pci_board_add(pcib, &sunpci1_pci_board, -1, 0, aci, NULL);
+		pci_board_add_next(pcib);
+	}
+#endif
 	const int sunpci_types[] = { ROMTYPE_SUNPCI1_TEST, ROMTYPE_SUNPCI2_TEST, ROMTYPE_SUNPCI3_TEST };
 	for (int i = 0; i < 3; i++) {
 		if (is_device_rom(&currprefs, sunpci_types[i], 0) >= 0 &&

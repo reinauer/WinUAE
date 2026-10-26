@@ -3277,6 +3277,10 @@
       <AdditionalIncludeDirectories>$(WinUAE86BoxGlueIncludes);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>$(WinUAE86BoxDefinitions);%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
+    <ClCompile Include="..\..\sunpci.cpp">
+      <AdditionalIncludeDirectories>$(WinUAE86BoxGlueIncludes);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>$(WinUAE86BoxDefinitions);%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
     <ClCompile Include="..\ahidsound_dsonly.cpp" />
     <ClCompile Include="..\ahidsound_new.cpp" />
     <ClCompile Include="..\avioutput.cpp" />

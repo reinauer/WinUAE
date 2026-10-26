@@ -18,7 +18,8 @@
 enum {
 	X86PC_XT,		/* 8088 PC/XT (A1060, A2088, A2088T) */
 	X86PC_AT286,	/* 286 AT (A2286, ATonce) */
-	X86PC_AT386SX	/* 386SX AT (A2386SX) */
+	X86PC_AT386SX,	/* 386SX AT (A2386SX) */
+	X86PC_SUNPCI	/* K6-2 with its own chipset (SunPCi I card) */
 };
 
 /* Select the PC model and its default CPU, cpu_index into that model's

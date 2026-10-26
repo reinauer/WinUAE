@@ -724,6 +724,9 @@
     <ClCompile Include="..\..\x86.cpp">
       <Filter>common</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\sunpci.cpp">
+      <Filter>common</Filter>
+    </ClCompile>
     <ClCompile Include="..\..\vm.cpp">
       <Filter>common</Filter>
     </ClCompile>
