@@ -72,6 +72,8 @@
 #include "86box/cpu/cpu.h"
 
 #define MAX_IO_PORT 0x400
+// PC device handlers include extended ISA ports such as ELCR at 4D0/4D1.
+#define MAX_IO_HANDLERS 0x10000
 
 // Like 86Box's io.c, a port can have several handlers (devices register
 // overlapping ranges) and removing a handler only removes the matching one.
@@ -86,11 +88,11 @@ struct port_handler
 	void *priv;
 	struct port_handler *next;
 };
-static struct port_handler *port_handlers[MAX_IO_PORT];
+static struct port_handler *port_handlers[MAX_IO_HANDLERS];
 
 static void port_handlers_free(void)
 {
-	for (int i = 0; i < MAX_IO_PORT; i++) {
+	for (int i = 0; i < MAX_IO_HANDLERS; i++) {
 		while (port_handlers[i]) {
 			struct port_handler *ph = port_handlers[i];
 			port_handlers[i] = ph->next;
@@ -2098,6 +2100,62 @@ static bool port_in_handler16(uint16_t portnum, uint16_t *v)
 		}
 	}
 	return found;
+}
+
+// Access a port through the handlers that 86Box devices registered with
+// io_sethandler(), for a PC without a bridgeboard. Like 86Box's io.c, a
+// width without a handler is split into narrower accesses. Returns false
+// when no handler covers the port.
+bool x86_io_handler_access(uint16_t port, int dir, uint32_t *val, int size)
+{
+	bool found = false;
+	if (size == 1) {
+		if (dir) {
+			uint8_t v;
+			found = port_in_handler_found(port, &v);
+			*val = v;
+		} else {
+			found = port_out_handler(port, (uint8_t)*val);
+		}
+		return found;
+	}
+	for (struct port_handler *ph = port_handlers[port]; ph; ph = ph->next) {
+		if (dir) {
+			if (size == 4 && ph->inl) {
+				*val = found ? *val & ph->inl(port, ph->priv) : ph->inl(port, ph->priv);
+				found = true;
+			} else if (size == 2 && ph->inw) {
+				*val = found ? *val & ph->inw(port, ph->priv) : ph->inw(port, ph->priv);
+				found = true;
+			}
+		} else {
+			if (size == 4 && ph->outl) {
+				ph->outl(port, *val, ph->priv);
+				found = true;
+			} else if (size == 2 && ph->outw) {
+				ph->outw(port, (uint16_t)*val, ph->priv);
+				found = true;
+			}
+		}
+	}
+	if (found) {
+		return true;
+	}
+	int half = size / 2;
+	uint32_t lo = *val, hi = *val >> (half * 8);
+	found = x86_io_handler_access(port, dir, &lo, half);
+	found |= x86_io_handler_access((uint16_t)(port + half), dir, &hi, half);
+	if (dir) {
+		uint32_t mask = (1u << (half * 8)) - 1;
+		*val = (lo & mask) | ((hi & mask) << (half * 8));
+	}
+	return found;
+}
+
+// Drop the handlers the devices of a PC without a bridgeboard left behind.
+void x86_io_handlers_free(void)
+{
+	port_handlers_free();
 }
 
 void portout(uint16_t portnum, uint8_t v)
@@ -4251,7 +4309,7 @@ void io_sethandler(uint16_t base, uint16_t size,
 	void(*outl)(uint16_t addr, uint32_t val, void *priv),
 	void *priv)
 {
-	if (base + size > MAX_IO_PORT)
+	if (base + size > MAX_IO_HANDLERS)
 		return;
 
 	for (int i = 0; i < size; i++) {
@@ -4321,7 +4379,7 @@ void io_removehandler(uint16_t base, uint16_t size,
 	void(*outl)(uint16_t addr, uint32_t val, void *priv),
 	void *priv)
 {
-	if (base + size > MAX_IO_PORT)
+	if (base + size > MAX_IO_HANDLERS)
 		return;
 
 	for (int i = 0; i < size; i++) {
