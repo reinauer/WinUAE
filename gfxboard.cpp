@@ -422,6 +422,15 @@ static const struct gfxboard boards[] =
 		0x00000000, 0x00100000, 0x00200000, 0x00000000, CIRRUS_ID_CLGD5426, 0, 0, false, false,
 		ROMTYPE_x86_VGA
 	},
+#ifdef WITH_X86
+	{
+		GFXBOARD_ID_SUNPCI_VGA,
+		_T("SunPCi I SiS 5598 VGA"), _T("SiS"), _T("SunPCi_VGA"),
+		0, 0, 0, 0,
+		0x00000000, 0x00100000, 0x00400000, 0x00000000, 0, 0, 0, false, false,
+		0, 0, NULL, &sis5598_device
+	},
+#endif
 	{
 		NULL
 	}
@@ -2086,6 +2095,18 @@ static uae_u8 bget_regtest (struct rtggfxboard *gb, uaecptr addr, uae_u8 v)
 		}
 	}
 	return v;
+}
+
+// The SunPCi card's PC drives this board directly (sunpci.cpp).
+void *gfxboard_get_sunpci_vga(void)
+{
+	for (int i = 0; i < MAX_RTG_BOARDS; i++) {
+		struct rtggfxboard *gb = &rtggfxboards[i];
+		if (gb->active && gb->rbc && gb->rbc->rtgmem_type == GFXBOARD_ID_SUNPCI_VGA && gb->pcemobject) {
+			return gb->pcemobject;
+		}
+	}
+	return NULL;
 }
 
 void vga_io_put(int board, int portnum, uae_u8 v)
@@ -4999,7 +5020,7 @@ bool gfxboard_init_memory (struct autoconfig_info *aci)
 	aci->label = gb->board->name;
 	aci->direct_vram = true;
 	aci->addrbank = &gb->gfxboard_bank_memory;
-	if (gb->rbc->rtgmem_type == GFXBOARD_ID_VGA) {
+	if (gb->rbc->rtgmem_type == GFXBOARD_ID_VGA || gb->rbc->rtgmem_type == GFXBOARD_ID_SUNPCI_VGA) {
 		aci->zorro = -1;
 		if (gb->monitor_id > 0) {
 			gb->monswitch_keep_trying = true;
@@ -5019,6 +5040,8 @@ bool gfxboard_init_memory (struct autoconfig_info *aci)
 		} else if (gb->rbc->rtgmem_type == GFXBOARD_ID_VGA) {
 			static const int parent[] = { ROMTYPE_A1060, ROMTYPE_A2088, ROMTYPE_A2088T, ROMTYPE_A2286, ROMTYPE_A2386, 0 };
 			aci->parent_romtype = parent;
+		} else if (gb->rbc->rtgmem_type == GFXBOARD_ID_SUNPCI_VGA) {
+			// not on an Amiga bus: the SunPCi card's PC drives it
 		} else if (gb->board->bustype == GFXBOARD_BUSTYPE_PCI) {
 			static const int parent[] = { ROMTYPE_GREX, ROMTYPE_MEDIATOR, ROMTYPE_PROMETHEUS, ROMTYPE_PROMETHEUSFS, 0 };
 			aci->parent_romtype = parent;
@@ -5185,7 +5208,7 @@ bool gfxboard_init_memory (struct autoconfig_info *aci)
 		gb->configured_regs = 1;
 	}
 
-	if (gb->rbc->rtgmem_type == GFXBOARD_ID_VGA) {
+	if (gb->rbc->rtgmem_type == GFXBOARD_ID_VGA || gb->rbc->rtgmem_type == GFXBOARD_ID_SUNPCI_VGA) {
 		init_board(gb);
 		gb->configured_mem = 1;
 		gb->configured_regs = 1;

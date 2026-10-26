@@ -218,7 +218,14 @@ svga_render_text_40(svga_t *svga)
                 }
             }
 
+#ifdef UAE
+            charaddr += svga->scanline << 2;
+            if (svga->qword_planes)
+                charaddr = (((charaddr & ~3U) << 1) | (charaddr & 3)) & svga->vram_mask;
+            dat = svga->vram[charaddr];
+#else
             dat = svga->vram[charaddr + (svga->scanline << 2)];
+#endif
             if (svga->seqregs[1] & 1) {
                 for (xx = 0; xx < 16; xx += 2)
                     p[xx] = p[xx + 1] = (dat & (0x80 >> (xx >> 1))) ? fg : bg;
@@ -304,7 +311,14 @@ svga_render_text_80(svga_t *svga)
                 }
             }
 
+#ifdef UAE
+            charaddr += svga->scanline << 2;
+            if (svga->qword_planes)
+                charaddr = (((charaddr & ~3U) << 1) | (charaddr & 3)) & svga->vram_mask;
+            dat = svga->vram[charaddr];
+#else
             dat = svga->vram[charaddr + (svga->scanline << 2)];
+#endif
 
             if (svga->attrregs[0x10] & 0x40) {
                 if (svga->seqregs[1] & 1) {

@@ -1011,6 +1011,7 @@ set(WINUAE_UNIX_86BOX_VIDEO_SOURCES
     86box/winuae/vid_ncr.cpp
     86box/winuae/vid_permedia2.cpp
     86box/winuae/vid_ramdac_bt482.cpp
+    86box/winuae/vid_sis5598.cpp
 )
 
 set(WINUAE_UNIX_86BOX_VIDEO_GLUE_SOURCES

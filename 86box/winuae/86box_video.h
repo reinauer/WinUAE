@@ -39,6 +39,7 @@ extern const device_t millennium_device;
 extern const device_t millennium_ii_device;
 extern const device_t mystique_device;
 extern const device_t mystique_220_device;
+extern const device_t sis5598_device;
 
 /* Set up the video glue for board 'gfxboard' (rtggfxboard) and start the
    card. swapped: the board shows 15/16 bit pixels with red and blue

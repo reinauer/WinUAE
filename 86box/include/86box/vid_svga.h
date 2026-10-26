@@ -314,6 +314,12 @@ typedef struct svga_t {
 
     int remap_required;
     uint32_t (*remap_func)(struct svga_t *svga, uint32_t in_addr);
+#ifdef UAE
+    /* The SiS 5598 keeps the four planes in the low dword of each qword:
+       the display and font addresses of the planar and text modes. */
+    int qword_planes;
+    int remap_base;
+#endif
 
     void *ramdac;
     void *clock_gen;

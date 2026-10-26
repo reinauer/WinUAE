@@ -90,6 +90,16 @@ static uint32_t (*address_remap_funcs[16])(svga_t *svga, uint32_t in_addr) = {
     address_remap_func_15
 };
 
+#ifdef UAE
+static uint32_t
+address_remap_qword(svga_t *svga, uint32_t in_addr)
+{
+    uint32_t addr = address_remap_funcs[svga->remap_base](svga, in_addr);
+
+    return ((addr & ~3U) << 1) | (addr & 3);
+}
+#endif
+
 void
 svga_recalc_remap_func(svga_t *svga)
 {
@@ -117,6 +127,13 @@ svga_recalc_remap_func(svga_t *svga)
 
     svga->remap_required = (func_nr != 0);
     svga->remap_func     = address_remap_funcs[func_nr];
+#ifdef UAE
+    if (svga->qword_planes && !svga->fb_only) {
+        svga->remap_base     = func_nr;
+        svga->remap_required = 1;
+        svga->remap_func     = address_remap_qword;
+    }
+#endif
 }
 
 #endif /*VIDEO_RENDER_REMAP_H*/

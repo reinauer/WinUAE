@@ -2886,6 +2886,12 @@
       <ForcedIncludeFiles>86box_msvc.h;86box_video_redirect.h;%(ForcedIncludeFiles)</ForcedIncludeFiles>
       <ObjectFileName>$(IntDir)86box\</ObjectFileName>
     </ClCompile>
+    <ClCompile Include="..\..\86box\winuae\vid_sis5598.cpp">
+      <AdditionalIncludeDirectories>$(WinUAE86BoxIncludes);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>$(WinUAE86BoxDefinitions);%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ForcedIncludeFiles>86box_msvc.h;86box_video_redirect.h;%(ForcedIncludeFiles)</ForcedIncludeFiles>
+      <ObjectFileName>$(IntDir)86box\</ObjectFileName>
+    </ClCompile>
     <ClCompile Include="..\..\86box\winuae\86box_video.cpp">
       <AdditionalIncludeDirectories>$(WinUAE86BoxGlueIncludes);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>$(WinUAE86BoxDefinitions);%(PreprocessorDefinitions)</PreprocessorDefinitions>

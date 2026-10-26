@@ -1744,6 +1744,9 @@
     <ClCompile Include="..\..\86box\winuae\vid_ramdac_bt482.cpp">
       <Filter>86box</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\86box\winuae\vid_sis5598.cpp">
+      <Filter>86box</Filter>
+    </ClCompile>
     <ClCompile Include="..\..\86box\winuae\86box_video.cpp">
       <Filter>86box</Filter>
     </ClCompile>
