@@ -1,0 +1,217 @@
+name: Build macOS DMG
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+      - back-to-the-roots
+  pull_request:
+    branches:
+      - master
+
+permissions:
+  contents: read
+
+env:
+  MACOS_DEPLOYMENT_TARGET: "13.0"
+  SDL3_REF: release-3.4.8
+  QTBASE_REF: v6.11.1
+  LIBPNG_REF: v1.6.58
+  FLAC_REF: "1.5.0"
+  FFMPEG_REF: "n8.1.2"
+  GLIB_REF: "2.88.2"
+  LIBMPEG2_VERSION: "0.5.1"
+  LIBMPEG2_SHA256: dee22e893cb5fc2b2b6ebd60b88478ab8556cb3b93f9a0d7ce8f3b61851871d4
+  BUILD_DIR: ${{ github.workspace }}/build/macos
+  DEPS_PREFIX: ${{ github.workspace }}/.deps/macos
+
+jobs:
+  build-macos-dmg:
+    name: Build macOS DMG
+    if: github.repository != 'tonioni/WinUAE'
+    runs-on: macos-15
+    env:
+      # Developer ID signing and notarization are optional. They only run
+      # when the signing secrets are configured, and never for pull
+      # requests. Without them the DMG is ad-hoc signed, as in a local build.
+      SIGN_MACOS: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 != '' && github.event_name != 'pull_request' }}
+
+    steps:
+      - name: Checkout WinUAE
+        uses: actions/checkout@v4
+
+      # Use the release-oriented plugin wrapper instead of the raw QEMU fork.
+      # It downloads a pinned QEMU 11.0.1 tarball, verifies it, applies the
+      # UAE patch deck, and builds qemu-uae.so with a macOS 13 default.
+      - name: Checkout QEMU-UAE PPC plugin builder
+        uses: actions/checkout@v4
+        with:
+          repository: reinauer/uae-ppc-plugin
+          path: uae-ppc-plugin
+
+      - name: Install host build tools
+        run: |
+          brew install \
+            autoconf \
+            automake \
+            cmake \
+            gettext \
+            libtool \
+            meson \
+            ninja \
+            pkgconf
+
+      - name: Fetch dependency sources
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p deps-src
+          git clone --depth 1 --branch "${SDL3_REF}" \
+            https://github.com/libsdl-org/SDL.git deps-src/SDL
+          git clone --depth 1 --branch "${QTBASE_REF}" \
+            https://github.com/qt/qtbase.git deps-src/qtbase
+          git clone --depth 1 --branch "${LIBPNG_REF}" \
+            https://github.com/pnggroup/libpng.git deps-src/libpng
+          git clone --depth 1 --branch "${FLAC_REF}" \
+            https://github.com/xiph/flac.git deps-src/flac
+          git clone --depth 1 --branch "${FFMPEG_REF}" \
+            https://github.com/FFmpeg/FFmpeg.git deps-src/FFmpeg
+          git clone --depth 1 --branch "${GLIB_REF}" \
+            https://github.com/GNOME/glib.git deps-src/glib
+          curl -fsSL -o deps-src/libmpeg2.tar.gz \
+            "https://download.videolan.org/contrib/libmpeg2/libmpeg2-${LIBMPEG2_VERSION}.tar.gz"
+          echo "${LIBMPEG2_SHA256}  deps-src/libmpeg2.tar.gz" | shasum -a 256 -c -
+          tar -xzf deps-src/libmpeg2.tar.gz -C deps-src
+
+      - name: Build private macOS dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          export WINUAE_MACOS_DEPLOYMENT_TARGET="${MACOS_DEPLOYMENT_TARGET}"
+          export WINUAE_SDL3_SOURCE="${GITHUB_WORKSPACE}/deps-src/SDL"
+          export WINUAE_QT_SOURCE="${GITHUB_WORKSPACE}/deps-src/qtbase"
+          export WINUAE_LIBPNG_SOURCE="${GITHUB_WORKSPACE}/deps-src/libpng"
+          export WINUAE_FLAC_SOURCE="${GITHUB_WORKSPACE}/deps-src/flac"
+          export WINUAE_LIBMPEG2_SOURCE="${GITHUB_WORKSPACE}/deps-src/libmpeg2-${LIBMPEG2_VERSION}"
+          export WINUAE_FFMPEG_SOURCE="${GITHUB_WORKSPACE}/deps-src/FFmpeg"
+          export WINUAE_REQUIRE_LIBPNG=1
+          export WINUAE_REQUIRE_FLAC=1
+          export WINUAE_REQUIRE_LIBMPEG2=1
+          export WINUAE_REQUIRE_FFMPEG=1
+
+          tools/macos-build-deps.sh "${DEPS_PREFIX}"
+
+      - name: Build private QEMU-UAE dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          export WINUAE_MACOS_DEPLOYMENT_TARGET="${MACOS_DEPLOYMENT_TARGET}"
+          export WINUAE_GLIB_SOURCE="${GITHUB_WORKSPACE}/deps-src/glib"
+
+          tools/macos-build-qemu-deps.sh "${DEPS_PREFIX}"
+
+      - name: Configure WinUAE
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cmake -S . -B "${BUILD_DIR}" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET="${MACOS_DEPLOYMENT_TARGET}" \
+            -DCMAKE_PREFIX_PATH="${DEPS_PREFIX}" \
+            -DWINUAE_UNIX_MACOS_DEPS_PREFIX="${DEPS_PREFIX}" \
+            -DWINUAE_QEMU_UAE_DEPS_PREFIX="${DEPS_PREFIX}" \
+            -DWINUAE_QEMU_UAE_BUILDER_DIR="${GITHUB_WORKSPACE}/uae-ppc-plugin" \
+            -DWINUAE_LZMA_SDK_FETCH=ON \
+            -DWINUAE_UNIX_WITH_QT_DEFAULT_STYLE=ON
+
+      - name: Set up Developer ID signing
+        if: env.SIGN_MACOS == 'true'
+        shell: bash
+        env:
+          MACOS_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          MACOS_NOTARY_KEY_P8_BASE64: ${{ secrets.MACOS_NOTARY_KEY_P8_BASE64 }}
+          MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+          MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+
+          keychain="${RUNNER_TEMP}/winuae-signing.keychain-db"
+          keychain_password="$(openssl rand -base64 32)"
+          certificate="${RUNNER_TEMP}/winuae-signing.p12"
+
+          printf '%s' "${MACOS_CERTIFICATE_P12_BASE64}" | base64 --decode > "${certificate}"
+          security create-keychain -p "${keychain_password}" "${keychain}"
+          security set-keychain-settings -lut 21600 "${keychain}"
+          security unlock-keychain -p "${keychain_password}" "${keychain}"
+          security import "${certificate}" -k "${keychain}" -f pkcs12 \
+            -P "${MACOS_CERTIFICATE_PASSWORD}" \
+            -T /usr/bin/codesign -T /usr/bin/security
+          rm -f "${certificate}"
+
+          # Make sure the Developer ID G2 intermediate is available even if
+          # the exported .p12 only contains the leaf certificate.
+          curl -fsSL -o "${RUNNER_TEMP}/DeveloperIDG2CA.cer" \
+            https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer
+          security import "${RUNNER_TEMP}/DeveloperIDG2CA.cer" -k "${keychain}" || true
+
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "${keychain_password}" "${keychain}" >/dev/null
+          # shellcheck disable=SC2046
+          security list-keychains -d user -s "${keychain}" \
+            $(security list-keychains -d user | tr -d '"')
+
+          identity="$(security find-identity -v -p codesigning "${keychain}" \
+            | awk '/Developer ID Application/ { print $2; exit }')"
+          if [[ -z "${identity}" ]]; then
+            echo "error: no Developer ID Application identity in MACOS_CERTIFICATE_P12_BASE64" >&2
+            security find-identity -v -p codesigning "${keychain}" >&2
+            exit 1
+          fi
+
+          {
+            echo "WINUAE_CODESIGN_IDENTITY=${identity}"
+            echo "WINUAE_CODESIGN_KEYCHAIN=${keychain}"
+          } >> "${GITHUB_ENV}"
+
+          if [[ -n "${MACOS_NOTARY_KEY_P8_BASE64}" ]]; then
+            notary_key="${RUNNER_TEMP}/winuae-notary-key.p8"
+            printf '%s' "${MACOS_NOTARY_KEY_P8_BASE64}" | base64 --decode > "${notary_key}"
+            {
+              echo "WINUAE_NOTARY_KEY=${notary_key}"
+              echo "WINUAE_NOTARY_KEY_ID=${MACOS_NOTARY_KEY_ID}"
+              echo "WINUAE_NOTARY_ISSUER=${MACOS_NOTARY_ISSUER_ID}"
+            } >> "${GITHUB_ENV}"
+          else
+            echo "::warning::MACOS_NOTARY_KEY_P8_BASE64 is not set; the DMG will be signed but not notarized"
+          fi
+
+      - name: Build and verify DMG
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cmake --build "${BUILD_DIR}" \
+            --target winuae_unix_macos_dmg \
+            --parallel "$(sysctl -n hw.ncpu)"
+
+      - name: Remove signing keychain
+        if: always() && env.SIGN_MACOS == 'true'
+        shell: bash
+        run: |
+          if [[ -n "${WINUAE_CODESIGN_KEYCHAIN:-}" ]]; then
+            security delete-keychain "${WINUAE_CODESIGN_KEYCHAIN}" || true
+          fi
+          rm -f "${RUNNER_TEMP}/winuae-notary-key.p8" "${RUNNER_TEMP}/winuae-signing.p12"
+
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: WinUAE macOS DMG
+          path: ${{ env.BUILD_DIR }}/package/WinUAE-*.dmg
+          if-no-files-found: error
