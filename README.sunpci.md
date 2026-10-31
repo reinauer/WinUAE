@@ -118,10 +118,12 @@ loads Sun's display driver. Monitor 2 ignores a Screen Off written in SMM
 and keeps showing POST, DOS and the Windows shutdown screen; SR01 still
 reads back as written, and Screen Off from normal code still blanks it.
 The capture also reprograms the sequencer, graphics and attribute
-registers to read the planes, and it repeats at the PIC's SMI rate. From
-the first VGA register write in SMM until RSM, monitor 2 keeps its last
-whole frame (86Box's SVGA override) instead of drawing lines in the
-capture's register state, which flickered and resized the window.
+registers to read the planes, and it repeats at the PIC's SMI rate. A
+frame during which SMM wrote VGA registers is not presented: monitor 2
+keeps the previous frame and redraws the next one in full, instead of
+showing lines drawn in the capture's register state, which flickered and
+resized the window. Whole frames are held because 86Box's text renderers
+advance the display address, so skipping lines would shift the rest.
 
 ## The card on 86Box
 

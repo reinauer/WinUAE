@@ -1299,6 +1299,29 @@ static void sunpci_vga_config_written(struct sunpci_dev *d, int reg, uae_u8 old)
 	}
 }
 
+// The BIOS's SMM display capture reprograms the sequencer, graphics and
+// attribute registers to read the planes and restores them before RSM. A
+// frame drawn while it ran is not presented: monitor 2 keeps the previous
+// frame and redraws the next one in full. Holding whole frames keeps the
+// renderers, which also advance the display address, running on every line.
+static bool sunpci_vga_smm_frame;
+
+static void sunpci_vga_vblank_start(svga_t *svga)
+{
+	if (sunpci_vga_smm_frame) {
+		svga->override = 1;
+	}
+}
+
+static void sunpci_vga_vsync(svga_t *svga)
+{
+	if (svga->override && sunpci_vga_smm_frame) {
+		svga->override = 0;
+		svga->fullchange = svga->monitor->mon_changeframecount;
+	}
+	sunpci_vga_smm_frame = in_smm != 0;
+}
+
 // Legacy VGA ports, and the relocated copy of 380-3FF behind BAR2.
 static bool sunpci_vga_io(struct sunpci_state *s, uint16_t port, int dir, uint32_t *val, int size)
 {
@@ -1324,12 +1347,8 @@ static bool sunpci_vga_io(struct sunpci_state *s, uint16_t port, int dir, uint32
 		*val = v;
 	} else {
 		svga_t *svga = sunpci_vga_svga(s);
-		// The BIOS's SMM display capture reprograms the sequencer, graphics
-		// and attribute registers to read the planes and restores them
-		// before RSM. Monitor 2 keeps its last whole frame meanwhile instead
-		// of drawing lines in the capture's register state.
-		if (in_smm && !svga->override) {
-			svga_set_override(svga, 1);
+		if (in_smm) {
+			sunpci_vga_smm_frame = true;
 		}
 		for (int i = 0; i < size; i++) {
 			sis5598_out(vport + i, (uint8_t)(*val >> (i * 8)), s->vga);
@@ -1961,12 +1980,16 @@ static void sunpci_card_reset(struct sunpci_state *s)
 		s->vga = gfxboard_get_sunpci_vga();
 		if (s->vga) {
 			write_log(_T("SUNPCI: SiS 5598 VGA attached\n"));
+			svga_t *svga = sunpci_vga_svga(s);
+			svga->vblank_start = sunpci_vga_vblank_start;
+			svga->vsync_callback = sunpci_vga_vsync;
 		}
 	}
 	sunpci_build_bus(s);
 	sunpci_flash_reset(s);
 	s->db.pic_smi_rate = 0;
 	s->smi_lines = 0;
+	sunpci_vga_smm_frame = false;
 	sunpci_smram_update(s);
 	sunpci_sis_shadow(s->sis_host);
 	s->port92 = 0;
@@ -2204,10 +2227,6 @@ static void sunpci_x86_run(struct sunpci_state *s)
 		s->cycle_acc -= cycs;
 	}
 	sunpci_mouse_feed(s);
-	svga_t *svga = sunpci_vga_svga(s);
-	if (svga && svga->override && !in_smm) {
-		svga_set_override(svga, 0);
-	}
 
 #if SUNPCI_DEBUG_CSR
 	{
