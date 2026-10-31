@@ -146,7 +146,11 @@ only while the primary command register enables bus mastering, as on the
 21554; otherwise reads return all ones and writes are dropped. A translated
 base has only the bits its window's BAR has, so a base that is not aligned
 to the window is rounded down to it: a 128 KB RM region at a 64 KB boundary
-lands 64 KB low, as it does on the chip.
+lands 64 KB low, as it does on the chip. An upstream access that nothing
+on the host's bus decodes sets Received Master Abort in the primary status
+register, and Signaled Target Abort in the secondary status when Chip
+Control 0's master abort mode asks for it; reads return all ones. The
+status registers' error bits and the chip status are write 1 to clear.
 
 Run the `sunpci.cpp` harnesses with
 

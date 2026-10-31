@@ -129,8 +129,8 @@ struct pci_bridge
 };
 
 extern void pci_irq_callback(struct pci_board_state *pcibs, bool irq);
-extern void pci_write_dma(struct pci_board_state *pcibs, uaecptr addr, uae_u8*, int size);
-extern void pci_read_dma(struct pci_board_state *pcibs, uaecptr addr, uae_u8*, int size);
+extern bool pci_write_dma(struct pci_board_state *pcibs, uaecptr addr, uae_u8*, int size);
+extern bool pci_read_dma(struct pci_board_state *pcibs, uaecptr addr, uae_u8*, int size);
 
 extern const struct pci_board ne2000_pci_board;
 extern const struct pci_board ne2000_pci_board_x86;

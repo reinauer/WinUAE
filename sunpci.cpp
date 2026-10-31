@@ -121,6 +121,7 @@
 #define DB_CONF_US_MEM1_SETUP 0xc8
 #define DB_CONF_CHIP_CTRL0 0xcc
 #define DB_CONF_CHIP_CTRL1 0xce
+#define DB_CONF_CHIP_STATUS 0xd0
 #define DB_CONF_RESET_CTRL 0xd8
 #define DB_CONF_PM_CAP 0xde
 #define DB_CONF_PM_CSR 0xe0
@@ -174,7 +175,7 @@ struct db21554
 	bool host_irq, card_irq;
 	int card_pic_irq;
 	uae_u8 card_irq_state;
-	bool master_abort_logged;
+	bool master_abort_logged, us_abort_logged;
 	bool rom_read_logged, vpd_logged;
 	uae_u8 pic_host_irqs;
 };
@@ -507,11 +508,16 @@ static void db_config_write(struct sunpci_state *s, int reg, uae_u8 v, bool seco
 			if (secondary) {
 				*p = v;
 			}
+		} else if (off == 0x07) {
+			// the status register's error bits are write 1 to clear
+			*p = old & ~(v & 0xf9);
 		} else if (db_header_writable(off)) {
 			*p = v;
 		}
 	} else if (reg >= DB_CONF_RESET_CTRL) {
 		db_ecp_write(s, reg, p, old, v, secondary);
+	} else if (reg == DB_CONF_CHIP_STATUS || reg == DB_CONF_CHIP_STATUS + 1) {
+		*p = old & ~v;
 	} else {
 		*p = v;
 		if ((reg >= DB_CONF_DS_MEM0_SETUP && reg < DB_CONF_CHIP_CTRL0) || reg == DB_CONF_CHIP_CTRL1 + 1) {
@@ -910,6 +916,23 @@ static bool db_us_master(struct sunpci_state *s)
 	return false;
 }
 
+// Nothing on the host's bus decoded the address: the bridge records a
+// master abort in its primary status. With Chip Control 0's master abort
+// mode set it also target-aborts the card's access, which the SiS chipset
+// reports in its own status; the card's reads otherwise get all ones.
+static void db_us_master_abort(struct sunpci_state *s, uae_u32 haddr, bool write)
+{
+	struct db21554 *b = &s->db;
+	b->pri[0x07] |= 0x20;
+	if (b->regs[DB_CONF_CHIP_CTRL0 - 0x80] & 1) {
+		b->sec[0x07] |= 0x08;
+	}
+	if (!b->us_abort_logged) {
+		b->us_abort_logged = true;
+		write_log(_T("SUNPCI: upstream %s to %08x: master abort, PC=%04x:%08x\n"), write ? _T("write") : _T("read"), haddr, CS, cpu_state.pc);
+	}
+}
+
 static uae_u32 db_us_read(struct sunpci_state *s, int win, uae_u32 off, int size)
 {
 	uae_u32 haddr;
@@ -917,7 +940,10 @@ static uae_u32 db_us_read(struct sunpci_state *s, int win, uae_u32 off, int size
 	if (!s->host_pcibs || !db_us_address(s, win, off, &haddr) || !db_us_master(s)) {
 		return 0xffffffff;
 	}
-	pci_read_dma(s->host_pcibs, haddr, buf, size);
+	if (!pci_read_dma(s->host_pcibs, haddr, buf, size)) {
+		db_us_master_abort(s, haddr, false);
+		return 0xffffffff;
+	}
 	uae_u32 v = 0;
 	for (int i = 0; i < size; i++) {
 		v |= buf[i] << (i * 8);
@@ -935,7 +961,9 @@ static void db_us_write(struct sunpci_state *s, int win, uae_u32 off, uae_u32 v,
 	for (int i = 0; i < size; i++) {
 		buf[i] = (uae_u8)(v >> (i * 8));
 	}
-	pci_write_dma(s->host_pcibs, haddr, buf, size);
+	if (!pci_write_dma(s->host_pcibs, haddr, buf, size)) {
+		db_us_master_abort(s, haddr, true);
+	}
 }
 
 // BAR changes need no remapping: sunpci_hole_* decodes the BARs on access.

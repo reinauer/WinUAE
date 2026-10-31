@@ -1558,7 +1558,9 @@ static bool validate_pci_dma(struct pci_board_state *pcibs, uaecptr addr, int si
 	return false;
 }
 
-void pci_write_dma(struct pci_board_state *pcibs, uaecptr addr, uae_u8 *p, int size)
+// Both return false when nothing on the bus decodes the address, so a
+// board can report the master abort as its hardware would.
+bool pci_write_dma(struct pci_board_state *pcibs, uaecptr addr, uae_u8 *p, int size)
 {
 	struct pci_board_state *pcibs2 = NULL;
 	int bar;
@@ -1576,6 +1578,7 @@ void pci_write_dma(struct pci_board_state *pcibs, uaecptr addr, uae_u8 *p, int s
 				size--;
 			}
 		}
+		return true;
 	} else {
 		write_log(_T("pci_write_dma invalid address %08x, size %d\n"), addr, size);
 		while (size > 0) {
@@ -1583,9 +1586,10 @@ void pci_write_dma(struct pci_board_state *pcibs, uaecptr addr, uae_u8 *p, int s
 			addr++;
 			size--;
 		}
+		return false;
 	}
 }
-void pci_read_dma(struct pci_board_state *pcibs, uaecptr addr, uae_u8 *p, int size)
+bool pci_read_dma(struct pci_board_state *pcibs, uaecptr addr, uae_u8 *p, int size)
 {
 	struct pci_board_state *pcibs2 = NULL;
 	int bar;
@@ -1603,6 +1607,7 @@ void pci_read_dma(struct pci_board_state *pcibs, uaecptr addr, uae_u8 *p, int si
 				size--;
 			}
 		}
+		return true;
 	} else {
 		write_log(_T("pci_read_dma invalid address %08x, size %d\n"), addr, size);
 		while (size > 0) {
@@ -1610,6 +1615,7 @@ void pci_read_dma(struct pci_board_state *pcibs, uaecptr addr, uae_u8 *p, int si
 			addr++;
 			size--;
 		}
+		return false;
 	}
 }
 
