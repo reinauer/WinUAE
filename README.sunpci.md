@@ -143,7 +143,10 @@ like the RTG boards and shares their single-card video glue.
 
 The upstream windows forward the card's accesses to the host's PCI bus
 only while the primary command register enables bus mastering, as on the
-21554; otherwise reads return all ones and writes are dropped.
+21554; otherwise reads return all ones and writes are dropped. A translated
+base has only the bits its window's BAR has, so a base that is not aligned
+to the window is rounded down to it: a 128 KB RM region at a 64 KB boundary
+lands 64 KB low, as it does on the chip.
 
 Run the `sunpci.cpp` harnesses with
 

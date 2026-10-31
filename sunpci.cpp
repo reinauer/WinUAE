@@ -850,16 +850,29 @@ static void db_csr_write(struct sunpci_state *s, uae_u32 addr, uae_u32 v, int si
 
 /* Upstream windows: card accesses to host memory */
 
+// A translated base register has only the bits its window's BAR has, so a
+// base that is not aligned to the window is rounded down to it, as on the
+// chip. Sun's driver aligns its 128 KB RM region to 128 KB for this reason.
+static uae_u32 db_us_translate(struct db21554 *b, int bar, int treg, uae_u32 off)
+{
+	uae_u32 size = b->sec_bar_size[bar] & ~1;
+	uae_u32 tr = db_reg32(b, treg);
+	if (size) {
+		tr &= ~(size - 1);
+	}
+	return tr + off;
+}
+
 static bool db_us_address(struct sunpci_state *s, int win, uae_u32 off, uae_u32 *haddr)
 {
 	struct db21554 *b = &s->db;
 	switch (win)
 	{
 	case DB_WIN_US0:
-		*haddr = db_reg32(b, DB_CONF_US_IO_MEM0_TR) + off;
+		*haddr = db_us_translate(b, 2, DB_CONF_US_IO_MEM0_TR, off);
 		return true;
 	case DB_WIN_US1:
-		*haddr = db_reg32(b, DB_CONF_US_MEM1_TR) + off;
+		*haddr = db_us_translate(b, 3, DB_CONF_US_MEM1_TR, off);
 		return true;
 	case DB_WIN_US2:
 	{
