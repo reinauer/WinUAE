@@ -116,14 +116,24 @@
 #define DB_CONF_DS_IO_MEM1_SETUP 0xb0
 #define DB_CONF_DS_MEM2_SETUP 0xb4
 #define DB_CONF_DS_MEM3_SETUP 0xb8
+#define DB_CONF_ROM_SETUP 0xc0
 #define DB_CONF_US_IO_MEM0_SETUP 0xc4
 #define DB_CONF_US_MEM1_SETUP 0xc8
 #define DB_CONF_CHIP_CTRL0 0xcc
 #define DB_CONF_CHIP_CTRL1 0xce
 #define DB_CONF_RESET_CTRL 0xd8
+#define DB_CONF_PM_CAP 0xde
+#define DB_CONF_PM_CSR 0xe0
+#define DB_CONF_VPD_ADDR 0xe6
+#define DB_CONF_VPD_DATA 0xe8
+#define DB_CONF_HS_CTRL 0xee
 
 #define DB_PLOCKOUT 0x0400
 #define DB_RESET_SEC 0x01
+#define DB_RESET_CHIP 0x02
+// Reset control bit 2 shows the s_pme_l pin; a SunPCi I card reads 04
+#define DB_RESET_SUBSYS_STAT 0x04
+#define DB_HS_INS_STAT 0x80
 
 // windows: host BARs (primary) and card BARs (secondary)
 enum {
@@ -135,7 +145,8 @@ enum {
 	DB_WIN_DS3,
 	DB_WIN_US0,
 	DB_WIN_US1,
-	DB_WIN_US2
+	DB_WIN_US2,
+	DB_WIN_ROM
 };
 
 extern bool x86_io_handler_access(uint16_t port, int dir, uint32_t *val, int size);
@@ -164,6 +175,7 @@ struct db21554
 	int card_pic_irq;
 	uae_u8 card_irq_state;
 	bool master_abort_logged;
+	bool rom_read_logged, vpd_logged;
 	uae_u8 pic_host_irqs;
 };
 
@@ -285,6 +297,18 @@ static void db_set_bar_size(uae_u8 *hdr, uae_u32 *sizes, int bar, uae_u32 size, 
 	put_le32(&hdr[off], v);
 }
 
+// The primary expansion ROM BAR follows its setup register: bit 24 enables
+// it, bits 23:12 size it, and bits 31:24 and the decode enable (bit 0) are
+// writable while it is enabled.
+static uae_u32 db_rom_bar_mask(struct db21554 *b)
+{
+	uae_u32 setup = db_reg32(b, DB_CONF_ROM_SETUP);
+	if (!(setup & 0x01000000)) {
+		return 0;
+	}
+	return 0xff000000 | (setup & 0x00fff000) | 1;
+}
+
 static void db_update_bar_sizes(struct db21554 *b)
 {
 	uae_u32 s;
@@ -300,6 +324,7 @@ static void db_update_bar_sizes(struct db21554 *b)
 	s = db_reg32(b, DB_CONF_DS_MEM3_SETUP);
 	db_set_bar_size(b->pri, b->pri_bar_size, 4, db_setup_size(s), db_setup_flags(s));
 	db_set_bar_size(b->pri, b->pri_bar_size, 5, 0, 0);
+	put_le32(&b->pri[0x30], get_le32(&b->pri[0x30]) & db_rom_bar_mask(b));
 
 	// secondary
 	db_set_bar_size(b->sec, b->sec_bar_size, 0, DB_CSR_SIZE, 0);
@@ -371,6 +396,90 @@ static bool db_header_writable(int off)
 	return false;
 }
 
+// Reset control and the enhanced capabilities: power management at DC,
+// VPD at E4 and CompactPCI hot-swap at EC, then reserved space to FF.
+static void db_ecp_write(struct sunpci_state *s, int reg, uae_u8 *p, uae_u8 old, uae_u8 v, bool secondary)
+{
+	struct db21554 *b = &s->db;
+
+	switch (reg)
+	{
+	case DB_CONF_RESET_CTRL:
+	{
+		bool hold = (v & DB_RESET_SEC) != 0;
+		if (hold && !s->in_reset) {
+			write_log(_T("SUNPCI: card reset asserted by %s\n"), secondary ? _T("card") : _T("host"));
+			s->in_reset = true;
+		} else if (!hold && s->in_reset) {
+			write_log(_T("SUNPCI: card reset released\n"));
+			s->in_reset = false;
+			sunpci_card_reset(s);
+		}
+		// chip reset completes at once; the status bits follow pins
+		*p = (old & ~(DB_RESET_SEC | DB_RESET_CHIP)) | (v & DB_RESET_SEC);
+		break;
+	}
+	case DB_CONF_PM_CAP:
+	case DB_CONF_PM_CAP + 1:
+		// the local processor may set the version, DSI, D1/D2 and PME support
+		if (secondary) {
+			uae_u8 m = reg == DB_CONF_PM_CAP ? 0x27 : 0x7e;
+			*p = (old & ~m) | (v & m);
+		}
+		// PME clock reads 1 when any PME support bit is set
+		b->regs[DB_CONF_PM_CAP - 0x80] = (b->regs[DB_CONF_PM_CAP - 0x80] & ~0x08) | ((b->regs[DB_CONF_PM_CAP + 1 - 0x80] & 0xf8) ? 0x08 : 0);
+		break;
+	case DB_CONF_PM_CSR:
+	{
+		// D0 and D3 always, D1 and D2 when the capabilities say so
+		int state = v & 3;
+		if ((state == 1 && !(b->regs[DB_CONF_PM_CAP + 1 - 0x80] & 0x02)) || (state == 2 && !(b->regs[DB_CONF_PM_CAP + 1 - 0x80] & 0x04))) {
+			state = old & 3;
+		}
+		*p = state;
+		break;
+	}
+	case DB_CONF_PM_CSR + 1:
+	{
+		// PME enable needs PME support, the data select PM data from the
+		// serial ROM; PME status is never set without PME support
+		uae_u8 m = (b->regs[DB_CONF_PM_CAP + 1 - 0x80] & 0xf8) ? 0x01 : 0;
+		if (secondary) {
+			m |= 0x60;
+		}
+		*p = (old & ~m) | (v & m);
+		break;
+	}
+	case DB_CONF_VPD_ADDR:
+		*p = v;
+		break;
+	case DB_CONF_VPD_ADDR + 1:
+		// The VPD lives in the serial ROM. Nothing is known about one on
+		// the card, so reads return ones and writes are dropped; the flag
+		// completes the access either way.
+		if (!b->vpd_logged) {
+			b->vpd_logged = true;
+			write_log(_T("SUNPCI: VPD %s at %03x by %s; no serial ROM contents\n"), (v & 0x80) ? _T("write") : _T("read"),
+				((v & 1) << 8) | b->regs[DB_CONF_VPD_ADDR - 0x80], secondary ? _T("card") : _T("host"));
+		}
+		if (!(v & 0x80)) {
+			put_le32(&b->regs[DB_CONF_VPD_DATA - 0x80], 0xffffffff);
+		}
+		*p = (v & 1) | (~v & 0x80);
+		break;
+	case DB_CONF_VPD_DATA:
+	case DB_CONF_VPD_DATA + 1:
+	case DB_CONF_VPD_DATA + 2:
+	case DB_CONF_VPD_DATA + 3:
+		*p = v;
+		break;
+	case DB_CONF_HS_CTRL:
+		// ENUM# mask and LED control; the status bits are write 1 to clear
+		*p = (old & 0xc0 & ~v) | (v & 0x0a);
+		break;
+	}
+}
+
 static void db_config_write(struct sunpci_state *s, int reg, uae_u8 v, bool secondary)
 {
 	struct db21554 *b = &s->db;
@@ -390,6 +499,9 @@ static void db_config_write(struct sunpci_state *s, int reg, uae_u8 v, bool seco
 				m &= (size & 1) ? ~3 : ~15;
 			}
 			*p = (old & ~m) | (v & m);
+		} else if (pri && off >= 0x30 && off < 0x34) {
+			uae_u8 m = (uae_u8)(db_rom_bar_mask(b) >> ((off & 3) * 8));
+			*p = (old & ~m) | (v & m);
 		} else if (off == 0x2c || off == 0x2d || off == 0x2e || off == 0x2f) {
 			// subsystem IDs are written from the secondary side
 			if (secondary) {
@@ -398,22 +510,17 @@ static void db_config_write(struct sunpci_state *s, int reg, uae_u8 v, bool seco
 		} else if (db_header_writable(off)) {
 			*p = v;
 		}
+	} else if (reg >= DB_CONF_RESET_CTRL) {
+		db_ecp_write(s, reg, p, old, v, secondary);
 	} else {
 		*p = v;
 		if ((reg >= DB_CONF_DS_MEM0_SETUP && reg < DB_CONF_CHIP_CTRL0) || reg == DB_CONF_CHIP_CTRL1 + 1) {
 			db_update_bar_sizes(b);
 		}
-		if (reg == DB_CONF_RESET_CTRL) {
-			bool hold = (v & DB_RESET_SEC) != 0;
-			if (hold && !s->in_reset) {
-				write_log(_T("SUNPCI: card reset asserted by %s\n"), secondary ? _T("card") : _T("host"));
-				s->in_reset = true;
-			} else if (!hold && s->in_reset) {
-				write_log(_T("SUNPCI: card reset released\n"));
-				s->in_reset = false;
-				sunpci_card_reset(s);
-			}
-			*p &= ~0x02;
+		if (reg == DB_CONF_CHIP_CTRL0 + 1 && (old & (DB_PLOCKOUT >> 8)) && !(v & (DB_PLOCKOUT >> 8))) {
+			// l_stat is low on the card, so clearing the primary lockout
+			// signals the insertion in the hot-swap control register
+			b->regs[DB_CONF_HS_CTRL - 0x80] |= DB_HS_INS_STAT;
 		}
 	}
 #if SUNPCI_DEBUG_CSR
@@ -443,8 +550,17 @@ static void db_init(struct db21554 *b)
 		h[0x09] = 0x00;
 		h[0x0a] = 0x80;
 		h[0x0b] = 0x06;
+		h[0x34] = 0xdc;
 		h[0x3d] = 1;
 	}
+	b->regs[DB_CONF_RESET_CTRL - 0x80] = DB_RESET_SUBSYS_STAT;
+	// power management 1.0 without PME#, then VPD and hot-swap
+	b->regs[0xdc - 0x80] = 0x01;
+	b->regs[0xdd - 0x80] = 0xe4;
+	b->regs[DB_CONF_PM_CAP - 0x80] = 0x01;
+	b->regs[0xe4 - 0x80] = 0x03;
+	b->regs[0xe5 - 0x80] = 0xec;
+	b->regs[0xec - 0x80] = 0x06;
 	// primary lockout until the card's BIOS has set the bridge up
 	b->regs[DB_CONF_CHIP_CTRL0 + 1 - 0x80] = DB_PLOCKOUT >> 8;
 	b->p_mask = 0xffff;
@@ -2168,6 +2284,8 @@ static int sunpci1_host_window(struct sunpci_state *s, int bar, uae_u32 off)
 		return DB_WIN_DS2;
 	case 4:
 		return DB_WIN_DS3;
+	case 6:
+		return (s->db.pri[0x30] & 1) ? DB_WIN_ROM : DB_WIN_NONE;
 	}
 	return DB_WIN_NONE;
 }
@@ -2205,6 +2323,15 @@ static uae_u32 sunpci1_host_access(struct pci_board_state *pcibs, uaecptr addr, 
 		return db_csr_read(s, off, size, false);
 	}
 	if (win == DB_WIN_NONE) {
+		return 0xffffffff;
+	}
+	if (win == DB_WIN_ROM) {
+		// The expansion ROM BAR reads the parallel ROM interface, where the
+		// card has Sun's microcontroller rather than a known ROM image.
+		if (!write && !s->db.rom_read_logged) {
+			s->db.rom_read_logged = true;
+			write_log(_T("SUNPCI: host read of the expansion ROM at +%x; no ROM contents\n"), off);
+		}
 		return 0xffffffff;
 	}
 	// downstream window into card memory
@@ -2268,7 +2395,7 @@ const struct pci_board sunpci1_pci_board =
 {
 	_T("SunPCi I"),
 	&sunpci1_pci_config, sunpci1_pci_init, sunpci1_pci_free, NULL, sunpci1_pci_hsync, NULL,
-	{ SUNPCI1_BANK, SUNPCI1_BANK, SUNPCI1_BANK, SUNPCI1_BANK, SUNPCI1_BANK, SUNPCI1_BANK },
+	{ SUNPCI1_BANK, SUNPCI1_BANK, SUNPCI1_BANK, SUNPCI1_BANK, SUNPCI1_BANK, SUNPCI1_BANK, SUNPCI1_BANK },
 	false, sunpci1_get_config, sunpci1_put_config, NULL
 };
 
