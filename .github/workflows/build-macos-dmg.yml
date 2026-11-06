@@ -1,7 +1,13 @@
 name: Build macOS DMG
+run-name: macOS preflight ${{ inputs.source_ref || github.ref_name }}
 
 on:
   workflow_dispatch:
+    inputs:
+      source_ref:
+        description: Exact source commit to build
+        required: true
+        type: string
   push:
     branches:
       - master
@@ -35,6 +41,17 @@ jobs:
     steps:
       - name: Checkout WinUAE
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref || github.sha }}
+
+      - name: Record source commit
+        env:
+          SOURCE_REF: ${{ inputs.source_ref }}
+        run: |
+          git rev-parse HEAD
+          if [ -n "$SOURCE_REF" ]; then
+            test "$(git rev-parse HEAD)" = "$SOURCE_REF"
+          fi
 
       # Use the release-oriented plugin wrapper instead of the raw QEMU fork.
       # It downloads a pinned QEMU 11.0.1 tarball, verifies it, applies the
