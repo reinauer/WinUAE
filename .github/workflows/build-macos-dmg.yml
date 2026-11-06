@@ -33,9 +33,57 @@ env:
   DEPS_PREFIX: ${{ github.workspace }}/.deps/macos
 
 jobs:
+  compile-preflight:
+    name: Compile and test macOS
+    if: github.repository == 'reinauer/WinUAE' && inputs.source_ref != ''
+    runs-on: macos-15
+    steps:
+      - name: Checkout exact source commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref }}
+      - name: Verify source and project metadata
+        env:
+          SOURCE_REF: ${{ inputs.source_ref }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$SOURCE_REF"
+          git rev-parse HEAD
+          python3 - <<'PYXML'
+          import xml.etree.ElementTree as ET
+          for path in ["od-win32/winuae_msvc15/winuae_msvc.vcxproj",
+                       "od-win32/winuae_msvc15/winuae_msvc.vcxproj.filters"]:
+              ET.parse(path)
+          PYXML
+      - name: Install build dependencies
+        run: brew install cmake ninja pkgconf sdl3 qt freetype libpng flac libmpeg2 ffmpeg lua
+      - name: Configure and build WinUAE
+        run: |
+          cmake -S . -B build/preflight -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 \
+            -DWINUAE_FREETYPE_FETCH=OFF \
+            -DWINUAE_UNIX_BUILD_QEMU_UAE_PLUGIN=OFF \
+            -DWINUAE_UNIX_EXTERNAL_QEMU_UAE_PLUGIN=ON
+          cmake --build build/preflight --target winuae winuae_unix_tests \
+            --parallel "$(sysctl -n hw.ncpu)"
+      - name: Run tests
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          ctest --test-dir build/preflight --output-on-failure
+          WINUAE_EXE="$PWD/build/preflight/winuae" \
+            sh tools/unix-smoke-config-roundtrip.sh
+      - name: Upload build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macOS preflight diagnostics
+          path: |
+            build/preflight/CMakeCache.txt
+            build/preflight/Testing/Temporary/LastTest.log
   build-macos-dmg:
     name: Build macOS DMG
-    if: github.repository == 'reinauer/WinUAE'
+    if: github.repository == 'reinauer/WinUAE' && inputs.source_ref == ''
     runs-on: macos-15
 
     steps:
