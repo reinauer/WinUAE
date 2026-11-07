@@ -2214,6 +2214,9 @@ set(WINUAE_CORE_SOURCES
     od-generic/focus.cpp
     od-generic/target_defaults.cpp
     od-generic/hostcfg.cpp
+    od-generic/input_defaults.cpp
+    od-generic/input_hotkeys.cpp
+    od-generic/keymap.cpp
     od-generic/hostcfg_compat.cpp
     od-generic/mman.cpp
     od-generic/registry_ini.cpp
@@ -2402,6 +2405,19 @@ target_include_directories(winuae_unix_console_test PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}"
 )
 winuae_unix_register_test(winuae_unix_console_test)
+
+add_executable(winuae_unix_input_policy_test EXCLUDE_FROM_ALL
+    od-generic/input_defaults.cpp
+    od-generic/keymap.cpp
+    od-generic/input_hotkeys.cpp
+    od-generic/input_policy_test.cpp
+)
+target_include_directories(winuae_unix_input_policy_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/od-unix"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include"
+    "${CMAKE_CURRENT_SOURCE_DIR}"
+)
+winuae_unix_register_test(winuae_unix_input_policy_test)
 
 add_executable(winuae_unix_screenshot_common_test EXCLUDE_FROM_ALL
     od-generic/screenshot_common.cpp
