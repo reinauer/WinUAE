@@ -2218,6 +2218,9 @@ set(WINUAE_CORE_SOURCES
     od-generic/input_hotkeys.cpp
     od-generic/keymap.cpp
     od-generic/hostcfg_compat.cpp
+    od-generic/scaler.cpp
+    od-generic/rtg_scaler.cpp
+    od-generic/display_modes.cpp
     od-generic/mman.cpp
     od-generic/registry_ini.cpp
     od-generic/avsync.cpp
@@ -2440,6 +2443,18 @@ target_include_directories(winuae_unix_avsync_test PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}"
 )
 winuae_unix_register_test(winuae_unix_avsync_test)
+
+add_executable(winuae_unix_scaler_test EXCLUDE_FROM_ALL
+    od-generic/rtg_scaler.cpp
+    od-generic/display_modes.cpp
+    od-generic/scaler_test.cpp
+)
+target_include_directories(winuae_unix_scaler_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/od-unix"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include"
+    "${CMAKE_CURRENT_SOURCE_DIR}"
+)
+winuae_unix_register_test(winuae_unix_scaler_test)
 
 add_executable(winuae_unix_uaenet_test EXCLUDE_FROM_ALL
     od-generic/uaenet.cpp
