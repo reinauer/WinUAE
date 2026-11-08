@@ -29,6 +29,7 @@ for name in selected:
     shutil.copy2(Path(__file__).parent/'memory', guest/'memory')
     (guest/'S/Startup-Sequence').write_text('FailAt 21\nSYS:memory'+arg+' >SYS:memory.txt\nEcho >SYS:done.txt "done"\n')
     for file in ['memory.txt', 'done.txt']: (guest/file).unlink(missing_ok=True)
+    for file in ['faults.json', 'state.json']: (p/file).unlink(missing_ok=True)
     config = f'''use_gui=no
 kickstart_rom_file={root}/kick.rom
 kickstart_ext_rom_file={root}/ext.rom
