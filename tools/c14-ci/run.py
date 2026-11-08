@@ -12,6 +12,7 @@ assert len(rom) == 1024*1024
 (root/'ext.rom').write_bytes(rom[:524288])
 
 cases = {
+    'high': ('bogomem_size=0\nz3_autoconfig=true\nz3mapping=real\nz3mem_size=1024\nz3mem2_size=64', ' high'),
     'direct': ('', ''),
     'indirect': ('comp_trustbyte=indirect\ncomp_trustword=indirect\ncomp_trustlong=indirect\ncomp_trustnaddr=indirect', ''),
     'writable': ('ks_write_enabled=true', ' writable'),
@@ -19,7 +20,7 @@ cases = {
     'real': ('bogomem_size=0\nz3_autoconfig=true\nz3mapping=real', ''),
     '24bit': ('cpu_model=68020\nfpu_model=0\ncpu_24bit_addressing=true\nz3mem_size=0\nfastmem_size=4', ''),
 }
-selected = sys.argv[3:] or list(cases)
+selected = sys.argv[3:] or [name for name in cases if name != 'high']
 for name in selected:
     extra, arg = cases[name]
     p = root/name
@@ -86,6 +87,7 @@ expression -- canbang
 expression -- currprefs.cachesize
 expression -- currprefs.comptrustbyte
 expression -- z3fastmem_bank[0].start
+expression -- z3fastmem_bank[1].start
 script assert lldb.debugger.GetSelectedTarget().GetProcess().GetSelectedThread().GetFrameAtIndex(0).EvaluateExpression('canbang').GetValueAsUnsigned() == 1
 breakpoint disable 1
 {trace_commands}script lldb.debugger.SetAsync(True)

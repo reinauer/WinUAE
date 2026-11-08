@@ -18,8 +18,9 @@ static __attribute__((noinline)) void w16(volatile unsigned short *p, unsigned s
 static __attribute__((noinline)) void w32(volatile unsigned long *p, unsigned long v) { *p=v; }
 static void fail(const char *s) { PutStr((STRPTR)"FAIL: "); emit_line(s); exit(20); }
 static void ram(unsigned long flags) {
- unsigned char *p=AllocMem(65536,flags|MEMF_CLEAR);
+ unsigned char *p=flags&MEMF_REVERSE ? AllocAbs(65536,(void*)0x80010000) : AllocMem(65536,flags|MEMF_CLEAR);
  if(!p)fail("AllocMem");
+ if((flags&MEMF_REVERSE) && (unsigned long)p<0x80000000)fail("high Z3 allocation");
  for(unsigned long i=0;i<20000;i++) {
   unsigned long off=(i*12)&65520;
   w8(p+off,(unsigned char)i); if(r8(p+off)!=(unsigned char)i)fail("byte RAM");
@@ -44,6 +45,7 @@ static void carry(void) {
 int main(int argc,char **argv) {
  carry();
  ram(MEMF_CHIP);ram(MEMF_FAST);
+ if(argc>1 && !strcmp(argv[1],"high"))ram(MEMF_FAST|MEMF_REVERSE);
  volatile unsigned char *rom=(void*)0xfc0100;
  unsigned long before=r32((void*)rom);
  if(argc>1 && !strcmp(argv[1],"maprom")) {

@@ -27,7 +27,7 @@ jobs:
           test "$(sysctl -n sysctl.proc_translated 2>/dev/null || true)" != 1
       - uses: actions/checkout@v4
         with:
-          ref: ci/c14-platform-preflight
+          ref: ${{ github.sha }}
           path: harness
           sparse-checkout: tools/c14-ci
       - name: Install build dependencies
