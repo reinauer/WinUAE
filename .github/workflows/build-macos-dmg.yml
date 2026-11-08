@@ -31,7 +31,7 @@ jobs:
           path: harness
           sparse-checkout: tools/c14-ci
       - name: Install build dependencies
-        run: brew install cmake ninja pkgconf flac libmpeg2 lua
+        run: brew install cmake ninja pkgconf flac libmpeg2 lua freetype
       - name: Build native emulator
         run: |
           cmake -S . -B build/c14 -G Ninja \
@@ -40,7 +40,6 @@ jobs:
             -DWINUAE_UNIX_WITH_QT_UI=OFF \
             -DWINUAE_UNIX_WITH_SDL3=OFF \
             -DWINUAE_UNIX_WITH_FLOPPYBRIDGE=OFF \
-            -DWINUAE_UNIX_WITH_PRINTER_EMULATION=OFF \
             -DWINUAE_UNIX_BUILD_QEMU_UAE_PLUGIN=OFF \
             -DWINUAE_UNIX_EXTERNAL_QEMU_UAE_PLUGIN=ON
           cmake --build build/c14 --target winuae_unix winuae_unix_tests --parallel 3

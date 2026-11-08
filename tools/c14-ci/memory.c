@@ -1,5 +1,6 @@
 #include <proto/exec.h>
 #include <exec/memory.h>
+#include <exec/execbase.h>
 #include <proto/dos.h>
 #include <stdlib.h>
 #include <string.h>
@@ -20,7 +21,6 @@ static void fail(const char *s) { PutStr((STRPTR)"FAIL: "); emit_line(s); exit(2
 static void ram(unsigned long flags) {
  unsigned char *p=flags&MEMF_REVERSE ? AllocAbs(65536,(void*)0x80010000) : AllocMem(65536,flags|MEMF_CLEAR);
  if(!p)fail("AllocMem");
- if((flags&MEMF_REVERSE) && (unsigned long)p<0x80000000)fail("high Z3 allocation");
  for(unsigned long i=0;i<20000;i++) {
   unsigned long off=(i*12)&65520;
   w8(p+off,(unsigned char)i); if(r8(p+off)!=(unsigned char)i)fail("byte RAM");
@@ -45,7 +45,18 @@ static void carry(void) {
 int main(int argc,char **argv) {
  carry();
  ram(MEMF_CHIP);ram(MEMF_FAST);
- if(argc>1 && !strcmp(argv[1],"high"))ram(MEMF_FAST|MEMF_REVERSE);
+ if(argc>1 && !strcmp(argv[1],"high")) {
+  int registered=0;
+  struct MemHeader *mh=(struct MemHeader*)SysBase->MemList.lh_Head;
+  for(;mh->mh_Node.ln_Succ;mh=(struct MemHeader*)mh->mh_Node.ln_Succ) {
+   emit_address("Memory lower ",(unsigned long)mh->mh_Lower);
+   emit_address("Memory upper ",(unsigned long)mh->mh_Upper);
+   if((unsigned long)mh->mh_Lower>=0x80000000 && (unsigned long)mh->mh_Lower<=0x80010000 && (unsigned long)mh->mh_Upper>=0x80020000)registered=1;
+  }
+  /* The bundled AROS ROM does not register the second Z3 bank. */
+  if(!registered)AddMemList(64UL*1024*1024,MEMF_PUBLIC|MEMF_FAST,0,(void*)0x80000000,(STRPTR)"C14 high RAM test");
+  ram(MEMF_FAST|MEMF_REVERSE);
+ }
  volatile unsigned char *rom=(void*)0xfc0100;
  unsigned long before=r32((void*)rom);
  if(argc>1 && !strcmp(argv[1],"maprom")) {

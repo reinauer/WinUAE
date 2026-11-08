@@ -20,7 +20,7 @@ cases = {
     'real': ('bogomem_size=0\nz3_autoconfig=true\nz3mapping=real', ''),
     '24bit': ('cpu_model=68020\nfpu_model=0\ncpu_24bit_addressing=true\nz3mem_size=0\nfastmem_size=4', ''),
 }
-selected = sys.argv[3:] or [name for name in cases if name != 'high']
+selected = sys.argv[3:] or list(cases)
 for name in selected:
     extra, arg = cases[name]
     p = root/name
