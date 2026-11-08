@@ -106,6 +106,9 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="..\printer_host.cpp">
+      <Filter>win32</Filter>
+    </ClCompile>
     <ClCompile Include="..\ahidsound_dsonly.cpp">
       <Filter>win32</Filter>
     </ClCompile>
@@ -2128,6 +2131,9 @@
     </ResourceCompile>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\..\include\printer_host.h">
+      <Filter>common</Filter>
+    </ClInclude>
     <ClInclude Include="..\..\od-generic\console.h">
       <Filter>shared</Filter>
     </ClInclude>

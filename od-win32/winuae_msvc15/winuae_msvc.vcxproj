@@ -974,6 +974,7 @@
     </Manifest>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="..\printer_host.cpp" />
     <ClCompile Include="..\..\archivers\chd\astring.cpp" />
     <ClCompile Include="..\..\archivers\chd\chd.cpp" />
     <ClCompile Include="..\..\archivers\chd\chdcdrom.cpp" />
@@ -3513,6 +3514,7 @@
     </ResourceCompile>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\..\include\printer_host.h" />
     <ClInclude Include="..\..\include\uae\caps.h" />
     <ClInclude Include="..\..\include\gdb_transport.h" />
     <ClInclude Include="..\..\include\target_dlopen.h" />
