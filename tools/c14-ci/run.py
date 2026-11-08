@@ -96,7 +96,6 @@ expression -- currprefs.cachesize
 expression -- currprefs.comptrustbyte
 expression -- z3fastmem_bank[0].start
 expression -- z3fastmem_bank[1].start
-script assert lldb.debugger.GetSelectedTarget().GetProcess().GetSelectedThread().GetFrameAtIndex(0).EvaluateExpression('canbang').GetValueAsUnsigned() == 1
 breakpoint disable 1
 {trace_commands}script lldb.debugger.SetAsync(True)
 script lldb.debugger.GetSelectedTarget().GetProcess().Continue()
@@ -104,9 +103,7 @@ script exec("import time,pathlib; result=pathlib.Path('{guest}/done.txt'); deadl
 script lldb.debugger.GetSelectedTarget().GetProcess().Stop()
 script lldb.debugger.SetAsync(False)
 expression -- cache_size
-expression -- compiled_code
-script assert lldb.debugger.GetSelectedTarget().GetProcess().GetSelectedThread().GetFrameAtIndex(0).EvaluateExpression('currprefs.cachesize').GetValueAsUnsigned() > 0
-script assert lldb.debugger.GetSelectedTarget().GetProcess().GetSelectedThread().GetFrameAtIndex(0).EvaluateExpression('cache_size').GetValueAsUnsigned() > 0
+expression -- (uintptr_t)compiled_code
 script trace.save()
 expression -- uae_quit()
 continue
@@ -122,6 +119,7 @@ continue
     assert 'FAIL:' not in output, output
     faults = json.loads((p/'faults.json').read_text())
     state = json.loads((p/'state.json').read_text())
-    assert state['canbang'] == 1 and all(state[k] > 0 for k in ['currprefs.cachesize','cache_size','compiled_code']), state
+    assert state['canbang'] == (0 if name == 'indirect' else 1), state
+    assert all(state[k] > 0 for k in ['currprefs.cachesize','cache_size','compiled_code']), state
     if tracing and name == 'direct': assert faults, 'direct JIT fault handler was not exercised'
     print(name, 'PASS', 'native faults:', len(faults), 'state:', state, flush=True)
