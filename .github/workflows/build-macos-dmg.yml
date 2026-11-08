@@ -55,5 +55,6 @@ jobs:
           path: |
             build/c14-native/*/runtime.log
             build/c14-native/*/faults.json
+            build/c14-native/*/state.json
             build/c14-native/*/guest/*.txt
             build/c14/CMakeCache.txt

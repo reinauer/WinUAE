@@ -72,6 +72,13 @@ def fault(frame,bp,unused):
  return False
 def save():
  Path('''+repr(str(p/'faults.json'))+''').write_text(json.dumps(faults))
+ frame=lldb.debugger.GetSelectedTarget().GetProcess().GetSelectedThread().GetFrameAtIndex(0)
+ values={}
+ for name in ['canbang','currprefs.cachesize','cache_size','compiled_code']:
+  value=frame.EvaluateExpression(name)
+  if not value.GetError().Success(): raise RuntimeError(str(value.GetError()))
+  values[name]=value.GetValueAsUnsigned()
+ Path('''+repr(str(p/'state.json'))+''').write_text(json.dumps(values))
 ''')
     tracing = platform.machine() == 'x86_64'
     trace_commands = f'command script import {p}/trace.py\n'
@@ -81,7 +88,7 @@ def save():
 settings set target.env-vars QT_QPA_PLATFORM=offscreen SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy SDL_RENDER_DRIVER=software WINUAE_INI={p}/test.ini
 process handle SIGSEGV -s false -n false -p true
 process handle SIGBUS -s false -n false -p true
-breakpoint set -n do_start_program
+breakpoint set -n m68k_go
 run
 expression -- canbang
 expression -- currprefs.cachesize
@@ -95,6 +102,10 @@ script lldb.debugger.GetSelectedTarget().GetProcess().Continue()
 script exec("import time,pathlib; result=pathlib.Path('{guest}/done.txt'); deadline=time.monotonic()+120\\nwhile not result.exists() and time.monotonic()<deadline: time.sleep(0.2)\\ntime.sleep(0.5)\\n")
 script lldb.debugger.GetSelectedTarget().GetProcess().Stop()
 script lldb.debugger.SetAsync(False)
+expression -- cache_size
+expression -- compiled_code
+script assert lldb.debugger.GetSelectedTarget().GetProcess().GetSelectedThread().GetFrameAtIndex(0).EvaluateExpression('currprefs.cachesize').GetValueAsUnsigned() > 0
+script assert lldb.debugger.GetSelectedTarget().GetProcess().GetSelectedThread().GetFrameAtIndex(0).EvaluateExpression('cache_size').GetValueAsUnsigned() > 0
 script trace.save()
 expression -- uae_quit()
 continue
@@ -109,5 +120,7 @@ continue
     assert 'PASS: memory widths' in output, output
     assert 'FAIL:' not in output, output
     faults = json.loads((p/'faults.json').read_text())
+    state = json.loads((p/'state.json').read_text())
+    assert state['canbang'] == 1 and all(state[k] > 0 for k in ['currprefs.cachesize','cache_size','compiled_code']), state
     if tracing and name == 'direct': assert faults, 'direct JIT fault handler was not exercised'
-    print(name, 'PASS', 'native faults:', len(faults), flush=True)
+    print(name, 'PASS', 'native faults:', len(faults), 'state:', state, flush=True)
