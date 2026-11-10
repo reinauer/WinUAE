@@ -3871,8 +3871,12 @@ static uae_u32 REGPARAM2 picasso_BlitPattern(TrapContext *ctx)
 									break;
 								case 3:
 									{
-										uae_u32 *addr = (uae_u32*)(uae_mem2 + bits * 3);
-										*addr ^= rgbmask;
+										// Only the three bytes of this pixel; a
+										// long would also rewrite the next byte.
+										uae_u8 *addr = uae_mem2 + bits * 3;
+										addr[0] ^= 0xff;
+										addr[1] ^= 0xff;
+										addr[2] ^= 0xff;
 									}
 									break;
 								case 4:
@@ -4056,9 +4060,13 @@ static uae_u32 REGPARAM2 picasso_BlitTemplate(TrapContext *ctx)
 									break;
 								case 3:
 									{
-										uae_u32 *addr = (uae_u32*)(uae_mem2 + bits * 3);
-										*addr ^= rgbmask;
-								}
+										// Only the three bytes of this pixel; a
+										// long would also rewrite the next byte.
+										uae_u8 *addr = uae_mem2 + bits * 3;
+										addr[0] ^= 0xff;
+										addr[1] ^= 0xff;
+										addr[2] ^= 0xff;
+									}
 									break;
 								case 4:
 									{
