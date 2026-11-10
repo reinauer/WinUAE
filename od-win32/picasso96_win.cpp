@@ -5335,10 +5335,21 @@ static void picasso_flushpixels(int index, uae_u8 *src, int off, bool render)
 	int pwidth = state->Width > state->VirtualWidth ? state->VirtualWidth : state->Width;
 	int pheight = state->Height > state->VirtualHeight ? state->VirtualHeight : state->Height;
 	int maxy = -1;
-	int miny = pheight - 1;
 	int flushlines = 0, matchcount = 0;
 	struct picasso_vidbuf_description *vidinfo = &picasso_vidinfo[monid];
 	bool overlay_updated = false;
+
+	// SetPanning can place the screen anywhere in the board memory. Only
+	// scan out the rows that lie inside it.
+	uae_u32 vram_size = gfxmem_banks[index]->allocated_size;
+	if (off < 0 || (uae_u32)off >= vram_size || state->BytesPerRow <= 0) {
+		return;
+	}
+	int vram_rows = (int)((vram_size - off) / state->BytesPerRow);
+	if (pheight > vram_rows) {
+		pheight = vram_rows;
+	}
+	int miny = pheight - 1;
 
 	src_start[0] = src + (off & ~gwwpagemask[index]);
 	src_end[0] = src + ((off + state->BytesPerRow * pheight + gwwpagesize[index] - 1) & ~gwwpagemask[index]);
