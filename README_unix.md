@@ -693,6 +693,37 @@ build supports it. Run `node tools/mcp-smoke.mjs` with the same three path
 variables to test the MCP stdio tools, disassembly, PNG output, reset and
 process ownership. Both tests require a built checkout of the MCP fork.
 
+## Poor man's tabs
+
+Several WinUAE instances (for example emulators started by an MCP client
+for automated tests) can be shown as tabs of one window. Turn it on with
+`window_tabs=true` in the configuration, or with the environment variable
+`WINUAE_WINDOW_TABS=1`:
+
+```sh
+WINUAE_WINDOW_TABS=1 WINUAE_TAB_NAME="A500 test" /tmp/winuae_cmake_build/winuae -f a500.uae &
+WINUAE_WINDOW_TABS=1 WINUAE_TAB_NAME="A1200 test" /tmp/winuae_cmake_build/winuae -f a1200.uae &
+```
+
+The status bar's free left part then shows one tab per running instance,
+oldest first, this window's own tab highlighted. Clicking a tab brings that
+instance to the front; arrows at the end of the strip scroll it when not all
+tabs fit. An instance that exits loses its tab (the next one comes to the
+front), and with the last one gone the window is gone.
+
+The tab is named after `WINUAE_TAB_NAME`, else the configuration file.
+
+It is a fake: every instance is still its own process with its own window.
+The windows are kept stacked at the same position and size (a new instance
+comes to the front, on top of the window that was there; moving the front
+window moves the others) and each draws the same tab strip. Instances find each other in
+`$XDG_RUNTIME_DIR` (else `$TMPDIR`, else `/tmp`)`/winuae-tabs-<uid>/`:
+`<pid>.tab` names a tab, `<pid>.sock` is a datagram socket that takes the
+"come to the front" and "follow this geometry" messages, and `front` holds
+the geometry of the window in front. Instances that died without cleaning
+up are dropped (their pid is gone). Emulators run with
+`SDL_VIDEODRIVER=dummy` have no window, so no tab.
+
 ## Smoke Test
 
 The repository includes a headless A1200 smoke test. It uses SDL dummy video/audio by default and checks that ROM loading, audio initialization, and hard reset reached the expected log points:

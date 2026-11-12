@@ -26,6 +26,7 @@ static int unix_avi_audio_codec = AVIAUDIO_AVI;
 #include "uae/string.h"
 #include "uae.h"
 #include "zfile.h"
+#include "window_tabs.h"
 
 TCHAR start_path_data[MAX_DPATH];
 TCHAR start_path_data_exe[MAX_DPATH];
@@ -214,6 +215,10 @@ int target_cfgfile_load(struct uae_prefs *p, const TCHAR *filename, int type, in
 
 int target_parse_option(struct uae_prefs *p, const TCHAR *option, const TCHAR *value, int)
 {
+    if (!_tcsicmp(option, _T("window_tabs"))) {
+        window_tabs_set_option(parse_bool_value(value ? value : ""));
+        return 1;
+    }
     if (!_tcsicmp(option, _T("ui.recursive_roms"))) {
         unix_romscan_set_recursive(parse_bool_value(value ? value : ""));
         return 1;
@@ -535,6 +540,7 @@ const TCHAR *unix_gfx_shader_option(void)
 
 void target_save_options(struct zfile *f, struct uae_prefs *p)
 {
+    cfgfile_target_dwrite_bool(f, _T("window_tabs"), window_tabs_option());
     cfgfile_target_dwrite_str(f, _T("gfx_shader"), unix_gfx_shader);
     cfgfile_target_dwrite_str(f, _T("serial_port"), p->sername[0] ? p->sername : _T("none"));
     cfgfile_target_dwrite_str_escape(f, _T("parallel_port"), p->prtname[0] ? p->prtname : _T("none"));
