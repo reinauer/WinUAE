@@ -1149,9 +1149,19 @@ static void tabs_poll(void)
     window_tab_geom g;
     bool changed = false;
     if (s_tab_raise_pending && s_window) {
-        /* a new tab comes to the front, as in a terminal */
+        /* A new tab comes to the front, as in a terminal, when a WinUAE
+         * window is in use: not while the user works in another app (test
+         * runs start instance after instance). */
         s_tab_raise_pending = false;
-        SDL_RaiseWindow(s_window);
+        const int frontmost = window_tabs_platform_frontmost_pid();
+        bool in_use = frontmost < 0 || frontmost == (int)getpid();
+        for (const window_tab &t : window_tabs_list()) {
+            in_use |= t.pid == frontmost;
+        }
+        if (in_use) {
+            window_tabs_platform_activate();
+            SDL_RaiseWindow(s_window);
+        }
     }
     for (;;) {
         bool c = false;

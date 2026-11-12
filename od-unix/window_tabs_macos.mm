@@ -31,3 +31,11 @@ void window_tabs_platform_activate(void)
 			[NSApp activateIgnoringOtherApps:YES];
 	}
 }
+
+int window_tabs_platform_frontmost_pid(void)
+{
+	@autoreleasepool {
+		NSRunningApplication *app = [[NSWorkspace sharedWorkspace] frontmostApplication];
+		return app ? (int)app.processIdentifier : -1;
+	}
+}

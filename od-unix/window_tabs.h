@@ -56,6 +56,8 @@ void window_tabs_front(const window_tab_geom &geom);
  * Nothing elsewhere. */
 void window_tabs_platform_yield(int pid);
 void window_tabs_platform_activate(void);
+/* The process of the active app, -1 when unknown (not macOS). */
+int window_tabs_platform_frontmost_pid(void);
 
 /* Unregisters; when this window was in front, the next tab comes to the
  * front at geom. */

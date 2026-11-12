@@ -715,7 +715,8 @@ The tab is named after `WINUAE_TAB_NAME`, else the configuration file.
 
 It is a fake: every instance is still its own process with its own window.
 The windows are kept stacked at the same position and size (a new instance
-comes to the front, on top of the window that was there; moving the front
+comes to the front, on top of the window that was there, when a WinUAE
+window is the active one, so test runs don't take the focus from other apps; moving the front
 window moves the others) and each draws the same tab strip. Instances find each other in
 `$XDG_RUNTIME_DIR` (else `$TMPDIR`, else `/tmp`)`/winuae-tabs-<uid>/`:
 `<pid>.tab` names a tab, `<pid>.sock` is a datagram socket that takes the

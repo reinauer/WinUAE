@@ -363,4 +363,9 @@ void window_tabs_platform_yield(int)
 void window_tabs_platform_activate(void)
 {
 }
+
+int window_tabs_platform_frontmost_pid(void)
+{
+	return -1;
+}
 #endif
