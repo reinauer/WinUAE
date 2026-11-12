@@ -1696,6 +1696,14 @@ else()
     list(APPEND WINUAE_UNIX_EXTRA_SOURCES od-unix/video_null.cpp)
 endif()
 
+# Poor man's tabs (od-unix/window_tabs.h): on macOS the clicked tab's
+# process is handed activation (AppKit).
+if(APPLE)
+    enable_language(OBJCXX)
+    list(APPEND WINUAE_UNIX_EXTRA_SOURCES od-unix/window_tabs_macos.mm)
+    list(APPEND WINUAE_UNIX_EXTRA_LIBRARIES "-framework AppKit")
+endif()
+
 if(WINUAE_UNIX_WITH_SAMPLER AND (WINUAE_UNIX_SDL3_TARGET OR SDL3_FOUND))
     set(WINUAE_UNIX_ENABLE_SAMPLER ON)
     target_compile_definitions(winuae_unix_core_defs INTERFACE WINUAE_UNIX_WITH_SAMPLER=1)
@@ -1829,6 +1837,7 @@ set(WINUAE_CORE_SOURCES
     od-unix/charset.cpp
     od-unix/clipboard.cpp
     od-unix/config.cpp
+    od-unix/window_tabs.cpp
     od-unix/driveclick.cpp
     od-unix/dlopen.cpp
     od-unix/filesys_host.cpp

@@ -21,6 +21,8 @@
 #include <utility>
 #include <vector>
 
+#include <unistd.h>
+
 #include "statusline.h"
 #include "traps.h"
 #include "clipboard.h"
@@ -31,6 +33,7 @@
 #include "threaddep/thread.h"
 #include "uae.h"
 #include "video.h"
+#include "window_tabs.h"
 
 extern int pause_emulation;
 extern void pausemode(int mode);
@@ -933,6 +936,291 @@ static bool ensure_status_texture(int width)
     return true;
 }
 
+/*
+ * Poor man's tabs (window_tabs.h): with the window_tabs option, the status
+ * bar's free left part, up to 2/3 of its width (and never into the LEDs),
+ * shows one tab per running instance, oldest first, this one highlighted.
+ * More than fit: arrows at the strip's end scroll it. The strip is drawn
+ * (SDL's 8x8 debug font, a software renderer) only when the tab list, the
+ * scroll or the width changes, and copied into the status bar every frame.
+ */
+static std::vector<uae_u32> s_tab_strip;
+static int s_tab_strip_w = -1;
+static bool s_tab_strip_dirty = true;
+static bool s_tab_autoscroll = true;
+static int s_tab_scroll;
+struct tab_hit {
+    int x0, x1;
+    int pid;
+    int arrow;  /* -1 left, +1 right, 0 a tab */
+};
+static std::vector<tab_hit> s_tab_hits;
+static bool s_tab_follow_pending;
+static bool s_tab_raise_pending;    /* a new instance comes to the front */
+static Uint64 s_tab_follow_at;
+
+static const int TabLabelMax = 16;
+static const int TabArrowWidth = 11;
+
+/* Up to 2/3 of the bar, and short of the LEDs: where the first one was
+ * drawn (the LEDs shown depend on the configuration and change, e.g. HD). */
+static int tab_strip_width(int width)
+{
+    const uae_u32 bg = 0xffd4d0c8u;
+    int leds = width;
+    for (int y = 0; y < statusbar_source_height(); y++) {
+        const uae_u32 *row = s_status_pixels.data() + size_t(y) * size_t(width);
+        for (int x = 0; x < leds; x++) {
+            if (row[x] != bg) {
+                leds = x;
+                break;
+            }
+        }
+    }
+    return std::max(0, std::min(width * 2 / 3, leds - 4));
+}
+
+static void tab_fill(SDL_Renderer *r, int x, int w, Uint8 c, Uint8 border)
+{
+    const int h = statusbar_source_height();
+    SDL_FRect f = { (float)x, 0.0f, (float)w, (float)h };
+    SDL_SetRenderDrawColor(r, c, c, c - 8, 255);
+    SDL_RenderFillRect(r, &f);
+    SDL_SetRenderDrawColor(r, border, border, border, 255);
+    SDL_RenderRect(r, &f);
+}
+
+static void build_tab_strip(int w)
+{
+    const int h = statusbar_source_height();
+    s_tab_strip.assign(size_t(std::max(w, 0)) * size_t(h), 0xffd4d0c8u);
+    s_tab_hits.clear();
+    s_tab_strip_w = w;
+    s_tab_strip_dirty = false;
+    const std::vector<window_tab> &tabs = window_tabs_list();
+    if (w < 3 * TabArrowWidth || tabs.empty()) {
+        return;
+    }
+    SDL_Surface *surface = SDL_CreateSurfaceFrom(w, h, SDL_PIXELFORMAT_ARGB8888, s_tab_strip.data(), w * 4);
+    SDL_Renderer *r = surface ? SDL_CreateSoftwareRenderer(surface) : NULL;
+    if (!r) {
+        if (surface) {
+            SDL_DestroySurface(surface);
+        }
+        return;
+    }
+
+    const int ch = SDL_DEBUG_TEXT_FONT_CHARACTER_SIZE;
+    const int text_y = (h - ch) / 2;
+    std::vector<std::string> labels;
+    std::vector<int> widths;
+    int total = 0;
+    int self = 0;
+    for (size_t i = 0; i < tabs.size(); i++) {
+        std::string l = tabs[i].label;
+        if ((int)l.size() > TabLabelMax) {
+            l = l.substr(0, TabLabelMax - 1) + "~";
+        }
+        labels.push_back(l);
+        widths.push_back((int)l.size() * ch + 8);
+        total += widths.back() + 1;
+        if (tabs[i].self) {
+            self = (int)i;
+        }
+    }
+    const bool overflow = total > w;
+    const int avail = overflow ? w - 2 * TabArrowWidth - 2 : w;
+    const int n = (int)tabs.size();
+    if (!overflow) {
+        s_tab_scroll = 0;
+    } else {
+        if (s_tab_autoscroll) {
+            /* this instance's tab in view */
+            if (self < s_tab_scroll) {
+                s_tab_scroll = self;
+            }
+            for (;;) {
+                int x = 0;
+                for (int i = s_tab_scroll; i <= self; i++) {
+                    x += widths[i] + 1;
+                }
+                if (x <= avail || s_tab_scroll >= self) {
+                    break;
+                }
+                s_tab_scroll++;
+            }
+        }
+        s_tab_scroll = std::max(0, std::min(s_tab_scroll, n - 1));
+    }
+    s_tab_autoscroll = false;
+
+    int x = 0;
+    int last = s_tab_scroll - 1;
+    for (int i = s_tab_scroll; i < n; i++) {
+        if (x + widths[i] > avail) {
+            break;
+        }
+        const bool me = tabs[i].self;
+        tab_fill(r, x, widths[i], me ? 255 : 168, me ? 64 : 110);
+        SDL_SetRenderDrawColor(r, me ? 0 : 40, me ? 0 : 40, me ? 0 : 40, 255);
+        SDL_RenderDebugText(r, (float)(x + 4), (float)text_y, labels[i].c_str());
+        tab_hit hit = { x, x + widths[i], tabs[i].pid, 0 };
+        s_tab_hits.push_back(hit);
+        x += widths[i] + 1;
+        last = i;
+    }
+    if (overflow) {
+        const int ax = w - 2 * TabArrowWidth;
+        const bool left = s_tab_scroll > 0;
+        const bool right = last < n - 1;
+        tab_fill(r, ax, TabArrowWidth, 200, 110);
+        tab_fill(r, ax + TabArrowWidth, TabArrowWidth, 200, 110);
+        SDL_SetRenderDrawColor(r, left ? 0 : 150, left ? 0 : 150, left ? 0 : 150, 255);
+        SDL_RenderDebugText(r, (float)(ax + 2), (float)text_y, "<");
+        SDL_SetRenderDrawColor(r, right ? 0 : 150, right ? 0 : 150, right ? 0 : 150, 255);
+        SDL_RenderDebugText(r, (float)(ax + TabArrowWidth + 2), (float)text_y, ">");
+        tab_hit lh = { ax, ax + TabArrowWidth, 0, -1 };
+        tab_hit rh = { ax + TabArrowWidth, ax + 2 * TabArrowWidth, 0, 1 };
+        if (left) {
+            s_tab_hits.push_back(lh);
+        }
+        if (right) {
+            s_tab_hits.push_back(rh);
+        }
+    }
+    SDL_FlushRenderer(r);
+    SDL_DestroyRenderer(r);
+    SDL_DestroySurface(surface);
+}
+
+static void draw_tab_strip(int width)
+{
+    if (!window_tabs_active()) {
+        return;
+    }
+    const int w = tab_strip_width(width);
+    if (s_tab_strip_dirty || w != s_tab_strip_w) {
+        build_tab_strip(w);
+    }
+    if (w <= 0) {
+        return;
+    }
+    for (int y = 0; y < statusbar_source_height(); y++) {
+        memcpy(s_status_pixels.data() + size_t(y) * size_t(width),
+            s_tab_strip.data() + size_t(y) * size_t(w), size_t(w) * sizeof(uae_u32));
+    }
+}
+
+static bool tab_window_geom(window_tab_geom *g)
+{
+    if (!s_window) {
+        return false;
+    }
+    SDL_GetWindowPosition(s_window, &g->x, &g->y);
+    SDL_GetWindowSize(s_window, &g->w, &g->h);
+    return g->w > 0 && g->h > 0;
+}
+
+static void tab_apply_geom(const window_tab_geom &g, bool raise)
+{
+    if (!s_window) {
+        return;
+    }
+    if (raise && (SDL_GetWindowFlags(s_window) & SDL_WINDOW_MINIMIZED)) {
+        SDL_RestoreWindow(s_window);
+    }
+    SDL_SetWindowSize(s_window, g.w, g.h);
+    SDL_SetWindowPosition(s_window, g.x, g.y);
+    if (raise) {
+        SDL_ShowWindow(s_window);
+        window_tabs_platform_activate();
+        SDL_RaiseWindow(s_window);
+    }
+}
+
+/* Called from the event loop: another instance's request, the tab list,
+ * and this window's moves and resizes handed on to the others. */
+static void tabs_poll(void)
+{
+    if (!window_tabs_active()) {
+        return;
+    }
+    const Uint64 now = SDL_GetTicks();
+    window_tab_geom g;
+    bool changed = false;
+    if (s_tab_raise_pending && s_window) {
+        /* A new tab comes to the front, as in a terminal, when a WinUAE
+         * window is in use: not while the user works in another app (test
+         * runs start instance after instance). */
+        s_tab_raise_pending = false;
+        const int frontmost = window_tabs_platform_frontmost_pid();
+        bool in_use = frontmost < 0 || frontmost == (int)getpid();
+        for (const window_tab &t : window_tabs_list()) {
+            in_use |= t.pid == frontmost;
+        }
+        if (in_use) {
+            window_tabs_platform_activate();
+            SDL_RaiseWindow(s_window);
+        }
+    }
+    for (;;) {
+        bool c = false;
+        window_tabs_cmd cmd = window_tabs_poll(now, &g, &c);
+        changed |= c;
+        if (cmd == WINDOW_TABS_NONE) {
+            break;
+        }
+        tab_apply_geom(g, cmd == WINDOW_TABS_SHOW);
+    }
+    if (changed) {
+        s_tab_strip_dirty = true;
+        s_tab_autoscroll = true;
+    }
+    if (s_tab_follow_pending && now >= s_tab_follow_at) {
+        s_tab_follow_pending = false;
+        if (tab_window_geom(&g)) {
+            window_tabs_follow(g);
+        }
+    }
+}
+
+/* This window moved or was resized: when it is the one in use, the others
+ * follow (shortly, once the move has settled). */
+static void tabs_window_changed(void)
+{
+    if (window_tabs_active() && s_window && (SDL_GetWindowFlags(s_window) & SDL_WINDOW_INPUT_FOCUS)) {
+        s_tab_follow_pending = true;
+        s_tab_follow_at = SDL_GetTicks() + 200;
+    }
+}
+
+static bool tabs_click(int logical_x, Uint8 button)
+{
+    if (!window_tabs_active() || logical_x >= s_tab_strip_w) {
+        return false;
+    }
+    if (button != SDL_BUTTON_LEFT) {
+        return true;
+    }
+    for (const tab_hit &hit : s_tab_hits) {
+        if (logical_x < hit.x0 || logical_x >= hit.x1) {
+            continue;
+        }
+        if (hit.arrow) {
+            s_tab_scroll += hit.arrow;
+            s_tab_strip_dirty = true;
+        } else if (hit.pid != (int)getpid()) {
+            window_tab_geom g;
+            if (tab_window_geom(&g)) {
+                window_tabs_platform_yield(hit.pid);
+                window_tabs_show(hit.pid, g);
+            }
+        }
+        break;
+    }
+    return true;
+}
+
 static bool update_status_pixels(int width)
 {
     if (!ensure_status_pixels(width)) {
@@ -953,6 +1241,7 @@ static bool update_status_pixels(int width)
             s_status_bc,
             NULL);
     }
+    draw_tab_strip(width);
     return true;
 }
 
@@ -1527,6 +1816,9 @@ static bool handle_statusbar_click(int window_x, int window_y, Uint8 button)
         return false;
     }
 
+    if (tabs_click(logical_x, button)) {
+        return true;
+    }
     const int slot = statusbar_hit_slot(logical_x);
     if (slot < 0) {
         return true;
@@ -1698,6 +1990,18 @@ bool unix_video_init(int width, int height, int pixbytes)
             return false;
         }
         center_window_on_display(get_sdl_display_for_index(s_requested_display_index));
+        {
+            window_tab_geom adopt;
+            bool have_adopt = false;
+            const char *driver = SDL_GetCurrentVideoDriver();
+            const bool headless = driver && !strcmp(driver, "dummy");
+            if (!headless && window_tabs_start(optionsfile, &adopt, &have_adopt) && have_adopt) {
+                tab_apply_geom(adopt, false);   /* stacked on the window in front */
+            }
+            s_tab_strip_dirty = true;
+            s_tab_autoscroll = true;
+            s_tab_raise_pending = window_tabs_active();
+        }
     }
 
 #ifdef WINUAE_UNIX_WITH_OPENGL_SHADER_PIPELINE
@@ -1765,6 +2069,12 @@ void unix_video_shutdown(void)
     }
     s_gl_active = false;
 #endif
+    if (window_tabs_active()) {
+        window_tab_geom g = { 0, 0, 0, 0 };
+        const bool front = s_window && (SDL_GetWindowFlags(s_window) & SDL_WINDOW_INPUT_FOCUS);
+        tab_window_geom(&g);
+        window_tabs_stop(front && g.w > 0, g);
+    }
     s_status_pixels.clear();
     if (s_renderer) {
         SDL_DestroyRenderer(s_renderer);
@@ -1828,6 +2138,7 @@ static int unix_video_poll_internal(bool *quit_requested, bool input_events)
         got = 1;
     }
 
+    tabs_poll();
     while (SDL_PollEvent(&event)) {
         got = 1;
         switch (event.type) {
@@ -1841,7 +2152,19 @@ static int unix_video_poll_internal(bool *quit_requested, bool input_events)
                 *quit_requested = true;
             }
             break;
+        case SDL_EVENT_WINDOW_RESIZED:
+            tabs_window_changed();
+            break;
+        case SDL_EVENT_WINDOW_FOCUS_GAINED:
+            if (window_tabs_active()) {
+                window_tab_geom g;
+                if (tab_window_geom(&g)) {
+                    window_tabs_front(g);
+                }
+            }
+            break;
         case SDL_EVENT_WINDOW_MOVED:
+            tabs_window_changed();
             if (s_mouse_grabbed && unix_event_for_window(event.window.windowID)) {
                 unix_input_release_keys();
                 unix_video_set_mouse_grab(false);
